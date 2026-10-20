@@ -1,7 +1,7 @@
 # Preliminary implementation roadmap
 
-This sequence may change after architecture review. Stages 01–03 are implemented
-offline in this branch; Stages 04–09 are **Planned**. No runtime is implemented.
+This sequence may change after architecture review. Stages 01–04 are implemented
+offline in this branch; Stages 05–09 are **Planned**. No runtime is implemented.
 Each stage needs its own scoped task, validation evidence and review. This roadmap
 does not authorize production actions, merges, release tags or changes to other
 repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
@@ -10,8 +10,8 @@ repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
 | --- | --- | --- |
 | Stage 01 — Project Bootstrap | Local standards, lock, architecture, bilingual documentation, offline checks | Implemented; PR #1 merged |
 | Stage 02 — Service Registry & Manifest Validation | Reviewed deployment contract, versioned schema, admission rules and invalid-input fixtures | Implemented offline; PR #2 merged |
-| Stage 03 — Desired State & Reconciliation Planning | Desired/actual models, deterministic diff/plan and no-op semantics | Implemented offline; explicit fixtures, no discovery or host mutations; review pending |
-| Stage 04 — Caddy Gateway Foundation | Deterministic route rendering, candidate validation and gateway interface | Planned; offline/local foundation, no real domains |
+| Stage 03 — Desired State & Reconciliation Planning | Desired/actual models, deterministic diff/plan and no-op semantics | Implemented offline; explicit fixtures, no discovery or host mutations; PR #3 merged |
+| Stage 04 — Caddy Gateway Foundation | Deterministic route rendering, candidate validation and gateway interface | Implemented offline; deterministic retained route previews and opt-in validation; no runtime activation |
 | Stage 05 — Docker Deployment Engine | Scoped Compose execution, digest pulls, serialization and idempotency | Planned; disposable local environment first |
 | Stage 06 — Health Checks, Rollback & Recovery | Readiness gates, last-known-good journal and bounded restoration | Planned; data/migration limits explicit |
 | Stage 07 — Local E2E & Integration Testing | Isolated end-to-end registration/update/failure/recovery scenarios | Planned; no VPS/DNS/real certificates |
@@ -28,6 +28,12 @@ Stage 03 implements [offline reconciliation planning](reconciliation-planning.md
 deeply immutable models, bounded closed snapshots, component-scoped diffs, route
 and health outcomes, lifecycle/storage blockers, CLI and Make integration.
 Fixtures are not VPS observations or execution authorization.
+
+Stage 04 implements [offline Caddy gateway foundation](caddy-gateway.md):
+immutable routes/candidates, separate desired/current/retained sets, deterministic
+Caddyfile, Stage 03 outcome adaptation, CLI and opt-in official local validation.
+Offline tests pass; no Caddy binary is installed in the implementation environment,
+so actual official adapt/validate did not run. Stage 04 PR review remains pending.
 
 Before execution stages decide controller CLI/CI model and language, production
 source/release policy, secret delivery, journal storage, concurrency strategy,

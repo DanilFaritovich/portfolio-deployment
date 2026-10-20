@@ -3,9 +3,9 @@
 [English version](README.md)
 
 Централизованная платформа Docker/GitOps-деплоя независимо собираемых портфолио-
-приложений на одном Ubuntu VPS. **Текущее состояние: Stage 03 — Desired State
-& Reconciliation Planning.** Реализованы валидация реестра с admission, глубоко
-неизменяемые desired/observed модели и детерминированное офлайн-планирование. Runtime-деплой — **Planned**:
+приложений на одном Ubuntu VPS. **Текущее состояние: Stage 04 — Caddy Gateway Foundation.** Реализованы валидация реестра с admission, глубоко
+неизменяемые desired/observed модели, детерминированное офлайн-планирование
+и preview сохранённых Caddy routes/candidates. Runtime-деплой — **Planned**:
 контроллер, gateway и приложения здесь не развёрнуты. Реальный реестр и allowlist
 пусты до подтверждения артефактов и review.
 
@@ -38,6 +38,10 @@ policy и лимиты валидации описаны в [контракте 
 [Контракт Stage 03](docs/reconciliation-planning.md) описывает неизменяемые модели,
 ограниченные snapshots, обновления компонентов, no-op, маршруты, drift, health
 и блокировки lifecycle/storage. Планирование не выполняет операции.
+[Stage 04](docs/caddy-gateway.md) добавляет immutable routes/candidates, фиксированный
+Caddyfile renderer, раздельные desired/current/retained наборы и явную проверку
+официальным локальным Caddy. Неподтверждённые изменения сохраняют active routes;
+unknown или недоверенный gateway scope блокирует полный кандидат.
 
 **Planned:** обновления по immutable `ghcr.io/<owner>/<image>@sha256:<digest>`; обнаружение
 реального состояния и runtime reconciliation; общий Caddy HTTPS gateway;
@@ -65,16 +69,20 @@ scripts/validate_registry.py    Ограниченный офлайн-валид
 scripts/planning_inputs.py      Валидация неизменяемых desired/observed моделей
 scripts/reconciliation.py       Чистое сравнение и неизменяемый план
 scripts/plan_registry.py        Offline CLI с явно заданными входами
+scripts/gateway.py              Чистые routes, retained candidates и Caddyfile renderer
+scripts/gateway_cli.py          Offline CLI для gateway preview
+scripts/gateway_validation.py   Явная проверка официальным локальным Caddy
 registry/applications/         Пустой реальный реестр; один manifest на приложение
 policy/admission.yaml           Пустой allowlist для отдельного review
 schemas/                       Версионированные закрытые схемы
 tests/fixtures/                Синтетические примеры и недопустимый YAML
 requirements-dev.txt           Закреплённые инструменты офлайн-валидации
-Makefile                       Интерфейс fix / validate / check / plan
+Makefile                       Интерфейс fix / validate / check / plan / gateway-*
 ```
 
 Генерация Compose и runtime-конфигурация отложены; готовых к запуску Compose- и
-Caddy-файлов нет. Синтетические fixtures не являются production-манифестами.
+production Caddy-файлов нет; сгенерированные Caddyfiles являются preview.
+Синтетические fixtures не являются production-манифестами.
 
 ## Локальная разработка и проверки
 
@@ -114,7 +122,24 @@ storage/mounts блокируют план. Config/secret IDs не доказы�
 2 для блокировок, 3 для degraded health; Make использует свой код ошибки recipe.
 API, текстовый вывод и будущие preflight/readiness gates описаны в контракте.
 
-GitHub Actions до Stage 03 включительно не настроен; offline CI — **Planned** в Stage 08.
+Gateway preview требует те же явно заданные входы:
+
+```sh
+make gateway-render PYTHON=.venv/bin/python REGISTRY_ROOT=. OBSERVED=tests/fixtures/observed/noop.json GIT_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa GATEWAY_FORMAT=json
+make gateway-check PYTHON=.venv/bin/python
+make gateway-validate PYTHON=.venv/bin/python REGISTRY_ROOT=. OBSERVED=tests/fixtures/observed/noop.json GIT_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+```
+
+`GATEWAY_FORMAT=caddyfile` выводит полный retained candidate. Пустой набор — явный
+no-routes outcome (JSON), без публичного fallback. JSON разделяет предложенные
+изменения и сохранённые active routes. Gateway CLI: 0 — успешный preview (включая
+pending), 1 — ошибка входов, 2 — blocked, 3 — нет Caddyfile, 4 — запрошенная
+официальная проверка не прошла/не выполнялась. Отсутствие Caddy сообщается явно;
+ничего не скачивается. Официальная проверка подтверждает синтаксис, без readiness
+и разрешения активации. `make check` включает Stage 04. API, границы доверия,
+будущий reload и TLS prerequisites описаны в документе gateway.
+
+GitHub Actions до Stage 04 включительно не настроен; offline CI — **Planned** в Stage 08.
 Targets `verify`, `ci` и deployment пока отсутствуют. Успешные проверки не
 подтверждают работу Docker, HTTPS, reconciliation или rollback на сервере.
 
@@ -150,15 +175,15 @@ references; читать references нужно только для текуще�
 | --- | --- | --- |
 | Stage 01 | Project Bootstrap | Реализован; PR #1 смержен |
 | Stage 02 | Service Registry & Manifest Validation | Implemented offline; PR #2 merged |
-| Stage 03 | Desired State & Reconciliation Planning | Implemented offline; review pending |
-| Stage 04 | Caddy Gateway Foundation | Planned |
+| Stage 03 | Desired State & Reconciliation Planning | Implemented offline; PR #3 merged |
+| Stage 04 | Caddy Gateway Foundation | Implemented offline; review pending |
 | Stage 05 | Docker Deployment Engine | Planned |
 | Stage 06 | Health Checks, Rollback & Recovery | Planned |
 | Stage 07 | Local E2E & Integration Testing | Planned |
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
 
-Stages 02–03 используют Python для офлайн-инструментов, не выбирая runtime
+Stages 02–04 используют Python для офлайн-инструментов, не выбирая runtime
 контроллера. Реальный ProjectRouter требует подтверждённого digest; production
 hostname не выдумывается. Выполнение контроллера, production-trigger/source,
 доставка секретов и журнал/восстановление требуют отдельных решений позже.
