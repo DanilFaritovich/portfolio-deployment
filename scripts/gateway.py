@@ -26,7 +26,7 @@ class GatewayRoute:
             not re.fullmatch(identifier, self.component) or len(self.component) > 32):
             raise PlanningInputError("invalid gateway identity")
         if (len(self.hostname) > 253 or not re.fullmatch(
-                rf"(?:{label}\.)+[a-z]{{1,63}}", self.hostname)):
+                rf"(?:{label}\.)+[a-z](?:[a-z0-9-]{{0,61}}[a-z0-9])?", self.hostname)):
             raise PlanningInputError("invalid gateway hostname")
         if type(self.port) is not int or not 1 <= self.port <= 65535:
             raise PlanningInputError("invalid gateway port")

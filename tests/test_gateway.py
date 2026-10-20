@@ -9,6 +9,7 @@ import subprocess
 import sys
 
 import pytest
+import yaml
 
 from scripts import gateway as gateway
 from scripts import gateway_cli as cli
@@ -30,6 +31,23 @@ def setup(root, *names):
         put(root, name)
     desired = build_desired_state(root, SHA)
     return desired, observation(desired)
+
+
+@pytest.mark.parametrize("hostname", ["portfolio.example.xn--p1ai", "portfolio.example.co2",
+    "portfolio.example.a", "portfolio.example." + "a" * 63,
+    ".".join(["a" * 63] * 3 + ["a" * 61])])
+def test_admitted_hostname_projects_to_desired_route(root, hostname):
+    put(root, mutate=lambda s: s["ingress"].update(hostname=hostname))
+    policy_path = root / "policy/admission.yaml"
+    policy = yaml.safe_load(policy_path.read_text())
+    next(a for a in policy["applications"] if a["id"] == "support-assistant")["hostnames"] = [hostname]
+    policy_path.write_text(yaml.safe_dump(policy))
+
+    desired = build_desired_state(root, SHA)
+    routes = gateway.desired_routes(desired)
+    assert len(routes) == 1
+    assert routes[0].hostname == hostname
+    assert gateway.render_caddyfile(routes) == f"{hostname} {{\n    reverse_proxy support-assistant-frontend:8080\n}}\n"
 
 
 def test_route_model_renderer_and_immutability(root):
@@ -170,6 +188,14 @@ def test_matching_plan_is_required(root):
 
 
 @pytest.mark.parametrize("field,value", [("hostname", "*.example.test"), ("hostname", ":443"),
+    ("hostname", "*"), ("hostname", "localhost"), ("hostname", "127.0.0.1"),
+    ("hostname", "portfolio.example.2co"), ("hostname", "portfolio.example.-co"),
+    ("hostname", "portfolio.example.co-"), ("hostname", "portfolio.example.Co2"),
+    ("hostname", "portfolio.example." + "a" * 64),
+    ("hostname", "a" * 64 + ".example.test"),
+    ("hostname", ".".join(["a" * 63] * 3 + ["a" * 62])),
+    ("hostname", "example..test"), ("hostname", "example.test."),
+    ("hostname", "example.test\n"),
     ("hostname", "good.example.test {\n tls SENSITIVE\n}"), ("hostname", "example.test/path"),
     ("hostname", "{$SENSITIVE}"), ("alias", "SENSITIVE"), ("port", 8080.0),
     ("manager", "foreign"), ("component", "web\nSENSITIVE")])
