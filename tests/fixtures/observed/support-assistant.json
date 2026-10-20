@@ -1,0 +1,151 @@
+{
+  "apiVersion": "portfolio.observed/v1",
+  "scope": {
+    "kind": "registry",
+    "complete": true,
+    "trusted": true
+  },
+  "applications": [
+    {
+      "id": "support-assistant",
+      "owner": {
+        "manager": "portfolio-deployment",
+        "application": "support-assistant"
+      },
+      "existence": "present",
+      "components": [
+        {
+          "name": "backend",
+          "existence": "present",
+          "owner": {
+            "manager": "portfolio-deployment",
+            "application": "support-assistant",
+            "component": "backend"
+          },
+          "runtime": {
+            "configRefs": [
+              "app-config"
+            ],
+            "dependsOn": [],
+            "health": {
+              "path": "/health",
+              "strategy": "http"
+            },
+            "platform": "linux/amd64",
+            "port": 8080,
+            "proxyNetwork": false,
+            "secretRefs": [
+              "api-token"
+            ],
+            "type": "http",
+            "volumeMounts": [
+              {
+                "mountPath": "/app/data",
+                "volume": "data"
+              }
+            ]
+          },
+          "runtimeComplete": true,
+          "health": "healthy",
+          "imageIdentity": {
+            "pullReference": "ghcr.io/fixtures/backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "pullKind": "manifest",
+            "manifestDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "platform": "linux/amd64",
+            "relationship": "verified"
+          }
+        },
+        {
+          "name": "frontend",
+          "existence": "present",
+          "owner": {
+            "manager": "portfolio-deployment",
+            "application": "support-assistant",
+            "component": "frontend"
+          },
+          "runtime": {
+            "configRefs": [],
+            "dependsOn": [
+              "backend"
+            ],
+            "health": {
+              "path": "/health",
+              "strategy": "http"
+            },
+            "platform": "linux/amd64",
+            "port": 8080,
+            "proxyNetwork": true,
+            "secretRefs": [],
+            "type": "http",
+            "volumeMounts": []
+          },
+          "runtimeComplete": true,
+          "health": "healthy",
+          "imageIdentity": {
+            "pullReference": "ghcr.io/fixtures/frontend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "pullKind": "manifest",
+            "manifestDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "platform": "linux/amd64",
+            "relationship": "verified"
+          }
+        },
+        {
+          "name": "worker",
+          "existence": "present",
+          "owner": {
+            "manager": "portfolio-deployment",
+            "application": "support-assistant",
+            "component": "worker"
+          },
+          "runtime": {
+            "configRefs": [],
+            "dependsOn": [],
+            "health": {
+              "strategy": "imageHealthcheck"
+            },
+            "platform": "linux/amd64",
+            "proxyNetwork": false,
+            "secretRefs": [],
+            "type": "worker",
+            "volumeMounts": []
+          },
+          "runtimeComplete": true,
+          "health": "healthy",
+          "imageIdentity": {
+            "pullReference": "ghcr.io/fixtures/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "pullKind": "manifest",
+            "manifestDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "platform": "linux/amd64",
+            "relationship": "verified"
+          }
+        }
+      ],
+      "storage": {
+        "type": "persistent",
+        "volumes": [
+          {
+            "name": "data"
+          }
+        ]
+      },
+      "configRefs": [
+        "app-config"
+      ],
+      "secretRefs": [
+        "api-token"
+      ],
+      "route": {
+        "existence": "present",
+        "owner": {
+          "manager": "portfolio-deployment",
+          "application": "support-assistant"
+        },
+        "configuration": {
+          "component": "frontend",
+          "hostname": "support.example.test",
+          "port": 8080
+        }
+      }
+    }
+  ]
+}

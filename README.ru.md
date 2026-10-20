@@ -3,9 +3,9 @@
 [English version](README.md)
 
 Централизованная платформа Docker/GitOps-деплоя независимо собираемых портфолио-
-приложений на одном Ubuntu VPS. **Текущее состояние: Stage 02 — Service Registry
-& Manifest Validation.** Реализованы версионируемый контракт приложений, отдельная
-admission policy и ограниченный офлайн-валидатор. Runtime-деплой — **Planned**:
+приложений на одном Ubuntu VPS. **Текущее состояние: Stage 03 — Desired State
+& Reconciliation Planning.** Реализованы валидация реестра с admission, глубоко
+неизменяемые desired/observed модели и детерминированное офлайн-планирование. Runtime-деплой — **Planned**:
 контроллер, gateway и приложения здесь не развёрнуты. Реальный реестр и allowlist
 пусты до подтверждения артефактов и review.
 
@@ -17,8 +17,9 @@ Caddy. Все runtime-компоненты этой цепочки здесь и
 
 - [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure)
   отвечает за Ubuntu, SSH/пользователей, Docker Engine и безопасность хоста.
-- **Portfolio Deployment** реализует контракт реестра и офлайн-admission;
-  следующие этапы добавят планирование desired state, выбор digest,
+- **Portfolio Deployment** реализует контракт реестра, офлайн-admission и
+  планирование desired state по явно заданному snapshot; следующие этапы добавят
+  проверку артефактов,
   выполнение Compose, общую proxy-сеть, домены/HTTPS,
   проверки готовности и историю результатов деплоя.
 - Прикладные репозитории, например
@@ -33,17 +34,20 @@ Caddy. Все runtime-компоненты этой цепочки здесь и
 
 **Реализовано офлайн:** закрытые схемы приложений/admission, immutable-ссылки на
 образы компонентов, проверки всего реестра и позитивные/негативные тесты. Поля,
-policy, лимиты и API для Stage 03 описаны в [контракте v1](docs/manifest-v1.md).
+policy и лимиты валидации описаны в [контракте v1](docs/manifest-v1.md).
+[Контракт Stage 03](docs/reconciliation-planning.md) описывает неизменяемые модели,
+ограниченные snapshots, обновления компонентов, no-op, маршруты, drift, health
+и блокировки lifecycle/storage. Планирование не выполняет операции.
 
-**Planned:** обновления по immutable `ghcr.io/<owner>/<image>@sha256:<digest>`; детерминированный
-план desired/actual state и no-op reconciliation; общий Caddy HTTPS gateway;
+**Planned:** обновления по immutable `ghcr.io/<owner>/<image>@sha256:<digest>`; обнаружение
+реального состояния и runtime reconciliation; общий Caddy HTTPS gateway;
 изоляция приватных зависимостей; ограниченные по времени health checks; адресные
 обновления; сохранение последнего работоспособного состояния и результатов
 восстановления.
 
 Целевые технологии: Git, Docker Engine/Compose, GHCR и Caddy. Язык контроллера,
 способ его запуска и формат журнала не выбраны. Python, PyYAML, jsonschema и pytest
-используются только для офлайн-валидации. Контроллер, daemon, база данных и Kubernetes-стек
+используются только для офлайн-валидации и планирования. Контроллер, daemon, база данных и Kubernetes-стек
 не выбраны и не реализованы.
 
 ## Структура репозитория
@@ -58,12 +62,15 @@ README.md / README.ru.md        Английская / русская точки
 docs/roadmap.md                 Предварительные этапы и границы решений
 scripts/check_bootstrap.py      Offline-проверки и безопасная нормализация текста
 scripts/validate_registry.py    Ограниченный офлайн-валидатор и API загрузки
+scripts/planning_inputs.py      Валидация неизменяемых desired/observed моделей
+scripts/reconciliation.py       Чистое сравнение и неизменяемый план
+scripts/plan_registry.py        Offline CLI с явно заданными входами
 registry/applications/         Пустой реальный реестр; один manifest на приложение
 policy/admission.yaml           Пустой allowlist для отдельного review
 schemas/                       Версионированные закрытые схемы
 tests/fixtures/                Синтетические примеры и недопустимый YAML
 requirements-dev.txt           Закреплённые инструменты офлайн-валидации
-Makefile                       Интерфейс fix / validate / check
+Makefile                       Интерфейс fix / validate / check / plan
 ```
 
 Генерация Compose и runtime-конфигурация отложены; готовых к запуску Compose- и
@@ -93,7 +100,21 @@ make check PYTHON=.venv/bin/python
 перевода требует отдельного review: проверки не доказывают смысловую
 эквивалентность языков. Внешние URL не запрашиваются.
 
-GitHub Actions до Stage 02 включительно не настроен; offline CI — **Planned** в Stage 08.
+Офлайн-планирование требует явного локального snapshot и полного Git SHA:
+
+```sh
+make plan PYTHON=.venv/bin/python OBSERVED=tests/fixtures/observed/noop.json GIT_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa PLAN_FORMAT=json
+```
+
+SHA синтетический; укажи нужную ревизию. Snapshot по умолчанию отсутствует.
+Неизвестные/неполные наблюдения, конфликт ownership и изменения существующих
+storage/mounts блокируют план. Config/secret IDs не доказывают неизменность
+содержимого; связь OCI index с manifest требует явных сведений. План не разрешает
+выполнение. CLI возвращает 0 для сравнимых changes/no-op, 1 для ошибок входов,
+2 для блокировок, 3 для degraded health; Make использует свой код ошибки recipe.
+API, текстовый вывод и будущие preflight/readiness gates описаны в контракте.
+
+GitHub Actions до Stage 03 включительно не настроен; offline CI — **Planned** в Stage 08.
 Targets `verify`, `ci` и deployment пока отсутствуют. Успешные проверки не
 подтверждают работу Docker, HTTPS, reconciliation или rollback на сервере.
 
@@ -128,8 +149,8 @@ references; читать references нужно только для текуще�
 | Этап | Область | Статус |
 | --- | --- | --- |
 | Stage 01 | Project Bootstrap | Реализован; PR #1 смержен |
-| Stage 02 | Service Registry & Manifest Validation | Implemented offline; review pending |
-| Stage 03 | Desired State & Reconciliation Planning | Planned |
+| Stage 02 | Service Registry & Manifest Validation | Implemented offline; PR #2 merged |
+| Stage 03 | Desired State & Reconciliation Planning | Implemented offline; review pending |
 | Stage 04 | Caddy Gateway Foundation | Planned |
 | Stage 05 | Docker Deployment Engine | Planned |
 | Stage 06 | Health Checks, Rollback & Recovery | Planned |
@@ -137,7 +158,7 @@ references; читать references нужно только для текуще�
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
 
-Stage 02 использует Python для офлайн-инструментов, не выбирая runtime
+Stages 02–03 используют Python для офлайн-инструментов, не выбирая runtime
 контроллера. Реальный ProjectRouter требует подтверждённого digest; production
 hostname не выдумывается. Выполнение контроллера, production-trigger/source,
 доставка секретов и журнал/восстановление требуют отдельных решений позже.
