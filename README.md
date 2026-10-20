@@ -3,12 +3,13 @@
 [Русская версия](README.ru.md)
 
 Central Docker/GitOps deployment platform for independently built portfolio
-applications on a single Ubuntu VPS. **Current status: Stage 06 — Readiness, Journal & Recovery (offline).**
+applications on a single Ubuntu VPS. **Current status: Stage 07 — Local E2E infrastructure (real E2E not-performed).**
 Registry/admission, offline planning and retained Caddy previews are implemented;
-Stage 04 PR #4 and Stage 05 PR #5 are merged into `develop`. Stage 05 adds deterministic Compose,
+Stage 04 PR #4, Stage 05 PR #5 and Stage 06 PR #6 are merged into `develop`. Stage 05 adds deterministic Compose,
 bounded Docker discovery, preflight, locking and scoped execution with offline mocks.
 Stage 06 adds bounded readiness, SQLite journal/LKG, constrained rollback and crash
-recovery analysis in the same executor.
+recovery analysis in the same executor. Stage 07 adds a separate disposable Ubuntu
+VM harness and real test-only observation/probe adapters; actual execution remains opt-in.
 Production deployment remains **Planned**: full registry/gateway observations are
 not available from Docker alone. No production apply interface exists. The real
 registry/admission allowlist remain empty; local smoke was not performed.
@@ -18,14 +19,14 @@ registry/admission allowlist remain empty; local smoke was not performed.
 The target flow is application CI → GHCR immutable image → approved desired state
 in Git → reconciliation → Docker Compose → health verification → Caddy routing.
 Real production integration and gateway activation remain **Planned**; readiness
-and recovery have offline-tested interfaces and fake transports.
+and recovery have offline-tested contracts, with VM-only adapters in Stage 07.
 
 - [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure)
   owns Ubuntu, SSH/users, Docker Engine and host security.
 - **Portfolio Deployment** implements registry contracts, offline admission and
   explicit-snapshot planning, deterministic Compose and a constrained execution
   foundation. Future stages add complete runtime integration, domains/HTTPS,
-  real observation/transport integration. Offline readiness and durable deployment
+  production observation/transport integration. Offline readiness and durable deployment
   history are implemented in Stage 06.
 - Application repositories such as
   [project-router](https://github.com/DanilFaritovich/project-router) own source,
@@ -57,7 +58,7 @@ Docker-only discovery deliberately produces an incomplete Stage 03 snapshot.
 [Stage 06](docs/readiness-recovery.md) adds bounded HTTP/worker readiness, private
 SQLite intent/events, atomic application last-known-good, constrained stateless
 image rollback, analysis-only crash recovery and composite observation contracts.
-Real probes/readers and post-crash mutation authorization are deferred.
+Stage 07 supplies test-only probes/readers; post-crash mutation remains unauthorized.
 
 **Planned:** production rollouts, complete live reconciliation and shared Caddy
 HTTPS. No zero-downtime claim.
@@ -184,7 +185,7 @@ isolation, scoped cleanup and incomplete live discovery. Real smoke was not run.
 Compose success is `applied-unverified`; timeout/disconnect is `unknown` and
 requires fresh discovery. Readiness and release success remain unverified.
 
-No GitHub Actions workflow is installed through Stage 06; CI is Planned in Stage 08.
+No GitHub Actions workflow is installed through Stage 07; CI is Planned in Stage 08.
 No `verify`, `ci`, deploy or production apply target exists. Passing offline checks
 does not prove live Docker, HTTPS, reconciliation or rollback.
 
@@ -222,8 +223,8 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | Stage 03 | Desired State & Reconciliation Planning | Implemented offline; PR #3 merged |
 | Stage 04 | Caddy Gateway Foundation | Implemented offline; PR #4 merged into develop |
 | Stage 05 | Docker Deployment Engine | Implemented foundation; PR #5 merged; smoke not-performed; production apply blocked |
-| Stage 06 | Readiness, Journal & Recovery | Implemented offline; SQLite/LKG, constrained rollback, analysis-only recovery; real integration pending |
-| Stage 07 | Local E2E & Integration Testing | Planned |
+| Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
+| Stage 07 | Local E2E & Integration Testing | Infrastructure implemented; real E2E not-performed |
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
 
@@ -240,11 +241,24 @@ Docker/gateway/runtime observations, protected source and operation authorizatio
 configuration delivery, artifact retention, backup/recovery ownership and live
 acceptance. See [Stage 06 limits and APIs](docs/readiness-recovery.md).
 
+## Disposable local E2E
+
+[Stage 07 instructions](docs/local-e2e.md) describe prerequisites, image publication,
+manual opt-ins and all 15 scenarios. `make e2e-check` is offline; `make check` remains
+fully offline. Separate commands are `e2e-prerequisites`, `e2e-prepare`, `e2e-status`,
+`e2e-images`, `e2e-test`, `e2e-diagnose`, `e2e-clean`. Prepare requires Multipass and
+Ubuntu 24.04 amd64 virtualization; images requires six public immutable test GHCR
+manifests and their raw bytes. No confirmed image digests are fabricated or bundled.
+The VM has its own daemon, private networks/volumes, loopback Caddy and private
+SQLite. Cleanup preserves volumes, journal, unrelated resources and VM.
+**Real E2E: not-performed.** No VM or real Docker/Caddy was run for this stage.
+
 ## Security, limitations and licensing
 
-Stages 05–06 permit only separately authorized disposable local Docker smoke; no
+Stage 07 permits separately authorized disposable Ubuntu VM E2E, including test-only
+loopback Caddy activation. There is no authorization for
 VPS/SSH, production Ansible or containers,
-Caddy activation, DNS/domain changes, production secrets, automatic deployment,
+production Caddy activation, DNS/domain changes, production secrets, automatic deployment,
 other-repository modifications, merges or release tags. Future production work
 needs separate authorization. PR checks must never receive production secrets.
 Git contains configuration references, never real credentials. `.gitignore` is

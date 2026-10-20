@@ -19,13 +19,15 @@ authorized disposable local smoke; it was not run during implementation. Full
 live registry/gateway observation integration and production apply remain blocked.
 Stage 05 PR #5 is merged into develop. Stage 06 adds offline readiness gates, a
 SQLite journal/LKG, constrained rollback and read-only crash recovery analysis in
-the same executor. Composite observation has only trusted offline interfaces/fakes.
-Stages 07–09 remain **Planned**; no real operations were run for Stage 06.
+the same executor; Stage 06 PR #6 is merged into develop. Stage 07 adds a separate
+Multipass Ubuntu 24.04 VM harness, real test-only adapters, readiness-gated loopback
+Caddy activation and 15 real scenario definitions, reusing the same executor.
+Real E2E and image builds are **not-performed**. Stages 08–09 remain **Planned**.
 Server provisioning, Ubuntu, SSH, users, Docker Engine and host hardening belong
 to `DanilFaritovich/portfolio-server-infrastructure`. Application repositories
 own source, CI, image builds/publication and deployment contracts.
 
-Do not implement Stages 07–09 without their own scoped task. Python CLI is selected;
+Do not implement Stages 08–09 without their own scoped task. Python CLI is selected;
 SQLite via standard-library sqlite3 is the Stage 06 local journal, not live state.
 Do not add a daemon, database server, Kubernetes
 or deployment trigger without an explicit
@@ -62,11 +64,14 @@ architectural rationale and the relevant task scope.
   Desired routes never imply activation; retained candidates preserve active routes.
   Unknown/incomplete gateway scope yields no full Caddyfile. No reload exists.
 - `scripts/readiness.py`, `scripts/composite_state.py`: bounded probe and complete-source
-  contracts, no real HTTP/Docker+Caddy transport.
+  contracts; real disposable VM transports are isolated in `scripts/e2e/`.
 - `scripts/deployment_journal.py`, `scripts/deployment_lifecycle.py`: private SQLite
   transactions under host lock, intent before mutation, application-wide atomic LKG,
   conservative rollback and analysis-only crash recovery. See [Stage 06](docs/readiness-recovery.md).
   Unfinished runs block further journaled work; no reset/resume CLI or production apply.
+- `scripts/e2e/`, `scripts/e2e_guest.py`, `e2e/images/`: VM-only integration,
+  separate test admission/image lock, real readers/probes, guarded activation,
+  scenario runner and non-destructive cleanup. See [Stage 07](docs/local-e2e.md).
 - `Makefile`, `requirements-dev.txt`, `.editorconfig`: local check interface/setup.
 
 Use local skills, not a fresh upstream download on each task:
@@ -97,7 +102,7 @@ Use the existing Makefile as the main interface. Default checks/previews are off
 `make fix` normalizes project-owned text, preserving vendored skills;
 `make validate` performs read-only validation of the complete registry and
 admission policy; `make check` runs bootstrap checks, registry validation and
-Stage 02–06 tests. `make plan OBSERVED=<local.json> GIT_REVISION=<full-sha>`
+Stage 02–07 offline tests. `make plan OBSERVED=<local.json> GIT_REVISION=<full-sha>`
 requires explicit offline inputs; blocked/degraded plans are not executable.
 `make gateway-render` requires the same inputs; JSON separates desired/current/retained
 candidate. `make gateway-check` runs offline gateway tests; `make gateway-validate`
@@ -109,10 +114,14 @@ contact. `make local-docker-smoke` requires explicit endpoint, session, preloade
 images and disposable authorization; never run it automatically. No production
 apply/deploy target exists. Do not fabricate complete/trusted Stage 03 snapshots
 from Docker inventory. Runtime refs and unverified OCI mappings block execution.
+`make e2e-check` is offline. `e2e-prepare`, `e2e-images`, `e2e-test`,
+`e2e-diagnose` and `e2e-clean` have separate explicit opt-ins; never run them
+implicitly. `e2e-status` is read-only Multipass metadata. No VM deletion, volume
+removal, automatic recovery replay or production Caddy activation is available.
 Run safe fixes before targeted checks, then `make check` once implementation
 stabilizes. Documentation-only changes need targeted documentation
 checks, without rerunning unchanged executable tests. No broader `verify`/`ci`
-target exists through Stage 06; do not add empty targets. Install pinned
+target exists through Stage 07; do not add empty targets. Install pinned
 development dependencies as documented before checks. Checks must fail clearly
 when dependencies or required assets are missing. Negative YAML fixtures are
 excluded from bootstrap syntax parsing and covered by dedicated tests.
@@ -134,7 +143,9 @@ Do not change other repositories as a side effect.
 
 Stage 01–06 work forbids VPS/SSH contact, production Ansible/containers, Caddy activation, DNS or
 domain changes, requesting/creating production secrets and automatic deployments.
-Only explicitly authorized disposable local Docker smoke is allowed; default
+Stage 07 additionally permits only separately authorized disposable VM operations
+through its own opt-ins; implementation/offline validation never authorizes a run.
+Only explicitly authorized disposable local Docker smoke or VM E2E is allowed; default
 checks never connect to Docker. Never use production project names for smoke or
 remove preexisting volumes. Keep the fixed host lock inode; no unlink/prune/down.
 Future production work also requires explicit operation authorization or an

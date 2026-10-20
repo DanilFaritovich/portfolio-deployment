@@ -9,7 +9,9 @@ preflight, host locking, scoped execution, offline mocks and a separate opt-in
 disposable smoke. It is not production-ready and real Docker smoke was not run.
 Stage 05 PR #5 is merged into `develop`. Stage 06 adds offline readiness, SQLite
 journal/LKG, constrained rollback and crash recovery analysis through the same
-executor. The real registry/admission allowlist remain empty. No VPS integration is verified.
+executor; PR #6 is merged into `develop`. Stage 07 adds a disposable Ubuntu VM
+harness and real test-only readers/probes; real E2E remains not-performed.
+The real registry/admission allowlist remain empty. No VPS integration is verified.
 
 Python CLI, Docker Engine/Compose v2, GHCR, Git and Caddy are selected technologies.
 There is no daemon, database server, Kubernetes or production deployment trigger.
@@ -27,8 +29,8 @@ discovery cannot establish full Stage 03 registry/gateway evidence. See the
 | Validator | Bounded YAML, closed schemas, semantic/global checks and separate admission policy | Implemented offline |
 | Planner | Pure desired/observed comparison using explicit local snapshots; reviewable plan only | Implemented offline |
 | Compose engine | Deterministic renderer, bounded Docker discovery, ownership/preflight, lock and scoped executor | Implemented foundation with mocks; disposable smoke opt-in; full live observation/readiness integration pending |
-| Caddy gateway | Canonical offline route/candidate rendering and opt-in local validation | Foundation implemented offline; runtime, hot reload and certificate state Planned |
-| State/result journal | Intent/events, readiness evidence, atomic application LKG and recovery status under host lock | Implemented offline with SQLite; live storage/recovery integration pending |
+| Caddy gateway | Canonical offline route/candidate rendering and opt-in local validation | Foundation implemented offline; Stage 07 adds VM-only runtime/activation; production TLS Planned |
+| State/result journal | Intent/events, readiness evidence, atomic application LKG and recovery status under host lock | Implemented offline with SQLite; VM integration implemented in Stage 07; real acceptance not-performed |
 | [Application repositories, e.g. project-router](https://github.com/DanilFaritovich/project-router) | Source, tests/CI, Docker builds, GHCR publishing and deployment contract | External ownership; integration Planned; deployability not verified |
 
 Portfolio Deployment must not provision SSH/users, install Docker Engine or
@@ -145,7 +147,7 @@ Stage 06 journals operation/component attempts, Git revision, previous/target
 immutable image, configuration/scope hash, fixed outcomes and bounded readiness
 evidence. SQLite does not supply live observations. The composite provider requires
 fresh Docker, gateway, runtime and readiness source evidence without promoting
-snapshot trust. Only offline readers/fakes exist; ordinary live apply remains
+snapshot trust. Stage 07 supplies VM-only readers/probes; ordinary live apply remains
 blocked. See [Stage 06](docs/readiness-recovery.md).
 
 ## Immutable artifact identity — Conservative Stage 05 foundation
@@ -278,18 +280,20 @@ journal is neither a backup nor a disaster-recovery system.
 
 **Implemented:** `make fix` and `make check` validate repository text, local links,
 YAML and installed standards without network, Docker or secrets. `make validate` checks the registry, and `make check` additionally
-runs Stage 02–06 pytest suites. `make plan` performs explicit-input offline
+runs Stage 02–07 offline pytest suites. `make plan` performs explicit-input offline
 planning. Dependencies are provisioned separately; clean setup may download PyYAML, jsonschema and pytest. External URLs are not contacted by checks.
 
 **Planned offline CI (Stage 08):** use the same Makefile interface, pinned tools,
 read-only checks and least-privilege permissions. No SSH, production endpoints,
 DNS or production credentials. GitHub-hosted tool/source provisioning is distinct
-from offline test execution. No workflow is installed through Stage 06.
+from offline test execution. No workflow is installed through Stage 07.
 
-**Planned local E2E (Stage 07):** disposable Compose projects, mock upstreams and
-isolated local gateway tests; verify no-op, unsafe input rejection, failed health,
-route reload and preservation of unrelated data/services. Local image provisioning
-is separate from offline unit/fixture CI.
+**Implemented infrastructure, real E2E not-performed (Stage 07):** separate
+Multipass Ubuntu VM, fixed local daemon identity, admitted immutable test images,
+real private-network HTTP/Engine/Caddy observations, lifecycle-gated test-only
+loopback activation and 15 scenarios. Separate opt-ins cover prepare, images,
+run and cleanup. No VM or real Docker/Caddy was run during implementation. See
+[local E2E](docs/local-e2e.md).
 
 **Planned production verification (Stage 09):** separately approved host, access,
 artifact, DNS/TLS, health and recovery checks. CI success alone does not authorize
@@ -297,7 +301,8 @@ production mutations. Never present local results as live acceptance evidence.
 
 See the preliminary [roadmap](docs/roadmap.md). Stages 01–04 are implemented
 offline; Stage 05 is an engine foundation with an unexecuted local smoke harness.
-Stage 06 is implemented offline; Stages 07–09 remain Planned. Production
+Stage 06 is implemented offline; Stage 07 infrastructure is implemented with live
+acceptance not-performed; Stages 08–09 remain Planned. Production
 source/trigger, configuration delivery, full live observation integration and
 operator recovery/retention procedures remain open. See
 [development instructions](AGENTS.md) for workflow boundaries.
@@ -320,8 +325,8 @@ No image pulls, builds, ordinary deletions or gateway operations are implemented
 Docker supplies no complete gateway/registry evidence. No production apply CLI
 exists. Optional `previous_observed` supplies old pull references for fresh Docker
 image inspection alongside desired images, without promoting snapshot trust;
-Stage 06 defines the full composite evidence contract, with real readers deferred
-to Stage 07. Deployment preview retains
+Stage 06 defines the full composite evidence contract; Stage 07 supplies test-only
+readers for the bounded disposable VM session. Deployment preview retains
 proposed actions with separate eligibility and blocking reasons.
 Only the separate disposable harness can perform real Docker operations,
 with explicit canonical Unix socket, test namespace, ownership checks, preloaded
@@ -352,8 +357,8 @@ checks. This SQLite transaction checks integrity and record consistency, preserv
 all previous LKG pointers and failed-target history, and allows a subsequent run
 without declaring the failed deployment successful. Partial rollback, unknown
 outcomes, crashes and missing evidence still block; no replay/resume or journal
-clearing is provided. Real composite providers remain absent, so live recovery
-confirmation remains closed.
+clearing is provided. Stage 07 adds a VM-only composite provider; production
+recovery confirmation remains closed.
 
 The SQLite database and sidecars use private owned directories/files, NOFOLLOW
 path walking, exact versioned schema/integrity/record validation, bounded metadata,
@@ -364,3 +369,42 @@ backup, disk-loss recovery and real host acceptance remain operator prerequisite
 A journal is never complete/trusted Docker/Caddy evidence. See the
 [Stage 06 contract](docs/readiness-recovery.md) for APIs, limits, state transitions,
 analysis-only crash recovery and Stage 07–09 prerequisites.
+
+## Stage 07 disposable VM integration boundary
+
+`scripts/e2e/vm.py` provisions only a new named Ubuntu 24.04 Multipass VM, transfers
+allowlisted source without host mounts/credentials and records its source revision.
+There is no host Docker fallback. Guest root checks session opt-in, private VM
+marker, hostname/machine-id, virtualization, Ubuntu and pinned local Engine identity
+before commands. The default public Caddy package unit is masked; the test unit
+binds HTTP/admin exclusively to VM loopback. Applications publish no ports.
+
+The isolated image contract hashes raw direct-manifest bytes and corroborates
+manifest config digest, Engine ID, RepoDigests and platform. It neither substitutes
+image IDs for manifest digests nor relaxes production admission; runtime refs and
+OCI indexes remain blocked. Images are built/published separately, pulled only by
+the explicit preparation command, and must be preloaded before execution.
+
+The composite reader re-admits the separate fixture registry, checks complete
+Engine inventory and effective runtime, independently reads active Caddy and probes
+private HTTP/worker health, then closes with another inventory. Source trust is
+scoped to that dedicated VM session; SQLite is not an observation source. Sampling
+is not an atomic cross-system transaction or protection against a malicious root.
+
+Stage 05 `execute` and Stage 06 lifecycle remain the only deployment engine. A
+test-only lifecycle gateway hook rechecks pinned readiness, preserves other routes,
+validates the full loopback JSON candidate, snapshots the prior config and issues
+one explicit authorized Caddy load under the same fixed host lock. Unknown outcomes
+stop acceptance; crash recovery stays analysis-only with no replay or journal reset.
+The runtime identity re-canonicalizes after excluding images to preserve image-only
+rollback eligibility across image-dependent input ordering. Old hashes are not
+migrated or reinterpreted.
+
+Fifteen real scenario definitions cover initial deployment, readiness/activation,
+backend update, no-op, failed readiness/LKG, stateless rollback, persistent marker
+preservation, invalid candidate, partial/unknown outcomes, SIGKILL windows, recovery,
+foreign conflicts, host lock and unrelated resources. Offline tests use synthetic
+transports and temporary SQLite and never claim real E2E acceptance. Cleanup is
+manual opt-in, exact-owned containers/empty networks only; volumes, journal,
+snapshots, unrelated resources and VM are retained. See [Stage 07](docs/local-e2e.md)
+for commands, prerequisites, report semantics and remaining evidence limits.

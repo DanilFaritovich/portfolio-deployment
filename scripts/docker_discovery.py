@@ -63,7 +63,7 @@ def image_evidence(reference, document):
                          verified, encode(document.get("Config") or {}))
 
 
-def discover(adapter, references):
+def discover(adapter, references, *, resolve_image=image_evidence):
     """All-resource inventory detects name/alias conflicts beyond project labels.
 
     Any read error invalidates the complete Docker observation, never means absent.
@@ -96,7 +96,7 @@ def discover(adapter, references):
             if time.monotonic() >= deadline:
                 raise DockerError("discovery-deadline")
             try:
-                images.append(image_evidence(reference, adapter.inspect("image", reference)))
+                images.append(resolve_image(reference, adapter.inspect("image", reference)))
             except DockerError:
                 # Availability cannot be established; preflight blocks this exact image.
                 continue

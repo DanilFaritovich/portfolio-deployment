@@ -60,3 +60,30 @@ compose-validate:
 export SMOKE_ENDPOINT SMOKE_SESSION SMOKE_IMAGE_A SMOKE_IMAGE_B SMOKE_AUTHORIZE
 local-docker-smoke:
 	@$(PYTHON) -c 'import os,sys; from scripts.local_docker_smoke import main; sys.exit(main(["--endpoint",os.environ.get("SMOKE_ENDPOINT",""),"--session",os.environ.get("SMOKE_SESSION",""),"--image-a",os.environ.get("SMOKE_IMAGE_A",""),"--image-b",os.environ.get("SMOKE_IMAGE_B",""),"--authorize",os.environ.get("SMOKE_AUTHORIZE","")]))'
+
+# Stage 07: only e2e-check is offline. VM/image/run/cleanup opt-ins are separate.
+.PHONY: e2e-check e2e-prerequisites e2e-prepare e2e-status e2e-images e2e-test e2e-diagnose e2e-clean
+export E2E_SESSION E2E_AUTHORIZE E2E_GATEWAY_AUTHORIZE E2E_IMAGES
+e2e-check:
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_local_e2e.py
+
+e2e-prerequisites:
+	@$(PYTHON) -m scripts.e2e.vm prerequisites
+
+e2e-prepare:
+	@$(PYTHON) -m scripts.e2e.vm prepare
+
+e2e-status:
+	@$(PYTHON) -m scripts.e2e.vm status
+
+e2e-images:
+	@$(PYTHON) -m scripts.e2e.vm images
+
+e2e-test:
+	@$(PYTHON) -m scripts.e2e.vm test
+
+e2e-diagnose:
+	@$(PYTHON) -m scripts.e2e.vm diagnose
+
+e2e-clean:
+	@$(PYTHON) -m scripts.e2e.vm clean

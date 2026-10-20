@@ -3,12 +3,13 @@
 [English version](README.md)
 
 Централизованная платформа Docker/GitOps-деплоя независимо собираемых портфолио-
-приложений на одном Ubuntu VPS. **Текущее состояние: Stage 06 — Readiness, Journal & Recovery (офлайн).**
+приложений на одном Ubuntu VPS. **Текущее состояние: Stage 07 — инфраструктура локального E2E (real E2E not-performed).**
 Реализованы registry/admission, offline-планирование и retained Caddy previews;
-PR #4 Stage 04 и PR #5 Stage 05 смержены в `develop`. Stage 05 добавляет детерминированный Compose,
+PR #4 Stage 04, PR #5 Stage 05 и PR #6 Stage 06 смержены в `develop`. Stage 05 добавляет детерминированный Compose,
 ограниченный Docker discovery, preflight, lock и адресный executor с offline mocks.
 Stage 06 добавляет bounded readiness, SQLite journal/LKG, ограниченный rollback
-и анализ crash recovery в существующий executor.
+и анализ crash recovery в существующий executor. Stage 07 добавляет отдельную
+disposable Ubuntu VM, test-only readers/probes и явные opt-in для реальных сценариев.
 Production-деплой остаётся **Planned**: Docker не даёт полный registry/gateway
 snapshot Stage 03. Production apply интерфейса нет. Реальный реестр/admission
 allowlist пуст; локальный smoke не запускался.
@@ -18,14 +19,14 @@ allowlist пуст; локальный smoke не запускался.
 Целевая цепочка: CI приложения → immutable-образ в GHCR → утверждённое desired
 state в Git → reconciliation → Docker Compose → проверка готовности → маршрутизация
 Caddy. Реальная production integration и активация gateway — **Planned**; readiness
-и recovery реализованы с offline interfaces и fake transports.
+и recovery имеют offline-tested contracts и VM-only adapters Stage 07.
 
 - [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure)
   отвечает за Ubuntu, SSH/пользователей, Docker Engine и безопасность хоста.
 - **Portfolio Deployment** реализует контракт реестра, офлайн-admission и
   планирование по явному snapshot, детерминированный Compose и ограниченный
   execution foundation. Следующие этапы добавят полную runtime-интеграцию,
-  домены/HTTPS и реальные observation/transport adapters. Readiness и постоянная
+  домены/HTTPS и production observation/transport adapters. Readiness и постоянная
   история результатов реализованы офлайн в Stage 06.
 - Прикладные репозитории, например
   [project-router](https://github.com/DanilFaritovich/project-router), отвечают за
@@ -57,7 +58,7 @@ storage changes, неизвестные/чужие ресурсы и недок�
 [Stage 06](docs/readiness-recovery.md) добавляет bounded HTTP/worker readiness,
 приватный SQLite intent/events, atomic application last-known-good, ограниченный
 stateless image rollback, анализ crash recovery и composite observation contracts.
-Реальные probes/readers и авторизация mutations после рестарта отложены.
+Stage 07 добавляет VM-only probes/readers; mutations после crash остаются запрещены.
 
 **Planned:** production rollouts, полное live reconciliation и общий Caddy HTTPS.
 Zero-downtime не обещается.
@@ -185,7 +186,7 @@ SMOKE_AUTHORIZE=disposable-local-docker. `check` никогда его не вы
 Успех Compose — `applied-unverified`; timeout/disconnect — `unknown` с обязательным
 fresh discovery. Readiness и release success остаются неподтверждёнными.
 
-GitHub Actions до Stage 06 включительно не настроен; CI — Planned в Stage 08.
+GitHub Actions до Stage 07 включительно не настроен; CI — Planned в Stage 08.
 Targets `verify`, `ci`, deploy и production apply отсутствуют. Успешные offline
 проверки не доказывают live Docker, HTTPS, reconciliation или rollback.
 
@@ -224,8 +225,8 @@ references; читать references нужно только для текуще�
 | Stage 03 | Desired State & Reconciliation Planning | Implemented offline; PR #3 merged |
 | Stage 04 | Caddy Gateway Foundation | Implemented offline; PR #4 merged into develop |
 | Stage 05 | Docker Deployment Engine | Implemented foundation; PR #5 merged; smoke not-performed; production apply blocked |
-| Stage 06 | Readiness, Journal & Recovery | Implemented offline; SQLite/LKG, constrained rollback, analysis-only recovery; real integration pending |
-| Stage 07 | Local E2E & Integration Testing | Planned |
+| Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
+| Stage 07 | Local E2E & Integration Testing | Infrastructure implemented; real E2E not-performed |
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
 
@@ -242,10 +243,23 @@ crash analysis не повторяет mutations и не снимает неоп
 и authorization contract, доставка конфигурации, artifact retention, backup/recovery
 ownership и live acceptance. См. [ограничения и API Stage 06](docs/readiness-recovery.md).
 
+## Изолированный локальный E2E
+
+[Инструкция Stage 07](docs/local-e2e.md) описывает prerequisites, публикацию образов,
+ручные opt-in и все 15 сценариев. `make e2e-check` работает офлайн; `make check`
+полностью офлайн. Отдельные команды: `e2e-prerequisites`, `e2e-prepare`, `e2e-status`,
+`e2e-images`, `e2e-test`, `e2e-diagnose`, `e2e-clean`. Для prepare нужны Multipass и
+виртуализация Ubuntu 24.04 amd64; для images — шесть публичных immutable test GHCR
+manifests с точными raw bytes. Подтверждённые digests не выдуманы и не включены.
+У VM свой daemon, private networks/volumes, loopback Caddy и private SQLite.
+Cleanup сохраняет volumes, journal, чужие ресурсы и VM.
+**Real E2E: not-performed.** VM и реальные Docker/Caddy в рамках этапа не запускались.
+
 ## Безопасность, ограничения и лицензирование
 
-Stages 05–06 разрешают только отдельно авторизованный disposable local Docker smoke;
-запрещены VPS/SSH, production Ansible и контейнеры, активация Caddy, изменения DNS/доменов, production-секреты,
+Stage 07 разрешает только отдельно авторизованные E2E в disposable Ubuntu VM,
+включая test-only активацию loopback Caddy;
+запрещены VPS/SSH, production Ansible и контейнеры, production-активация Caddy, изменения DNS/доменов, production-секреты,
 автоматический деплой, изменения других репозиториев, merge и release tags.
 Будущие production-работы требуют отдельного разрешения. PR-проверки не должны
 получать production-секреты. Git хранит ссылки на конфигурацию, без реальных
