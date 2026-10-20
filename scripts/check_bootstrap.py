@@ -19,7 +19,8 @@ REQUIRED = {
     "github-actions", "continuous-delivery", "caddy-gateway", "gitops-deployment",
     "documentation", "licensing",
 }
-EXCLUDED = {".git", ".venv", "__pycache__", ".aws", ".codex", ".pytest_cache"}
+EXCLUDED = {".git", ".venv", "__pycache__", ".aws", ".codex", ".pytest_cache",
+            ".e2e-state", ".e2e-fixtures"}
 TEXT_SUFFIXES = {".md", ".yaml", ".yml", ".py", ".txt", ".json"}
 TEXT_NAMES = {"Makefile", ".gitignore", ".editorconfig"}
 

@@ -372,6 +372,17 @@ analysis-only crash recovery and Stage 07–09 prerequisites.
 
 ## Stage 07 disposable VM integration boundary
 
+`scripts/e2e/cli.py` is the host entry point. `make e2e` orchestrates the existing
+prepare/images/test lifecycle with a generated session, private pinned image-lock
+snapshot, durable phase intents and a persistent whole-operation flock. Separate
+interactive confirmations authorize VM creation, immutable pulls, Docker mutations
+and Caddy activation. Host receipts pin VM machine/daemon identity; failed or unknown
+sessions block another orchestration in that state directory without replay/reset.
+`e2e-report` reads local receipts, not live state. `e2e-fixtures` prepares an offline
+base/source-pinned six-image plan and imports exact raw manifests into a validated
+lock. Disposable builder provisioning/build/publication are explicitly blocked;
+lock verification does not prove registry availability or producer provenance.
+
 `scripts/e2e/vm.py` provisions only a new named Ubuntu 24.04 Multipass VM, transfers
 allowlisted source without host mounts/credentials and records its source revision.
 There is no host Docker fallback. Guest root checks session opt-in, private VM

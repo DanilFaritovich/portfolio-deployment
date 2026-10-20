@@ -17,7 +17,8 @@ from scripts.deployment import execute
 from scripts.deployment_journal import Journal, JournalError, locked_journal
 from scripts.docker_adapter import DockerError
 from scripts.docker_discovery import discover
-from scripts.e2e import safety, transports, gateway, vm, observations, runner, cleanup
+from scripts.e2e import safety, transports, gateway, vm, observations, runner, cleanup, orchestration, fixture_bundle, cli
+from scripts.e2e.host_state import Store
 from scripts.e2e.fixtures import create_registry, change_image
 from scripts.e2e.images import Images, ROLES
 from scripts.planning_inputs import build_desired_state
@@ -25,6 +26,7 @@ from scripts.reconciliation import build_reconciliation_plan
 from test_deployment import SESSION, resource, docker_state
 
 SHA = "a" * 40
+BASE = "docker.io/library/python@sha256:" + "1" * 64
 
 
 @pytest.fixture(autouse=True)
@@ -603,3 +605,270 @@ def test_cleanup_removes_network_by_immutable_id(tmp_path, monkeypatch):
     scope = SimpleNamespace(session=SESSION, directory=tmp_path)
     cleanup.clean(scope, adapter, set(), SHA)
     assert calls == [["network", "rm", "immutable-network-id"]]
+
+
+class HostVM:
+    """Finite fake boundary: no real Multipass command may escape offline tests."""
+
+    def __init__(self, session):
+        self.session, self.name = session, f"pd-e2e-{session}"
+        self.calls = []
+        self.marker = {"session": session, "machine": "a" * 32, "daemon": "fixture-daemon"}
+
+    def prerequisites(self):
+        return {"status": "passed"}
+
+    def guest(self, *args, **kwargs):
+        assert args[0] == "/opt/portfolio-e2e/.venv/bin/python"
+        return json.dumps(self.marker).encode()
+
+    def prepare(self, authorization):
+        assert authorization == f"prepare:{self.session}"
+        self.calls.append("prepare")
+        return {"status": "passed"}
+
+    def transfer_images(self, lock):
+        Images(lock)
+        self.calls.append("transfer")
+
+    def invoke(self, action, authorization, gateway_authorization=""):
+        assert authorization == f"{action}:{self.session}"
+        if action == "run":
+            assert gateway_authorization == f"activate:{self.session}"
+        self.calls.append(action)
+        return {"status": "passed", "realE2E": "not-performed", "mode": "offline"}
+
+
+def test_host_orchestration_whole_run_receipts_and_unique_sessions(images, tmp_path):
+    root, lock, machines, approvals = tmp_path / "host", tmp_path / "lock.json", [], []
+    def factory(session):
+        machine = HostVM(session)
+        machines.append(machine)
+        return machine
+    def approve(message, token):
+        approvals.append(token)
+        with pytest.raises(DockerError, match="controller-busy"):
+            with Store(root).locked():
+                pytest.fail("concurrent controller entered")
+    first = orchestration.run(lock, root, factory=factory, consent=approve)
+    assert first["status"] == "passed" and first["phase"] == "complete"
+    assert approvals == [f"{phase}:{first['session']}" for phase in ("prepare", "images", "run", "activate")]
+    assert machines[0].calls == ["prepare", "transfer", "images", "run"]
+    with Store(root).locked() as store:
+        assert orchestration.current(store) == first
+    inode = (root / "controller.lock").stat().st_ino
+    second = orchestration.run(lock, root, factory=factory, consent=approve)
+    assert second["status"] == "passed" and first["session"] != second["session"]
+    assert (root / "controller.lock").stat().st_ino == inode
+    assert (root / (first["session"] + ".json")).is_file()
+
+
+@pytest.mark.parametrize("phase", ["prepare", "images", "run", "activate"])
+def test_host_orchestration_default_deny_at_each_phase(images, tmp_path, phase):
+    root, machine = tmp_path / "host", []
+    def factory(session):
+        machine.append(HostVM(session))
+        return machine[-1]
+    def approve(message, token):
+        if token.startswith(phase + ":"):
+            raise DockerError("e2e-operation-declined")
+    result = orchestration.run(tmp_path / "lock.json", root, factory=factory, consent=approve)
+    assert result["status"] == "blocked"
+    expected = [] if phase == "prepare" else ["prepare"] if phase == "images" else ["prepare", "transfer", "images"]
+    assert machine[0].calls == expected
+    if phase != "prepare":
+        with pytest.raises(DockerError, match="unfinished"):
+            orchestration.run(tmp_path / "lock.json", root, factory=factory, consent=approve)
+        assert len(machine) == 1
+
+
+@pytest.mark.parametrize("phase", ["prepare", "images", "run"])
+@pytest.mark.parametrize("failure", ["error", "interrupt", "blocked"])
+def test_host_orchestration_failure_retains_intent_no_retry(images, tmp_path, phase, failure):
+    root = tmp_path / "host"
+    class Broken(HostVM):
+        def fail(self, action):
+            # Verify intent was persisted before crossing the mutating boundary.
+            state = json.loads((root / (self.session + ".json")).read_bytes())
+            assert state["phase"] == action and state["status"] == "in-progress"
+            if failure == "interrupt":
+                raise KeyboardInterrupt()
+            if failure == "error":
+                raise DockerError("unconfirmed-outcome")
+            return {"status": "blocked"}
+        def prepare(self, authorization):
+            return self.fail("prepare") if phase == "prepare" else super().prepare(authorization)
+        def invoke(self, action, *args):
+            return self.fail(action) if phase == action else super().invoke(action, *args)
+    result = orchestration.run(tmp_path / "lock.json", root, factory=Broken, consent=lambda *a: None)
+    assert result["status"] == ("blocked" if failure == "blocked" else "unknown")
+    assert result["phase"] == phase and result["mutationStarted"]
+    with pytest.raises(DockerError, match="unfinished"):
+        orchestration.run(tmp_path / "lock.json", root, factory=lambda _: pytest.fail("retry"), consent=lambda *a: None)
+    assert (root / result["session"] / "lock.json").exists()
+
+
+def test_host_orchestration_rechecks_identity_after_confirmation(images, tmp_path):
+    machines = []
+    def factory(session):
+        machines.append(HostVM(session))
+        return machines[-1]
+    def approve(message, token):
+        if token.startswith("images:"):
+            machines[-1].marker["daemon"] = "replacement"
+    result = orchestration.run(tmp_path / "lock.json", tmp_path / "host", factory=factory, consent=approve)
+    assert result["status"] == "blocked" and result["result"]["reason"] == "e2e-vm-identity-changed"
+    assert machines[0].calls == ["prepare"]
+
+
+def test_host_orchestration_validates_then_pins_images(images, tmp_path):
+    lock = tmp_path / "lock.json"
+    def approve(message, token):
+        lock.write_text("invalid changed producer file")
+    result = orchestration.run(lock, tmp_path / "host", factory=HostVM, consent=approve)
+    assert result["status"] == "passed"  # Every phase uses the private validated snapshot.
+    with pytest.raises(ValueError):
+        orchestration.run(lock, tmp_path / "bad-host", factory=lambda _: pytest.fail("invalid lock reached VM"))
+    assert not (tmp_path / "bad-host").exists()
+
+
+def test_host_confirmation_requires_tty_and_exact_token(monkeypatch):
+    monkeypatch.setattr(orchestration.sys.stdin, "isatty", lambda: False)
+    with pytest.raises(DockerError, match="interactive"):
+        orchestration.confirm("Create VM", f"prepare:{SESSION}")
+    monkeypatch.setattr(orchestration.sys.stdin, "isatty", lambda: True)
+    for answer in ("", "yes", "prepare:other"):
+        monkeypatch.setattr("builtins.input", lambda _: answer)
+        with pytest.raises(DockerError, match="declined"):
+            orchestration.confirm("Create VM", f"prepare:{SESSION}")
+    monkeypatch.setattr("builtins.input", lambda _: f"prepare:{SESSION}")
+    orchestration.confirm("Create VM", f"prepare:{SESSION}")
+
+
+def test_host_state_rejects_symlink_pending_and_corrupt_receipt(tmp_path):
+    root = tmp_path / "host"
+    with Store(root).locked() as store:
+        store.write("current.json", {"version": 1, "session": SESSION})
+        with pytest.raises(DockerError, match="receipt"):
+            orchestration.current(store)
+        (root / "next.json.pending").write_bytes(b"preserve")
+        with pytest.raises(FileExistsError):
+            store.write("next.json", {})
+        assert (root / "next.json.pending").read_bytes() == b"preserve"
+    (root / "controller.lock").rename(root / "real.lock")
+    (root / "controller.lock").symlink_to(root / "real.lock")
+    with pytest.raises(JournalError, match="path-unavailable"):
+        with Store(root).locked():
+            pytest.fail("symlink lock accepted")
+
+
+def test_fixture_bundle_plan_repeat_import_and_exact_manifest_digests(images, tmp_path):
+    directory = tmp_path / "bundle"
+    result = fixture_bundle.prepare(directory, "fixtures", BASE)
+    assert result["status"] == "blocked" and result["build"] == result["publish"] == "not-performed"
+    plan = json.loads((directory / "plan.json").read_bytes())
+    assert set(plan["images"]) == ROLES and plan["platform"] == "linux/amd64"
+    assert plan["images"]["data1"]["buildArgs"]["USER_ID"] == "0"
+    assert plan["images"]["worker"]["buildArgs"]["MODE"] == "worker"
+    assert fixture_bundle.prepare(directory, "fixtures", BASE) == result
+    completed = fixture_bundle.prepare(directory, "fixtures", BASE, manifests=tmp_path)
+    assert completed["status"] == "passed" and completed["publish"] == "not-performed"
+    assert Images(completed["lock"]).records == images.records
+    assert fixture_bundle.prepare(directory, "fixtures", BASE, manifests=tmp_path) == completed
+    with pytest.raises(DockerError, match="plan-changed"):
+        fixture_bundle.prepare(directory, "another-owner", BASE)
+    (directory / "context" / "app.py").write_bytes(b"tampered")
+    with pytest.raises(DockerError, match="source-or-repositories"):
+        fixture_bundle.prepare(directory, "fixtures", BASE)
+
+
+@pytest.mark.parametrize("change", ["tag", "index", "bad-layer", "symlink", "missing"])
+def test_fixture_bundle_rejects_invalid_inputs_without_publishing_lock(images, tmp_path, change):
+    directory = tmp_path / "bundle"
+    if change == "tag":
+        with pytest.raises(DockerError, match="immutable-python-base"):
+            fixture_bundle.prepare(directory, "fixtures", "python:3")
+        assert not directory.exists()
+        return
+    path = tmp_path / "v1.json"
+    manifest = json.loads(path.read_bytes())
+    if change == "index":
+        manifest["mediaType"] = "application/vnd.oci.image.index.v1+json"
+        path.write_text(json.dumps(manifest))
+    elif change == "bad-layer":
+        manifest["layers"] = [{"digest": "fake", "size": -1, "mediaType": "unknown"}]
+        path.write_text(json.dumps(manifest))
+    elif change == "symlink":
+        path.rename(tmp_path / "original.json")
+        path.symlink_to(tmp_path / "original.json")
+    else:
+        path.unlink()
+    with pytest.raises((DockerError, ValueError)):
+        fixture_bundle.prepare(directory, "fixtures", BASE, manifests=tmp_path)
+    assert not (directory / "artifacts").exists()
+
+
+def test_unified_cli_fixtures_and_report_are_offline(images, tmp_path, capsys, monkeypatch):
+    args = ["fixtures", "--output", str(tmp_path / "bundle"), "--owner", "fixtures", "--base", BASE]
+    assert cli.main(args) == 2
+    assert json.loads(capsys.readouterr().out)["reason"] == "disposable-builder-and-publish-not-implemented"
+    assert cli.main(args + ["--manifests", str(tmp_path)]) == 0
+    lock = json.loads(capsys.readouterr().out)["lock"]
+    state = tmp_path / "host"
+    original = orchestration.run
+    monkeypatch.setattr(orchestration, "run", lambda lock, root: original(lock, root, factory=HostVM, consent=lambda *a: None))
+    assert cli.main(["run", "--images", lock, "--state-dir", str(state)]) == 0
+    doc = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert doc["result"]["mode"] == "offline"
+    assert cli.main(["report", "--state-dir", str(state)]) == 0
+    assert json.loads(capsys.readouterr().out) == doc
+
+
+def test_vm_local_prerequisite_checks_do_not_execute_hypervisor(monkeypatch):
+    monkeypatch.setattr(vm.shutil, "which", lambda _: None)
+    monkeypatch.setattr(vm.platform, "machine", lambda: "aarch64")
+    result = vm.VM(SESSION, run=lambda *a, **kw: pytest.fail("prerequisites ran Multipass")).prerequisites()
+    assert result["status"] == "blocked" and not result["checks"]["multipass"] and not result["checks"]["linuxAmd64"]
+
+
+def test_host_orchestration_prerequisite_failure_precedes_any_confirmation(images, tmp_path):
+    class Missing(HostVM):
+        def prerequisites(self):
+            return {"status": "blocked"}
+    with pytest.raises(DockerError, match="prerequisites-blocked"):
+        orchestration.run(tmp_path / "lock.json", tmp_path / "host", factory=Missing,
+                          consent=lambda *a: pytest.fail("prompt before valid prerequisites"))
+    assert not (tmp_path / "host" / "current.json").exists()
+
+
+def test_host_orchestration_rejects_tampered_pinned_lock_after_confirmation(images, tmp_path):
+    root, machines = tmp_path / "host", []
+    def factory(session):
+        machines.append(HostVM(session))
+        return machines[-1]
+    def approve(message, token):
+        (root / machines[0].session / "lock.json").write_text("{}")
+    result = orchestration.run(tmp_path / "lock.json", root, factory=factory, consent=approve)
+    assert result["status"] == "blocked" and not result["mutationStarted"] and not machines[0].calls
+
+
+def test_host_state_lost_pointer_and_fifo_do_not_imply_absence(tmp_path):
+    with Store(tmp_path / "host").locked() as store:
+        store.write(SESSION + ".json", {"status": "unknown"})
+        with pytest.raises(DockerError, match="pointer-missing"):
+            orchestration.current(store)
+        runner.os.mkfifo(store.path / "current.json", mode=0o600)
+        with pytest.raises(DockerError, match="unsafe"):
+            orchestration.current(store)
+
+
+def test_bootstrap_never_normalizes_private_raw_manifest_artifacts(tmp_path, monkeypatch):
+    from scripts import check_bootstrap
+    monkeypatch.setattr(check_bootstrap, "ROOT", tmp_path)
+    for name in (".e2e-state", ".e2e-fixtures"):
+        directory = tmp_path / name
+        directory.mkdir()
+        (directory / "v1.json").write_bytes(b'{"raw":"bytes"}   ')
+    owned = tmp_path / "owned.py"
+    owned.write_text("pass\n")
+    assert list(check_bootstrap.files()) == [owned]

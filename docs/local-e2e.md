@@ -13,6 +13,12 @@ The host must be able to launch an Ubuntu **24.04 amd64** VM (2 CPUs, 4 GiB RAM,
 16 GiB disk) and download Ubuntu packages and pinned Python dependencies. ARM
 VMs, containers/LXC, remote Docker contexts and host directory mounts are rejected.
 Host Docker and host Caddy are neither required nor invoked.
+The local prerequisite check also requires `/dev/kvm` and at least 20 GiB free
+on the home filesystem. Verify that the actual Multipass storage pool has room
+for the VM and image cache; the local check does not locate that pool. Multipass
+must already be installed/authenticated and usable by the invoking user. Its
+daemon/driver access, working virtualization and network are checked by the
+explicitly confirmed prepare; the CLI does not install or repair the host.
 
 Inside the VM: Ubuntu `docker.io`, `docker-compose-v2`, `caddy`, `python3-venv`,
 local Unix Docker socket, root-owned runner, private bridge networks, named test
@@ -43,6 +49,8 @@ not provision or contact a VPS or change the infrastructure repository.
 
 | Module | Responsibility |
 | --- | --- |
+| `scripts/e2e/cli.py`, `orchestration.py`, `host_state.py` | Unified CLI, generated session, default-deny phase confirmations, private receipts/lock snapshots, whole-operation host flock, no retry/resume |
+| `scripts/e2e/fixture_bundle.py` | Offline six-role pinned-source build plan and atomic validated raw-manifest import; live builder/publisher unavailable |
 | `scripts/e2e/vm.py` | Explicit finite Multipass prepare/status/transfer/invoke; no mount, adoption, delete or purge |
 | `scripts/e2e/safety.py` | Session authorization, Ubuntu/virtualization, root marker, hostname, machine-id and pinned Engine ID checks before commands |
 | `scripts/e2e/images.py`, `image_lock.py` | Separate test GHCR contract and offline raw-manifest hashing |
@@ -93,6 +101,76 @@ restore/replay is attempted after uncertainty. Prior snapshots and active state
 remain available; component readiness alone cannot promote LKG.
 
 ## Preparing immutable fixture images
+
+`make e2e-fixtures` is **offline partial preparation**, independent of VM creation
+and scenario execution. It does not start a builder or execute Docker, registry
+reads or publication. First choose a reviewed **direct linux/amd64 Python 3 base
+manifest** (verify platform and config outside this offline tool) and a lower-case
+GHCR owner permitted by the test contract. There is no default tag or base digest.
+
+```sh
+make e2e-fixtures PYTHON=.venv/bin/python \
+  E2E_FIXTURE_OWNER=your-owner \
+  E2E_PYTHON_BASE="$REVIEWED_PYTHON_BASE" \
+  E2E_SOURCE_DATE_EPOCH=0 E2E_FIXTURE_DIR=/absolute/private-fixture-bundle
+```
+
+Set `REVIEWED_PYTHON_BASE` to the complete reviewed `docker.io/library/python@sha256:…`
+reference first (all 64 hex digest characters, not the example ellipsis). This creates a
+private `plan.json`, `repositories.json` and `context/{Dockerfile,app.py}`, with
+SHA-256 source receipts, all six build-argument sets, fixed source epoch, platform,
+output requirements and the builder/publisher boundary. It returns **blocked /
+exit 2** with reason `disposable-builder-and-publish-not-implemented`, even though
+the local bundle is prepared. Repeating identical inputs verifies/reuses the
+bundle; changed base, source, owner or epoch requires a new directory. A partial
+bundle is retained and never overwritten as a completed plan.
+
+The remaining live prerequisite is a **separately authorized disposable builder**
+(not the test VM or primary host daemon), plus a separately authorized publisher.
+No safe builder provisioning/ownership or credential-delivery contract exists in
+this repository yet; therefore the CLI has no build/publish switch or executor.
+The reference infrastructure harness handles Ubuntu VM-image downloads rather
+than OCI fixture publication; it cannot supply this missing trust boundary.
+
+On that external builder, use only the copied context and all per-role arguments
+from `plan.json`, record Docker/BuildKit/buildx versions and reviewed base platform,
+and export single-platform OCI archives. Pin a toolchain supporting
+`SOURCE_DATE_EPOCH`; disable provenance/SBOM index wrapping. BuildKit's
+[OCI exporter](https://docs.docker.com/build/exporters/oci-docker/) supports archives
+and timestamp rewriting; [attestation controls](https://docs.docker.com/build/metadata/attestations/)
+describe disabling automatic provenance. Neither the plan nor an identical rebuild
+proves a bit-identical artifact. The published exact manifest remains authoritative.
+
+After a separate explicit publication approval, a daemonless publisher may copy
+each selected direct manifest/layers to its `ghcr.io/<owner>/pd-e2e-<role>` repository
+using [Skopeo](https://github.com/containers/skopeo/blob/main/docs/skopeo-copy.1.md)
+with digest preservation. Fail on conversion or digest mismatch; do not publish
+an OCI index in place of the selected direct manifest. Supply publication credentials
+only to that isolated publisher, never as build args, plan fields, CLI arguments,
+Git files or test-VM files. For manual GHCR publication use a short-lived PAT classic
+with `write:packages`, avoid the broad `repo` scope, satisfy owner/package and SSO
+policy, and make all six packages publicly readable. These are the
+[GHCR authentication rules](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+There is no GitHub Actions workflow or token creation in this Stage 07 change.
+Revoke/dispose of publisher credentials after use; retain artifacts and receipts.
+
+Export the **exact remote raw manifest bytes** into six role-named JSON files,
+without formatting/newline changes. Import them locally (same owner/base/epoch):
+
+```sh
+make e2e-fixtures PYTHON=.venv/bin/python \
+  E2E_FIXTURE_OWNER=your-owner E2E_PYTHON_BASE="$REVIEWED_PYTHON_BASE" \
+  E2E_SOURCE_DATE_EPOCH=0 E2E_FIXTURE_DIR=/absolute/private-fixture-bundle \
+  E2E_RAW_MANIFESTS=/absolute/exported-raw-manifests
+```
+
+Only after all six validate does `artifacts/lock.json` become visible with the
+unaltered raw manifests. Import is offline: `status=passed` means **local contract
+verified**, not image build/publication, availability, platform execution or
+producer provenance verified. Failed imports retain staging evidence and never
+expose an invalid final artifact set. Repeated import verifies the existing set;
+different bytes cannot replace it. The VM will independently pull each exact
+digest and corroborate Engine/platform/config before a real run.
 
 Image artifacts have **not been built or published here**. Confirmed fixture
 digests cannot be invented while real Docker operations are prohibited. The
@@ -147,7 +225,56 @@ that config ID. This mapping works without an optional Engine `Descriptor` field
 indexes, signatures and provenance verification remain unsupported. All images
 must already be verified/preloaded when deployment starts; missing images block.
 
-## Manual commands — only after separate authorization
+## Unified run — only after separate authorization
+
+After the artifact preparation above, run the committed revision from a real TTY:
+
+```sh
+make e2e-prerequisites PYTHON=.venv/bin/python
+make e2e PYTHON=.venv/bin/python \
+  E2E_IMAGES=/absolute/private-fixture-bundle/artifacts/lock.json
+make e2e-report PYTHON=.venv/bin/python
+```
+
+`make e2e` is an orchestrator of the existing `VM.prepare`, transfer/images and
+run paths, not another deployment engine. It validates all images offline,
+checks local prerequisites, generates a unique 16-hex session and freezes the
+lock/raw bytes under `.e2e-state/<session>/`. `E2E_SESSION` does not select or reuse
+a session here. Override `E2E_STATE_DIR` with an absolute private directory if
+needed. Keep custom state/fixture directories outside the source checkout. The
+default `.e2e-state` and `.e2e-fixtures` directories are Git-ignored and excluded
+from `make fix`/bootstrap traversal so exact raw manifest bytes stay unchanged.
+The session, VM name, receipt path and exact diagnosis command are printed
+before VM work. Four prompts require the exact printed tokens, with default deny:
+
+1. `prepare:<session>` — new 2 CPU / 4 GiB / 16 GiB Ubuntu VM and downloads.
+2. `images:<session>` — six immutable public pulls into that VM's daemon.
+3. `run:<session>` — real Docker scenario mutations using preloaded images.
+4. `activate:<session>` — readiness-gated loopback Caddy activation for that run.
+
+Non-TTY, EOF, blank input, `yes` or a wrong token cannot authorize a phase. Existing
+environment tokens for individual commands do not bypass these prompts. Declining
+after VM creation retains the VM and blocks another orchestration in this state
+directory. No phase runs twice; there is no automatic resume or fallback. A fully
+passed run permits a later `make e2e` to create a fresh VM/session, keeping old ones.
+
+Host state uses mode-0700 directories, mode-0600 bounded receipts, atomic fsynced
+writes and a persistent nonblocking `controller.lock` for the whole operation.
+Do not unlink it. A phase intent is saved **before** a mutating call; timeout,
+SIGKILL or uncertain response leaves an unfinished/unknown receipt and blocks a
+new run in that directory. The pinned VM session/machine/daemon identity is checked
+again after each confirmation. No locks, resources or journal are reset after
+failure. The guest's existing host flock still protects its engine operations.
+
+`make e2e-report` reads the validated **local** `current.json`/session receipt and
+does not contact Multipass or establish live success. The generated command
+`make e2e-diagnose E2E_SESSION=<session> E2E_AUTHORIZE=diagnose:<session>` reads the
+guest report/identity. If preparation failed before the guest tools were installed,
+use the explicit `e2e-status` metadata path first; do not retry prepare as if absent.
+The host receipt and VM retain all evidence; no cleanup runs on an error. An
+unknown guest outcome needs manual diagnosis even if the host process has exited.
+
+## Individual commands — only after separate authorization
 
 Install the pinned local development dependencies as in the README. The following
 sequence is **not authorization** and was not executed. Use a new session for each
@@ -170,7 +297,9 @@ make e2e-diagnose PYTHON=.venv/bin/python E2E_AUTHORIZE="diagnose:$E2E_SESSION"
 make e2e-clean PYTHON=.venv/bin/python E2E_AUTHORIZE="clean:$E2E_SESSION"
 ```
 
-`e2e-prerequisites` is a local binary-presence check; `e2e-status` reads Multipass
+All host commands route through `python -m scripts.e2e.cli`; the VM adapter CLI
+remains compatible. `e2e-prerequisites` is a local binary/platform/KVM/disk check
+and needs no session; `e2e-status` reads Multipass
 metadata and rejects host mounts. Preparation explicitly downloads VM/packages
 and Python requirements; images explicitly pulls only the supplied immutable test
 artifacts. Test never provisions missing dependencies/images. Missing opt-ins fail

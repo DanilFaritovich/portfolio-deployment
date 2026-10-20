@@ -243,14 +243,23 @@ acceptance. See [Stage 06 limits and APIs](docs/readiness-recovery.md).
 
 ## Disposable local E2E
 
-[Stage 07 instructions](docs/local-e2e.md) describe prerequisites, image publication,
-manual opt-ins and all 15 scenarios. `make e2e-check` is offline; `make check` remains
-fully offline. Separate commands are `e2e-prerequisites`, `e2e-prepare`, `e2e-status`,
-`e2e-images`, `e2e-test`, `e2e-diagnose`, `e2e-clean`. Prepare requires Multipass and
-Ubuntu 24.04 amd64 virtualization; images requires six public immutable test GHCR
-manifests and their raw bytes. No confirmed image digests are fabricated or bundled.
-The VM has its own daemon, private networks/volumes, loopback Caddy and private
-SQLite. Cleanup preserves volumes, journal, unrelated resources and VM.
+[Stage 07 instructions](docs/local-e2e.md) separate three steps: prepare OCI fixtures,
+prepare a VM, and run the 15 scenarios. `make e2e E2E_IMAGES=/absolute/lock.json`
+creates a unique session and orchestrates prepare → images → test with separate
+interactive confirmations for VM creation, pulls, Docker mutations and loopback
+Caddy activation. It reuses a verified lock; it never builds or publishes images.
+Linux amd64, KVM, authenticated Multipass, VM/package network access and six public
+direct GHCR manifests with exact raw bytes are required. Host Docker is unused.
+
+`make e2e-fixtures` creates an offline pinned-base/source build plan for six roles;
+build/publish execution is **blocked**, pending a separately approved disposable
+builder and publisher. Importing exact producer raw manifests creates a validated
+lock, without claiming publication or provenance. No digests are fabricated.
+`make e2e-report` reads private local session receipts; `e2e-diagnose` reads the VM.
+The CLI is `python -m scripts.e2e.cli`; separate prepare/images/test/status/clean
+commands remain available. Failed/unknown runs block another orchestration in the
+same state directory, retain all evidence and are never resumed or cleaned up
+automatically. `make e2e-check` and `make check` remain fully offline.
 **Real E2E: not-performed.** No VM or real Docker/Caddy was run for this stage.
 
 ## Security, limitations and licensing

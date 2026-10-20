@@ -4,6 +4,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import platform
 import shutil
 import sys
 import tarfile
@@ -75,8 +76,12 @@ class VM:
         self.name = f"pd-e2e-{session}"
 
     def prerequisites(self):
-        return {"status": "passed" if shutil.which("multipass") else "blocked",
-                "reason": "multipass-required; virtualization, Ubuntu image and package access checked during explicit prepare"}
+        checks = {"multipass": shutil.which("multipass") is not None,
+                  "linuxAmd64": sys.platform == "linux" and platform.machine() in ("x86_64", "amd64"),
+                  "kvmDevice": Path("/dev/kvm").exists(),
+                  "hostDisk20GiB": shutil.disk_usage(Path.home()).free >= 20 * 1024 ** 3}
+        return {"status": "passed" if all(checks.values()) else "blocked", "checks": checks,
+                "reason": "local-checks-only; authenticated Multipass service, VM architecture, network/package access checked during prepare"}
 
     def command(self, *args, timeout=20):
         return self.run(["multipass", *args], timeout=timeout)
@@ -165,7 +170,7 @@ def main(argv=None):
     parser.add_argument("--images", default=os.environ.get("E2E_IMAGES", ""))
     args = parser.parse_args(argv)
     try:
-        vm = VM(args.session)
+        vm = VM((args.session or "0" * 16) if args.action == "prerequisites" else args.session)
         if args.action == "prerequisites":
             result = vm.prerequisites()
         elif args.action == "prepare":

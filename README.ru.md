@@ -245,14 +245,23 @@ ownership и live acceptance. См. [ограничения и API Stage 06](doc
 
 ## Изолированный локальный E2E
 
-[Инструкция Stage 07](docs/local-e2e.md) описывает prerequisites, публикацию образов,
-ручные opt-in и все 15 сценариев. `make e2e-check` работает офлайн; `make check`
-полностью офлайн. Отдельные команды: `e2e-prerequisites`, `e2e-prepare`, `e2e-status`,
-`e2e-images`, `e2e-test`, `e2e-diagnose`, `e2e-clean`. Для prepare нужны Multipass и
-виртуализация Ubuntu 24.04 amd64; для images — шесть публичных immutable test GHCR
-manifests с точными raw bytes. Подтверждённые digests не выдуманы и не включены.
-У VM свой daemon, private networks/volumes, loopback Caddy и private SQLite.
-Cleanup сохраняет volumes, journal, чужие ресурсы и VM.
+[Инструкция Stage 07](docs/local-e2e.md) разделяет три шага: подготовку OCI fixtures,
+подготовку VM и запуск 15 сценариев. `make e2e E2E_IMAGES=/absolute/lock.json`
+создаёт уникальную сессию и выполняет prepare → images → test с отдельными
+интерактивными подтверждениями создания VM, pulls, Docker mutations и активации
+loopback Caddy. Используется готовый проверенный lock; сборки и публикации нет.
+Нужны Linux amd64, KVM, аутентифицированный Multipass, доступ к VM/packages и шесть
+публичных direct GHCR manifests с точными raw bytes. Docker основной системы не используется.
+
+`make e2e-fixtures` создаёт офлайн-план шести сборок с pinned base и исходниками;
+выполнение build/publish остаётся **blocked** до отдельного согласования disposable
+builder и publisher. Импорт точных raw manifests от производителя создаёт проверенный
+lock, без утверждения о публикации или provenance. Digests не выдумываются.
+`make e2e-report` читает приватные локальные receipts сессии; `e2e-diagnose` читает VM.
+CLI: `python -m scripts.e2e.cli`; отдельные prepare/images/test/status/clean остаются
+доступны. Failed/unknown run блокирует новый оркестрированный запуск в том же
+каталоге состояния, сохраняет evidence и не возобновляется и не очищается
+автоматически. `make e2e-check` и `make check` остаются полностью офлайн.
 **Real E2E: not-performed.** VM и реальные Docker/Caddy в рамках этапа не запускались.
 
 ## Безопасность, ограничения и лицензирование
