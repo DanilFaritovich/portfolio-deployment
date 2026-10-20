@@ -205,13 +205,21 @@ class Runner:
         if name == "failed-readiness-lkg":
             with self.journal() as journal:
                 self.previous_good = journal.last_good("e2e-app", "backend")
+                previous_runs = {r["run"] for r in journal.rows()}
             change_image(self.registry, "e2e-app", self.images.records["bad"])
             self.rollback_results = self.deploy("e2e-app")
+            require(any(r.status == "rolled-back-verified" and r.readiness_verified for r in self.rollback_results) and
+                    all(not r.document["releaseSuccess"] for r in self.rollback_results), "stateless-rollback-unverified")
             with self.journal() as journal:
                 require(journal.last_good("e2e-app", "backend") == self.previous_good, "failed-target-promoted")
-                rows = journal.rows()
-                require(any(r["target"] == self.images.records["bad"] and r["state"] == "rolled-back-verified" for r in rows),
-                        "bad-readiness-not-exercised")
+                rows = [r for r in journal.rows() if r["run"] not in previous_runs and r["application"] == "e2e-app"]
+                # Rollback is historical evidence; recover() advances current attempts.
+                require(any(r["component"] == "backend" and r["target"] == self.images.records["bad"] and
+                            journal.db.execute("SELECT 1 FROM events WHERE run=? AND component=? AND state=?",
+                                               (r["run"], r["component"], "rolled-back-verified")).fetchone()
+                            for r in rows), "bad-readiness-not-exercised")
+                require(rows and all(r["run_status"] == "recovered" and r["state"] == "recovered-verified" for r in rows) and
+                        not journal.incomplete(), "rollback-not-closed-atomically")
             return {"failedReadiness": True, "lastKnownGoodPreserved": True}
         if name == "stateless-rollback":
             require(self.rollback_results is not None and any(r.status == "rolled-back-verified" for r in self.rollback_results),

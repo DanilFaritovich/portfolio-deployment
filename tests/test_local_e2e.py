@@ -14,7 +14,7 @@ import yaml
 
 from scripts.compose import LABEL, render_compose
 from scripts.deployment import execute
-from scripts.deployment_journal import locked_journal
+from scripts.deployment_journal import Journal, JournalError, locked_journal
 from scripts.docker_adapter import DockerError
 from scripts.docker_discovery import discover
 from scripts.e2e import safety, transports, gateway, vm, observations, runner, cleanup
@@ -202,7 +202,9 @@ def test_separate_registry_admission_and_no_reuse(registry, images):
         change_image(registry, "e2e-app", "ghcr.io/foreign/image@sha256:" + "1" * 64)
 
 
-def test_complete_provider_and_real_journal_with_simulated_transports(world, registry, images, tmp_path):
+@pytest.mark.parametrize("recovery_confirmed", [True, False])
+def test_complete_provider_and_real_journal_with_simulated_transports(world, registry, images, tmp_path,
+                                                                    monkeypatch, recovery_confirmed):
     """Offline integration of actual contracts; this is explicitly simulated."""
     def apply():
         desired, observed, _ = world.provider.refresh()
@@ -222,7 +224,15 @@ def test_complete_provider_and_real_journal_with_simulated_transports(world, reg
     with locked_journal(tmp_path / "journal", lock_directory=tmp_path / "lock") as j:
         good = j.last_good("e2e-app", "backend")
         assert good["target"] == images.records["v2"]
-    change_image(registry, "e2e-app", images.records["bad"])
+    scenario = runner.Runner.__new__(runner.Runner)
+    scenario.registry, scenario.images = registry, images
+    scenario.provider, scenario.reader = world.provider, world.reader
+    scenario.deploy = lambda app: apply()
+    scenario.journal = lambda: locked_journal(tmp_path / "journal", lock_directory=tmp_path / "lock")
+    if not recovery_confirmed:
+        def unconfirmed(*args, **kwargs):
+            raise JournalError("unverified-recovery")
+        monkeypatch.setattr(Journal, "recovery_baseline", unconfirmed)
     def health(ip, port, path, **kw):
         bad_ids = [v[1] for k, v in world.adapter.present.items()
                        if v[0]["services"][k[1]]["image"] == images.records["bad"]]
@@ -230,11 +240,29 @@ def test_complete_provider_and_real_journal_with_simulated_transports(world, reg
     # Both sampling and bounded Stage06 readiness see the failed real-adapter result.
     from unittest.mock import patch
     with patch.object(transports, "request", health):
-        result = apply()
-    assert any(r.status == "rolled-back-verified" for r in result), [(r.status, r.reasons) for r in result]
+        if recovery_confirmed:
+            evidence = scenario.scenario("failed-readiness-lkg")
+            assert evidence == {"failedReadiness": True, "lastKnownGoodPreserved": True}
+        else:
+            with pytest.raises(DockerError, match="rollback-not-closed-atomically"):
+                scenario.scenario("failed-readiness-lkg")
+    assert any(r.status == "rolled-back-verified" for r in scenario.rollback_results)
+    assert all(not r.document["releaseSuccess"] for r in scenario.rollback_results)
     with locked_journal(tmp_path / "journal", lock_directory=tmp_path / "lock") as j:
         assert j.last_good("e2e-app", "backend") == good
-        assert not j.incomplete()
+        bad = next(r for r in j.rows() if r["component"] == "backend" and r["target"] == images.records["bad"])
+        assert j.db.execute("SELECT 1 FROM events WHERE run=? AND component='backend' AND state='rolled-back-verified'",
+                            (bad["run"],)).fetchone()
+        assert bad["run_status"] == ("recovered" if recovery_confirmed else "recovery-required")
+        assert bad["state"] == ("recovered-verified" if recovery_confirmed else "rolled-back-verified")
+        assert bool(j.incomplete()) is not recovery_confirmed
+    if recovery_confirmed:
+        assert scenario.scenario("stateless-rollback") == {"rollback": "verified", "recovery": "application-wide"}
+    else:
+        calls = len(world.adapter.up_calls)
+        with pytest.raises(JournalError, match="unfinished"):
+            apply()
+        assert len(world.adapter.up_calls) == calls
 
 
 def test_provider_rejects_unverified_image_or_incomplete_inventory(world, monkeypatch):
