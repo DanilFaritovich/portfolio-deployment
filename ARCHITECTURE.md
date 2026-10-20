@@ -2,9 +2,10 @@
 
 ## Status and scope
 
-Stages 01–03 provide local development standards, documentation, a versioned
+Stages 01–04 provide local development standards, documentation, a versioned
 application registry, admission policy, a bounded offline validator and a
-deterministic offline planner. Runtime components remain **Planned**: no controller, Caddy configuration, Compose stack
+deterministic offline planner plus Caddy route/candidate previews and validation.
+Runtime components remain **Planned**: no controller, active gateway, Compose stack
 or production deployment exists here. The real registry and admission allowlist
 are empty; examples exist only as synthetic test fixtures. No VPS integration
 has been performed or verified. The implemented contract is described in
@@ -26,7 +27,7 @@ Kubernetes and a controller database have no established requirement.
 | Validator | Bounded YAML, closed schemas, semantic/global checks and separate admission policy | Implemented offline |
 | Planner | Pure desired/observed comparison using explicit local snapshots; reviewable plan only | Implemented offline |
 | Reconciler and Compose executor | Serialized, scoped image pulls and container updates; bounded health gates | Planned |
-| Caddy gateway | Shared public HTTP(S), canonical routes, configuration validation/hot reload, certificate state | Planned |
+| Caddy gateway | Canonical offline route/candidate rendering and opt-in local validation | Foundation implemented offline; runtime, hot reload and certificate state Planned |
 | State/result journal | Attempted and last known-good revisions, observed outcomes and recovery evidence | Planned |
 | [Application repositories, e.g. project-router](https://github.com/DanilFaritovich/project-router) | Source, tests/CI, Docker builds, GHCR publishing and deployment contract | External ownership; integration Planned; deployability not verified |
 
@@ -113,7 +114,7 @@ contract. OCI manifest/index existence, provenance and platform contents are not
 verified offline. Config/secrets are symbolic references, never values. Named
 volumes are declared and used explicitly; host mounts and runtime overrides are
 forbidden. Omission or `enabled: false` authorizes no stop or data deletion.
-Lifecycle, rendering, execution and reconciliation remain future stages.
+Lifecycle execution, Compose rendering and runtime reconciliation remain future stages.
 
 ## Desired state and observations — Implemented offline; journal Planned
 
@@ -180,7 +181,28 @@ volumes. Ban privileged containers, host namespaces and Docker socket mounts in
 applications and Caddy without a separately justified policy. Docker API access
 for the executor is effectively host administration and must be tightly scoped.
 
-## Caddy and HTTPS — Planned
+## Caddy foundation — Implemented offline; HTTPS/reload Planned
+
+Stage 04 data flow is validated DesiredState + ObservedState + matching
+ReconciliationPlan → `scripts/gateway.py` → immutable GatewayCandidate. Frozen
+GatewayRoute values identify owned host/component/port/derived Docker alias;
+canonical JSON candidates separate desired, explicitly active current and complete
+retained selection. Pure rendering emits a fixed deterministic Caddyfile; an empty
+set is explicit no-routes, not an assumed valid empty config. Git SHA/image/reference
+changes alone never alter routing. Stage 03 is reused without contract changes.
+
+New/network routes are pending; route-only proposals report changes for review.
+Both retain current selection until future gates exist. Disabled/removed routes
+remain pending lifecycle decisions under Stage 03 blockers. Unknown, untrusted,
+incomplete or conflicting route scope produces no full candidate; known full active
+sets remain preserved under other plan blockers. No status authorizes reload.
+
+`scripts/gateway_cli.py` and `make gateway-render` expose explicit local preview.
+`scripts/gateway_validation.py` supports opt-in `caddy adapt` then stronger `caddy
+validate`, fixed subprocess arguments/timeouts and temporary config/storage. Missing
+Caddy reports not-performed; unit tests require no binary. No reload or discovery
+exists. Python remains offline tooling. See [Stage 04](docs/caddy-gateway.md) for
+models, selection, CLI exits, trust limits and the future safe reload procedure.
 
 The gateway owns public HTTP(S), validated host-to-upstream mappings and persistent
 certificate/configuration storage. Registry data generates one canonical complete
@@ -253,13 +275,13 @@ journal is neither a backup nor a disaster-recovery system.
 **Implemented:** `make fix` and `make check` validate repository text, local links,
 YAML and installed standards without network, Docker or secrets. Python is only
 offline tooling. `make validate` checks the registry, and `make check` additionally
-runs Stage 02–03 pytest suites. `make plan` performs explicit-input offline
+runs Stage 02–04 pytest suites. `make plan` performs explicit-input offline
 planning. Dependencies are provisioned separately; clean setup may download PyYAML, jsonschema and pytest. External URLs are not contacted by checks.
 
 **Planned offline CI (Stage 08):** use the same Makefile interface, pinned tools,
 read-only checks and least-privilege permissions. No SSH, production endpoints,
 DNS or production credentials. GitHub-hosted tool/source provisioning is distinct
-from offline test execution. No workflow is installed through Stage 03.
+from offline test execution. No workflow is installed through Stage 04.
 
 **Planned local E2E (Stage 07):** disposable Compose projects, mock upstreams and
 isolated local gateway tests; verify no-op, unsafe input rejection, failed health,
@@ -270,8 +292,8 @@ is separate from offline unit/fixture CI.
 artifact, DNS/TLS, health and recovery checks. CI success alone does not authorize
 production mutations. Never present local results as live acceptance evidence.
 
-See the preliminary [roadmap](docs/roadmap.md). Stages 01–03 are implemented
-offline; Stages 04–09 remain Planned. Stage 03 uses the admitted registry API and
+See the preliminary [roadmap](docs/roadmap.md). Stages 01–04 are implemented
+offline; Stages 05–09 remain Planned. Stage 03 uses the admitted registry API and
 explicit snapshots; it performs no deployment or real-state discovery. Execution
 runtime, production trigger/source, configuration delivery and journal/recovery
 decisions remain open. See

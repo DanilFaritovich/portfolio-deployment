@@ -3,9 +3,9 @@
 [Русская версия](README.ru.md)
 
 Central Docker/GitOps deployment platform for independently built portfolio
-applications on a single Ubuntu VPS. **Current status: Stage 03 — Desired State
-& Reconciliation Planning.** This branch provides admitted registry validation,
-immutable desired/observed models and deterministic offline planning. Runtime deployment is
+applications on a single Ubuntu VPS. **Current status: Stage 04 — Caddy Gateway Foundation.** This branch provides admitted registry validation,
+immutable desired/observed models, deterministic offline planning and retained
+Caddy route/candidate previews. Runtime deployment is
 **Planned**: no controller, gateway or applications are deployed here. The real
 registry and admission allowlist are empty pending confirmed artifacts and review.
 
@@ -37,6 +37,10 @@ image references, cross-application validation and positive/negative tests. See
 The [Stage 03 planning contract](docs/reconciliation-planning.md) documents immutable
 models, bounded snapshots, component updates, no-op, route changes, drift, health
 and lifecycle/storage blockers. Planning never executes operations.
+[Stage 04](docs/caddy-gateway.md) adds immutable gateway routes/candidates, fixed
+Caddyfile rendering, separate desired/current/retained sets and opt-in official
+local Caddy validation. Unconfirmed changes retain existing active routes;
+unknown or untrusted gateway scope blocks a full candidate.
 
 **Planned:** immutable `ghcr.io/<owner>/<image>@sha256:<digest>` rollouts; live
 state discovery and runtime reconciliation; shared Caddy HTTPS gateway;
@@ -63,16 +67,19 @@ scripts/validate_registry.py    Bounded offline validator and reusable input API
 scripts/planning_inputs.py      Validated immutable desired/observed input adapters
 scripts/reconciliation.py       Pure comparison engine and immutable plan
 scripts/plan_registry.py        Explicit-input offline planning CLI
+scripts/gateway.py              Pure routes, retained candidates and Caddyfile renderer
+scripts/gateway_cli.py          Explicit-input offline gateway preview CLI
+scripts/gateway_validation.py   Opt-in official local Caddy validation
 registry/applications/         Empty real registry; one manifest per application
 policy/admission.yaml           Empty reviewed allowlist
 schemas/                       Versioned closed application/admission contracts
 tests/fixtures/                 Synthetic examples and hostile YAML inputs
 requirements-dev.txt           Pinned offline validation tools
-Makefile                       fix / validate / check / plan interface
+Makefile                       fix / validate / check / plan / gateway-* interface
 ```
 
 Compose generation and runtime configuration are deferred; there are no
-deployable Compose or Caddy files. Synthetic fixtures are not production manifests.
+deployable Compose or production Caddy files; generated Caddyfiles are previews. Synthetic fixtures are not production manifests.
 
 ## Local development and checks
 
@@ -112,7 +119,24 @@ needs explicit evidence. Plans are never execution authorization. CLI exits are
 health; Make uses its own recipe-failure code. See the planning contract for API,
 text output and future preflight/readiness obligations.
 
-No GitHub Actions workflow is installed through Stage 03; offline CI is Planned in
+Gateway previews require the same explicit inputs:
+
+```sh
+make gateway-render PYTHON=.venv/bin/python REGISTRY_ROOT=. OBSERVED=tests/fixtures/observed/noop.json GIT_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa GATEWAY_FORMAT=json
+make gateway-check PYTHON=.venv/bin/python
+make gateway-validate PYTHON=.venv/bin/python REGISTRY_ROOT=. OBSERVED=tests/fixtures/observed/noop.json GIT_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+```
+
+`GATEWAY_FORMAT=caddyfile` prints the retained full candidate. Empty sets use an
+explicit no-routes outcome (JSON); no public fallback is generated. JSON separates
+requested route changes from retained active routes. Gateway CLI exits: 0 successful
+preview (including pending), 1 input error, 2 blocked, 3 no renderable Caddyfile,
+4 requested official validation failed/not performed. Missing Caddy is reported
+honestly; nothing is downloaded. Official validation checks syntax, never readiness
+or activation permission. `make check` includes Stage 04 tests. See the gateway
+document for APIs, trust boundaries and future reload/TLS prerequisites.
+
+No GitHub Actions workflow is installed through Stage 04; offline CI is Planned in
 Stage 08. No `verify`, `ci` or deployment targets exist yet. Passing these checks
 does not demonstrate live Docker, HTTPS, reconciliation or rollback.
 
@@ -147,15 +171,15 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | --- | --- | --- |
 | Stage 01 | Project Bootstrap | Implemented; PR #1 merged |
 | Stage 02 | Service Registry & Manifest Validation | Implemented offline; PR #2 merged |
-| Stage 03 | Desired State & Reconciliation Planning | Implemented offline; review pending |
-| Stage 04 | Caddy Gateway Foundation | Planned |
+| Stage 03 | Desired State & Reconciliation Planning | Implemented offline; PR #3 merged |
+| Stage 04 | Caddy Gateway Foundation | Implemented offline; review pending |
 | Stage 05 | Docker Deployment Engine | Planned |
 | Stage 06 | Health Checks, Rollback & Recovery | Planned |
 | Stage 07 | Local E2E & Integration Testing | Planned |
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
 
-Stages 02–03 use Python for offline tooling without selecting a controller runtime.
+Stages 02–04 use Python for offline tooling without selecting a controller runtime.
 Real ProjectRouter registration requires a confirmed digest; no production
 hostname is invented. Controller execution, production trigger/source, secret
 delivery and journal/recovery details require later explicit decisions.

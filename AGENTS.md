@@ -11,13 +11,14 @@ implements the Service Registry contract, separate admission policy and bounded
 offline manifest validator. Stage 03 adds immutable desired/observed models and
 a pure offline reconciliation planner using explicit local snapshots. The real
 registry and admission allowlist are empty pending reviewed applications and confirmed digests.
-Docker execution, Caddy, reconciliation, production deployment and all other
-Stages 04–09 components remain **Planned**.
+Stage 04 adds deterministic offline Caddy route/candidate previews and opt-in local
+configuration validation. Docker execution, gateway activation, runtime reconciliation
+and all Stages 05–09 components remain **Planned**.
 Server provisioning, Ubuntu, SSH, users, Docker Engine and host hardening belong
 to `DanilFaritovich/portfolio-server-infrastructure`. Application repositories
 own source, CI, image builds/publication and deployment contracts.
 
-Do not implement Stages 04–09 without their own scoped task. Do not select a controller
+Do not implement Stages 05–09 without their own scoped task. Do not select a controller
 language, daemon, database, Kubernetes or deployment trigger without an explicit
 architectural rationale and the relevant task scope.
 
@@ -40,6 +41,11 @@ architectural rationale and the relevant task scope.
   `scripts/reconciliation.py`: pure comparison engine; `scripts/plan_registry.py`:
   offline CLI. See [Stage 03](docs/reconciliation-planning.md) for snapshot schema,
   bounds, ownership, OCI limitations and exit codes. No real-state discovery.
+- `scripts/gateway.py`: immutable routes/candidates, pure renderer and Stage 03 plan
+  adapter; `scripts/gateway_cli.py`: preview CLI; `scripts/gateway_validation.py`:
+  opt-in official local Caddy validation. See [Stage 04](docs/caddy-gateway.md).
+  Desired routes never imply activation; retained candidates preserve active routes.
+  Unknown/incomplete gateway scope yields no full Caddyfile. No reload exists.
 - `Makefile`, `requirements-dev.txt`, `.editorconfig`: local check interface/setup.
 
 Use local skills, not a fresh upstream download on each task:
@@ -70,12 +76,15 @@ Use the existing Makefile as the main interface. All targets are offline:
 `make fix` normalizes project-owned text, preserving vendored skills;
 `make validate` performs read-only validation of the complete registry and
 admission policy; `make check` runs bootstrap checks, registry validation and
-Stage 02–03 tests. `make plan OBSERVED=<local.json> GIT_REVISION=<full-sha>`
+Stage 02–04 tests. `make plan OBSERVED=<local.json> GIT_REVISION=<full-sha>`
 requires explicit offline inputs; blocked/degraded plans are not executable.
+`make gateway-render` requires the same inputs; JSON separates desired/current/retained
+candidate. `make gateway-check` runs offline gateway tests; `make gateway-validate`
+explicitly requires a local trusted Caddy binary and never downloads or reloads it.
 Run safe fixes before targeted checks, then `make check` once implementation
 stabilizes. Documentation-only changes need targeted documentation
 checks, without rerunning unchanged executable tests. No broader `verify`/`ci`
-target exists through Stage 03; do not add empty targets. Install pinned
+target exists through Stage 04; do not add empty targets. Install pinned
 development dependencies as documented before checks. Checks must fail clearly
 when dependencies or required assets are missing. Negative YAML fixtures are
 excluded from bootstrap syntax parsing and covered by dedicated tests.
@@ -95,7 +104,7 @@ Do not change other repositories as a side effect.
 
 ## Security and operating boundaries
 
-Stage 01–03 work forbids VPS/SSH contact, production Ansible, containers, Caddy, DNS or
+Stage 01–04 work forbids VPS/SSH contact, production Ansible, containers, Caddy activation, DNS or
 domain changes, requesting/creating production secrets and automatic deployments.
 Future production work also requires explicit operation authorization or an
 approved narrowly scoped policy. No credentials in Git, manifests, logs or

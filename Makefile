@@ -25,3 +25,17 @@ PLAN_FORMAT ?= text
 export PLAN_FORMAT
 plan:
 	@$(PYTHON) -c 'import os,sys; from scripts.plan_registry import main; sys.exit(main(["--observed",os.environ.get("OBSERVED",""),"--git-revision",os.environ.get("GIT_REVISION",""),"--format",os.environ["PLAN_FORMAT"]]))'
+
+# Stage 04 remains offline; official validation is opt-in and requires local Caddy.
+.PHONY: gateway-render gateway-check gateway-validate
+GATEWAY_FORMAT ?= json
+REGISTRY_ROOT ?= .
+export GATEWAY_FORMAT REGISTRY_ROOT
+gateway-render:
+	@$(PYTHON) -c 'import os,sys; from scripts.gateway_cli import main; sys.exit(main(["--root",os.environ["REGISTRY_ROOT"],"--observed",os.environ.get("OBSERVED",""),"--git-revision",os.environ.get("GIT_REVISION",""),"--format",os.environ["GATEWAY_FORMAT"]]))'
+
+gateway-check:
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_gateway.py
+
+gateway-validate:
+	@$(PYTHON) -c 'import os,sys; from scripts.gateway_cli import main; sys.exit(main(["--root",os.environ["REGISTRY_ROOT"],"--observed",os.environ.get("OBSERVED",""),"--git-revision",os.environ.get("GIT_REVISION",""),"--format","json","--official"]))'
