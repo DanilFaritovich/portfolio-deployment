@@ -50,7 +50,8 @@ not provision or contact a VPS or change the infrastructure repository.
 | Module | Responsibility |
 | --- | --- |
 | `scripts/e2e/cli.py`, `orchestration.py`, `host_state.py` | Unified CLI, generated session, default-deny phase confirmations, private receipts/lock snapshots, whole-operation host flock, no retry/resume |
-| `scripts/e2e/fixture_bundle.py` | Offline six-role pinned-source build plan and atomic validated raw-manifest import; live builder/publisher unavailable |
+| `scripts/e2e/fixture_bundle.py` | Offline six-role source/base plan, exact raw-manifest import and fsynced atomic image lock |
+| `scripts/e2e/fixture_execution.py`, `fixture_guest.py` | Separately confirmed disposable builder/publisher VMs, daemonless Buildah/Skopeo, bounded artifacts, isolated credentials, digest-preserving publication and anonymous verification |
 | `scripts/e2e/vm.py` | Explicit finite Multipass prepare/status/transfer/invoke; no mount, adoption, delete or purge |
 | `scripts/e2e/safety.py` | Session authorization, Ubuntu/virtualization, root marker, hostname, machine-id and pinned Engine ID checks before commands |
 | `scripts/e2e/images.py`, `image_lock.py` | Separate test GHCR contract and offline raw-manifest hashing |
@@ -102,92 +103,125 @@ remain available; component readiness alone cannot promote LKG.
 
 ## Preparing immutable fixture images
 
-`make e2e-fixtures` is **offline partial preparation**, independent of VM creation
-and scenario execution. It does not start a builder or execute Docker, registry
-reads or publication. First choose a reviewed **direct linux/amd64 Python 3 base
-manifest** (verify platform and config outside this offline tool) and a lower-case
-GHCR owner permitted by the test contract. There is no default tag or base digest.
+`make e2e-fixtures` defaults to an offline pinned-source/base plan. Choose a
+reviewed **direct linux/amd64 Python 3 manifest**, a lower-case GHCR owner and a
+private artifact directory. There is no default tag or base digest.
 
 ```sh
-make e2e-fixtures PYTHON=.venv/bin/python \
-  E2E_FIXTURE_OWNER=your-owner \
-  E2E_PYTHON_BASE="$REVIEWED_PYTHON_BASE" \
-  E2E_SOURCE_DATE_EPOCH=0 E2E_FIXTURE_DIR=/absolute/private-fixture-bundle
+export E2E_FIXTURE_OWNER=your-owner
+export E2E_PYTHON_BASE="$REVIEWED_PYTHON_BASE"
+export E2E_FIXTURE_DIR=/absolute/private-fixture-bundle
+make e2e-fixtures PYTHON=.venv/bin/python
 ```
 
-Set `REVIEWED_PYTHON_BASE` to the complete reviewed `docker.io/library/python@sha256:…`
-reference first (all 64 hex digest characters, not the example ellipsis). This creates a
-private `plan.json`, `repositories.json` and `context/{Dockerfile,app.py}`, with
-SHA-256 source receipts, all six build-argument sets, fixed source epoch, platform,
-output requirements and the builder/publisher boundary. It returns **blocked /
-exit 2** with reason `disposable-builder-and-publish-not-implemented`, even though
-the local bundle is prepared. Repeating identical inputs verifies/reuses the
-bundle; changed base, source, owner or epoch requires a new directory. A partial
-bundle is retained and never overwritten as a completed plan.
+Set `REVIEWED_PYTHON_BASE` first to the full reviewed
+`docker.io/library/python@sha256:<64 hex characters>` reference. Offline planning
+creates `plan.json`, `repositories.json`, and the exact `context/{Dockerfile,app.py}`
+with source SHA-256, all six build arguments, platform and source epoch
+(`E2E_SOURCE_DATE_EPOCH`, default 0). It returns **blocked / exit 2**, reason
+`fixture-execution-requires-separate-opt-in`, without contacting Multipass or a
+registry. Repeating identical inputs verifies the bundle. Changed owner, base,
+epoch, source or an older incompatible plan requires a new directory; retain the
+old evidence. Plans do not establish registry availability or producer provenance.
 
-The remaining live prerequisite is a **separately authorized disposable builder**
-(not the test VM or primary host daemon), plus a separately authorized publisher.
-No safe builder provisioning/ownership or credential-delivery contract exists in
-this repository yet; therefore the CLI has no build/publish switch or executor.
-The reference infrastructure harness handles Ubuntu VM-image downloads rather
-than OCI fixture publication; it cannot supply this missing trust boundary.
+### First build and publication — operator only
 
-On that external builder, use only the copied context and all per-role arguments
-from `plan.json`, record Docker/BuildKit/buildx versions and reviewed base platform,
-and export single-platform OCI archives. Pin a toolchain supporting
-`SOURCE_DATE_EPOCH`; disable provenance/SBOM index wrapping. BuildKit's
-[OCI exporter](https://docs.docker.com/build/exporters/oci-docker/) supports archives
-and timestamp rewriting; [attestation controls](https://docs.docker.com/build/metadata/attestations/)
-describe disabling automatic provenance. Neither the plan nor an identical rebuild
-proves a bit-identical artifact. The published exact manifest remains authoritative.
+The following command is live and was **not run during implementation**:
 
-After a separate explicit publication approval, a daemonless publisher may copy
-each selected direct manifest/layers to its `ghcr.io/<owner>/pd-e2e-<role>` repository
-using [Skopeo](https://github.com/containers/skopeo/blob/main/docs/skopeo-copy.1.md)
-with digest preservation. Fail on conversion or digest mismatch; do not publish
-an OCI index in place of the selected direct manifest. Supply publication credentials
-only to that isolated publisher, never as build args, plan fields, CLI arguments,
-Git files or test-VM files. For manual GHCR publication use a short-lived PAT classic
-with `write:packages`, avoid the broad `repo` scope, satisfy owner/package and SSO
-policy, and make all six packages publicly readable. These are the
-[GHCR authentication rules](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
-There is no GitHub Actions workflow or token creation in this Stage 07 change.
-Revoke/dispose of publisher credentials after use; retain artifacts and receipts.
+```sh
+make e2e-fixtures PYTHON=.venv/bin/python E2E_FIXTURE_EXECUTE=yes
+```
 
-Export the **exact remote raw manifest bytes** into six role-named JSON files,
-without formatting/newline changes. Import them locally (same owner/base/epoch):
+Requirements: a real TTY, Linux amd64/KVM, authenticated Multipass, Ubuntu/package
+and registry network access, at least 64 GiB free host disk for fixture work, and
+capacity for two 2 CPU / 4 GiB / 24 GiB VMs. The later test VM needs additional
+capacity; its own preflight requires 20 GiB free host disk. No host Docker daemon
+or E2E VM is used for fixture creation. The command prints a unique session,
+both VM names and the private `execution.json` path. Exact tokens are separate
+approvals, with blank/EOF/non-TTY/wrong input denied:
+
+1. `builder-prepare:<session>` creates a NEW `pd-fixture-builder-<session>` Ubuntu
+   24.04 VM and installs Buildah/Skopeo. Only the pinned plan, minimal source
+   context and frozen standalone payload enter it; no credentials or host mounts.
+2. `build:<session>` checks source hashes, fetches exact raw base manifest/config,
+   verifies their digests and linux/amd64 platform, then builds all six roles in
+   the builder. Buildah uses the fixed epoch, disables push/pull retries and keeps
+   intermediate containers. Versions, base bytes, per-role intents/results and
+   outputs remain in `/var/lib/pd-fixtures` inside the builder. The exported
+   bounded `images.tar` is copied back, hashed and validated locally, including
+   blobs/config/platform and a private candidate lock under `raw/`.
+3. `publisher-prepare:<session>` creates a NEW isolated
+   `pd-fixture-publisher-<session>` VM with Skopeo. It receives the plan, standalone
+   payload and exported image archive, without builder storage or host mounts.
+4. Before `publish:<session>`, use the **separate terminal** printed by the tool:
+
+   ```sh
+   multipass shell pd-fixture-publisher-SESSION
+   # Inside that publisher VM only; enter credentials at Skopeo's hidden prompt:
+   sudo skopeo login --authfile /run/pd-fixtures-auth.json ghcr.io
+   ```
+
+   Use a short-lived PAT classic with `write:packages`, owner/package permission
+   and required SSO authorization; avoid broad repository/admin scopes. Follow
+   [GHCR authentication requirements](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+   Never put a token in host environment variables, CLI arguments, build arguments,
+   plans, reports or Git. Confirm `publish:<session>` in the original terminal
+   only after login. Skopeo copies each selected manifest with
+   [`--preserve-digests`](https://github.com/containers/skopeo/blob/main/docs/skopeo-copy.1.md),
+   uses a unique `fixture-<session>` tag, then verifies the remote raw bytes by
+   immutable digest. A conversion, changed byte or failed command stops the attempt.
+5. After all pushes, make all six `pd-e2e-{v1,v2,bad,worker,data1,data2}` packages
+   **public** in GitHub package settings. Then confirm `verify-public:<session>`.
+   A fresh empty auth file is used to fetch every manifest/config anonymously,
+   verify exact bytes/config digest and linux/amd64. Only after all six pass is
+   `artifacts/lock.json` atomically exposed with the unmodified raw manifests.
+
+The selected artifacts are OCI-compatible **Docker schema-2 direct manifests**.
+Buildah's Docker format retains the worker `HEALTHCHECK`; export fixes gzip layers
+and schema-2 before any manifest digest is selected. Publication preserves that
+export verbatim. There is no index, attestation wrapper, image-ID substitution or
+assumption that rebuilding produces identical bytes. The image contract continues
+to accept direct OCI and Docker schema-2 manifests; indexes remain forbidden.
+
+Normal publisher completion or failure removes **only** the temporary auth file.
+Revoke the PAT after the attempt. SIGKILL, VM loss or a failure before credential
+handling can leave it in publisher `/run`; revoke it immediately and manually
+inspect that publisher. No publication credential reaches the builder, host
+artifact bundle or test VM. Guest commands use a fixed environment, deadlines,
+bounded output and sanitized errors; raw registry errors are not reports.
+
+The whole execution, including final lock creation, holds the existing persistent
+nonblocking flock. Fsynced host intents precede operations; guest per-phase/per-role
+intents prevent replay. Disconnect, timeout, interrupt, partial publication or
+unfinished intent preserves archives, raw bytes, VM storage and receipts and
+blocks another execution in that directory. There is **no retry, resume, reset,
+VM deletion, prune, volume removal or automatic evidence cleanup**. Inspect
+`execution.json` and the retained VM evidence before planning any new attempt;
+do not use a fresh directory to bypass an unknown outcome. A completed repeat
+verifies and returns its existing lock without VM access/build/push. Builder and
+publisher VMs remain; an operator may explicitly stop them to free RAM before E2E,
+without deleting storage/evidence.
+
+### Offline import remains available
+
+An external producer can still supply six exact raw manifests, named by role.
+With the same owner/base/epoch inputs, use:
 
 ```sh
 make e2e-fixtures PYTHON=.venv/bin/python \
-  E2E_FIXTURE_OWNER=your-owner E2E_PYTHON_BASE="$REVIEWED_PYTHON_BASE" \
-  E2E_SOURCE_DATE_EPOCH=0 E2E_FIXTURE_DIR=/absolute/private-fixture-bundle \
   E2E_RAW_MANIFESTS=/absolute/exported-raw-manifests
 ```
 
-Only after all six validate does `artifacts/lock.json` become visible with the
-unaltered raw manifests. Import is offline: `status=passed` means **local contract
-verified**, not image build/publication, availability, platform execution or
-producer provenance verified. Failed imports retain staging evidence and never
-expose an invalid final artifact set. Repeated import verifies the existing set;
-different bytes cannot replace it. The VM will independently pull each exact
-digest and corroborate Engine/platform/config before a real run.
+Import and execution opt-in are mutually exclusive. Import is offline:
+`status=passed` proves only the local image contract, without claiming build,
+publication, public access, platform execution or provenance. Failed imports
+retain staging evidence. Different bytes cannot replace an existing artifact set.
+The test VM independently pulls each locked digest and corroborates
+Engine ID/config/platform/RepoDigests before scenarios. Production admission is
+unchanged, and no credentials enter the test VM.
 
-Image artifacts have **not been built or published here**. Confirmed fixture
-digests cannot be invented while real Docker operations are prohibited. The
-operator must first supply six public test-only GHCR artifacts, each a distinct
-**direct linux/amd64 OCI/Docker schema-2 manifest**, plus its exact raw manifest
-bytes. No credentials are copied into the VM. The contract only allows
-`ghcr.io/<owner>/pd-e2e-<name>@sha256:<digest>`; production repositories, tags,
-indexes, unknown roles, path traversal and malformed descriptors are rejected.
-
-Source is in [fixture Dockerfile](../e2e/images/Dockerfile) and
-[app.py](../e2e/images/app.py). Build/publish separately on an explicitly authorized
-disposable image-builder; this is never part of execution or `e2e-test`.
-Use an approved immutable `PYTHON_BASE` direct linux/amd64 Python 3 manifest and
-BuildKit with fixed source timestamps (for example `SOURCE_DATE_EPOCH`), no
-provenance/SBOM index wrapping, and record toolchain/base digests. Rebuilding is
-not assumed to produce the same digest; deployment always uses the recorded
-published artifact, never a rebuilt tag.
+Source is in [Dockerfile](../e2e/images/Dockerfile) and [app.py](../e2e/images/app.py).
+**Real builds, publication and E2E: not-performed.** No confirmed digest is invented.
 
 | Role / raw file | Build arguments | Expected behavior |
 | --- | --- | --- |
@@ -232,9 +266,14 @@ After the artifact preparation above, run the committed revision from a real TTY
 ```sh
 make e2e-prerequisites PYTHON=.venv/bin/python
 make e2e PYTHON=.venv/bin/python \
-  E2E_IMAGES=/absolute/private-fixture-bundle/artifacts/lock.json
+  E2E_FIXTURE_DIR=/absolute/private-fixture-bundle
 make e2e-report PYTHON=.venv/bin/python
 ```
+
+After successful fixture publication, `make e2e` automatically uses
+`$E2E_FIXTURE_DIR/artifacts/lock.json` (default `.e2e-fixtures/artifacts/lock.json`).
+`E2E_IMAGES=/absolute/lock.json` remains an explicit override. It never rebuilds or
+publishes; the prepared lock drives Multipass prepare → pulls → real scenarios.
 
 `make e2e` is an orchestrator of the existing `VM.prepare`, transfer/images and
 run paths, not another deployment engine. It validates all images offline,

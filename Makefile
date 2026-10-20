@@ -61,10 +61,12 @@ export SMOKE_ENDPOINT SMOKE_SESSION SMOKE_IMAGE_A SMOKE_IMAGE_B SMOKE_AUTHORIZE
 local-docker-smoke:
 	@$(PYTHON) -c 'import os,sys; from scripts.local_docker_smoke import main; sys.exit(main(["--endpoint",os.environ.get("SMOKE_ENDPOINT",""),"--session",os.environ.get("SMOKE_SESSION",""),"--image-a",os.environ.get("SMOKE_IMAGE_A",""),"--image-b",os.environ.get("SMOKE_IMAGE_B",""),"--authorize",os.environ.get("SMOKE_AUTHORIZE","")]))'
 
-# Stage 07 usage: e2e-fixtures prepares offline plans/imports; e2e uses a ready
+# Stage 07 usage: e2e-fixtures defaults to offline plan/import; explicit execute uses
+# separately confirmed disposable builder/publisher VMs. e2e uses a ready
 # E2E_IMAGES lock with interactive phase confirmations. e2e-report is local-only.
 # e2e-check remains offline. VM/image/run/cleanup opt-ins are separate.
 .PHONY: e2e e2e-fixtures e2e-report
+export E2E_FIXTURE_EXECUTE
 export E2E_STATE_DIR E2E_FIXTURE_DIR E2E_FIXTURE_OWNER E2E_PYTHON_BASE E2E_SOURCE_DATE_EPOCH E2E_RAW_MANIFESTS
 e2e:
 	@$(PYTHON) -m scripts.e2e.cli run
@@ -78,7 +80,7 @@ e2e-report:
 .PHONY: e2e-check e2e-prerequisites e2e-prepare e2e-status e2e-images e2e-test e2e-diagnose e2e-clean
 export E2E_SESSION E2E_AUTHORIZE E2E_GATEWAY_AUTHORIZE E2E_IMAGES
 e2e-check:
-	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_local_e2e.py
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_local_e2e.py tests/test_e2e_fixtures.py
 
 e2e-prerequisites:
 	@$(PYTHON) -m scripts.e2e.cli prerequisites

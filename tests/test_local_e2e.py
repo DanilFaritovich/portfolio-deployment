@@ -811,7 +811,7 @@ def test_fixture_bundle_rejects_invalid_inputs_without_publishing_lock(images, t
 def test_unified_cli_fixtures_and_report_are_offline(images, tmp_path, capsys, monkeypatch):
     args = ["fixtures", "--output", str(tmp_path / "bundle"), "--owner", "fixtures", "--base", BASE]
     assert cli.main(args) == 2
-    assert json.loads(capsys.readouterr().out)["reason"] == "disposable-builder-and-publish-not-implemented"
+    assert json.loads(capsys.readouterr().out)["reason"] == "fixture-execution-requires-separate-opt-in"
     assert cli.main(args + ["--manifests", str(tmp_path)]) == 0
     lock = json.loads(capsys.readouterr().out)["lock"]
     state = tmp_path / "host"

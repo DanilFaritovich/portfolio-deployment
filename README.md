@@ -252,9 +252,16 @@ Linux amd64, KVM, authenticated Multipass, VM/package network access and six pub
 direct GHCR manifests with exact raw bytes are required. Host Docker is unused.
 
 `make e2e-fixtures` creates an offline pinned-base/source build plan for six roles;
-build/publish execution is **blocked**, pending a separately approved disposable
-builder and publisher. Importing exact producer raw manifests creates a validated
-lock, without claiming publication or provenance. No digests are fabricated.
+`E2E_FIXTURE_EXECUTE=yes` enables separately confirmed builder preparation, six
+builds, publisher preparation, GHCR publication and anonymous public verification.
+Disposable builder/publisher VMs use daemonless Buildah/Skopeo; publication credentials
+stay only in the publisher. Exact direct schema-2 manifest bytes/digests and worker
+healthcheck are preserved. After publication, `make e2e` uses the ready
+`E2E_FIXTURE_DIR/artifacts/lock.json` (default `.e2e-fixtures`) without rebuilding.
+Offline raw-manifest import remains available without claiming publication or
+provenance. Unknown fixture operations retain evidence and block retry. See the
+[operator steps](docs/local-e2e.md#first-build-and-publication--operator-only).
+No digests are fabricated; real builds/publication remain **not-performed**.
 `make e2e-report` reads private local session receipts; `e2e-diagnose` reads the VM.
 The CLI is `python -m scripts.e2e.cli`; separate prepare/images/test/status/clean
 commands remain available. Failed/unknown runs block another orchestration in the

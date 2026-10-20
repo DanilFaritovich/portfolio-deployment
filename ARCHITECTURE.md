@@ -380,8 +380,17 @@ and Caddy activation. Host receipts pin VM machine/daemon identity; failed or un
 sessions block another orchestration in that state directory without replay/reset.
 `e2e-report` reads local receipts, not live state. `e2e-fixtures` prepares an offline
 base/source-pinned six-image plan and imports exact raw manifests into a validated
-lock. Disposable builder provisioning/build/publication are explicitly blocked;
-lock verification does not prove registry availability or producer provenance.
+lock. An explicit fixture execution opt-in adds separate disposable Ubuntu builder
+and publisher VMs, with independent preparation/build/publication/public-verification
+confirmations. Buildah runs daemonless in the builder; Skopeo preserves exact
+exported direct Docker schema-2 manifests (including worker healthcheck) in GHCR.
+Only the publisher receives its temporary publication credential via an operator
+login inside that VM. Anonymous exact manifest/config/platform verification gates
+the fsynced atomic ready lock. Whole-operation flock, durable phase/role intents
+and retained archives/VM evidence prevent retry/replay after uncertainty. No host
+or E2E daemon participates in fixture creation. `make e2e` defaults to that ready
+lock without rebuilding. Offline import alone does not prove registry availability
+or producer provenance. Real fixture operations remain not-performed.
 
 `scripts/e2e/vm.py` provisions only a new named Ubuntu 24.04 Multipass VM, transfers
 allowlisted source without host mounts/credentials and records its source revision.

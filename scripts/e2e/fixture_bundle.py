@@ -1,4 +1,4 @@
-"""Offline six-image preparation bundle; build/publish execution stays blocked."""
+"""Offline six-image preparation bundle; separately opted-in execution lives in fixture_execution."""
 from hashlib import sha256
 import json
 import os
@@ -42,10 +42,10 @@ def prepare(directory, owner, base, *, epoch=0, manifests=None):
     repositories = {role: f"ghcr.io/{owner}/pd-e2e-{role}" for role in sorted(ROLES)}
     plan = {"version": 1, "platform": "linux/amd64", "base": base, "epoch": epoch,
             "baseVerification": "operator-must-verify-direct-linux-amd64-Python-manifest; offline-plan-does-not-fetch-base",
-            "toolchain": "record-builder-Engine-BuildKit-buildx-versions; bit-identical-rebuild-not-guaranteed",
+            "toolchain": "record-builder-Buildah-Skopeo-versions; bit-identical-rebuild-not-guaranteed",
             "source": {name: sha256(raw).hexdigest() for name, raw in source.items()},
             "builder": {"requirement": "separate-disposable-builder; no-host-daemon; no-test-vm-credentials",
-                        "execution": "not-implemented", "publishAuthorization": "separate-explicit-operator-approval",
+                        "execution": "separate-explicit-execute-opt-in", "publishAuthorization": "separate-explicit-operator-approval",
                         "permissions": "GHCR write:packages only; read access to fixture source; no repository write/admin"},
             "images": {role: {"repository": repositories[role],
                        "buildArgs": dict(zip(("VERSION", "MODE", "USER_ID"), ARGUMENTS[role]),
@@ -68,27 +68,44 @@ def prepare(directory, owner, base, *, epoch=0, manifests=None):
             require(all(source_bytes(context / name) == raw for name, raw in source.items()) and
                     store.read("repositories.json") == repositories, "fixture-source-or-repositories-changed")
         if manifests is None:
-            return {"status": "blocked", "reason": "disposable-builder-and-publish-not-implemented",
+            return {"status": "blocked", "reason": "fixture-execution-requires-separate-opt-in",
                     "plan": str(store.path / "plan.json"), "sourceVerified": True,
                     "build": "not-performed", "publish": "not-performed", "lock": "not-created"}
-        # Import only exact producer-exported direct manifests. No registry or Engine I/O.
-        raw_manifests = {role: read_snapshot(Path(manifests).absolute() / f"{role}.json") for role in sorted(ROLES)}
-        output = store.path / "artifacts"
-        if output.exists():
-            Images(output / "lock.json")
-            require(all(read_snapshot(output / f"{role}.json") == raw for role, raw in raw_manifests.items()),
-                    "fixture-manifests-changed-use-new-directory")
-        else:
-            staging = Path(tempfile.mkdtemp(prefix="import-", dir=store.path))
-            for role, raw in raw_manifests.items():
-                with (staging / f"{role}.json").open("xb") as stream:
-                    stream.write(raw)
-                (staging / f"{role}.json").chmod(0o600)
-            images = create(store.path / "repositories.json", staging)
-            (staging / "lock.json").chmod(0o600)
-            require(images.records == {role: repositories[role] + "@sha256:" + sha256(raw).hexdigest()
-                                       for role, raw in raw_manifests.items()}, "fixture-lock-repository-mismatch")
-            staging.rename(output)  # Publish validated local artifact set as one directory.
-        return {"status": "passed", "reason": "offline-lock-verified; publication-and-provenance-not-verified",
-                "images": 6, "lock": str(output / "lock.json"), "build": "not-performed", "publish": "not-performed",
-                "availability": "not-performed; public-GHCR-pull-and-Engine-corroboration-required-in-VM"}
+        return import_manifests(store, repositories, manifests)
+
+
+def import_manifests(store, repositories, manifests):
+    # Import only exact producer-exported direct manifests. No registry or Engine I/O.
+    raw_manifests = {role: read_snapshot(Path(manifests).absolute() / f"{role}.json") for role in sorted(ROLES)}
+    output = store.path / "artifacts"
+    if output.exists():
+        Images(output / "lock.json")
+        require(all(read_snapshot(output / f"{role}.json") == raw for role, raw in raw_manifests.items()),
+                "fixture-manifests-changed-use-new-directory")
+    else:
+        staging = Path(tempfile.mkdtemp(prefix="import-", dir=store.path))
+        for role, raw in raw_manifests.items():
+            with (staging / f"{role}.json").open("xb") as stream:
+                stream.write(raw)
+            (staging / f"{role}.json").chmod(0o600)
+        images = create(store.path / "repositories.json", staging)
+        (staging / "lock.json").chmod(0o600)
+        require(images.records == {role: repositories[role] + "@sha256:" + sha256(raw).hexdigest()
+                                   for role, raw in raw_manifests.items()}, "fixture-lock-repository-mismatch")
+        # Persist every artifact before atomically exposing the complete validated set.
+        for path in staging.iterdir():
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        fd = os.open(staging, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        staging.rename(output)
+        os.fsync(store.fd)
+    return {"status": "passed", "reason": "offline-lock-verified; publication-and-provenance-not-verified",
+            "images": 6, "lock": str(output / "lock.json"), "build": "not-performed", "publish": "not-performed",
+            "availability": "not-performed; public-GHCR-pull-and-Engine-corroboration-required-in-VM"}

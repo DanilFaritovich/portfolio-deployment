@@ -254,9 +254,16 @@ loopback Caddy. Используется готовый проверенный l
 публичных direct GHCR manifests с точными raw bytes. Docker основной системы не используется.
 
 `make e2e-fixtures` создаёт офлайн-план шести сборок с pinned base и исходниками;
-выполнение build/publish остаётся **blocked** до отдельного согласования disposable
-builder и publisher. Импорт точных raw manifests от производителя создаёт проверенный
-lock, без утверждения о публикации или provenance. Digests не выдумываются.
+`E2E_FIXTURE_EXECUTE=yes` включает отдельные подтверждения подготовки builder,
+шести сборок, подготовки publisher, публикации GHCR и анонимной публичной проверки.
+Disposable builder/publisher VM используют Buildah/Skopeo без daemon; credentials
+публикации остаются только в publisher. Сохраняются точные bytes/digests direct
+schema-2 manifests и worker healthcheck. После публикации `make e2e` использует
+готовый `E2E_FIXTURE_DIR/artifacts/lock.json` (по умолчанию `.e2e-fixtures`) без пересборки.
+Офлайн-импорт raw manifests остаётся доступным без утверждения о публикации или
+provenance. Unknown fixture operations сохраняют evidence и блокируют retry.
+См. [действия оператора](docs/local-e2e.md#first-build-and-publication--operator-only).
+Digests не выдумываются; реальные сборки/публикация остаются **not-performed**.
 `make e2e-report` читает приватные локальные receipts сессии; `e2e-diagnose` читает VM.
 CLI: `python -m scripts.e2e.cli`; отдельные prepare/images/test/status/clean остаются
 доступны. Failed/unknown run блокирует новый оркестрированный запуск в том же
