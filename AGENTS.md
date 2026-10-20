@@ -6,14 +6,17 @@ setup is in [README.md](README.md) / [README.ru.md](README.ru.md).
 
 ## Scope and boundaries
 
-This repository will manage a central service registry, immutable GHCR images,
-Docker Compose reconciliation and a shared Caddy gateway on one VPS. These are
-**Planned**. Stage 01 provides documentation and offline development checks only.
+Stage 01 provides documentation and offline development checks. Stage 02
+implements the Service Registry contract, separate admission policy and bounded
+offline manifest validator with an API for Stage 03. The real registry and
+admission allowlist are empty pending reviewed applications and confirmed digests.
+Docker execution, Caddy, reconciliation, production deployment and all other
+Stages 03–09 components remain **Planned**.
 Server provisioning, Ubuntu, SSH, users, Docker Engine and host hardening belong
 to `DanilFaritovich/portfolio-server-infrastructure`. Application repositories
 own source, CI, image builds/publication and deployment contracts.
 
-Do not implement Stages 02–09 in a bootstrap task. Do not select a controller
+Do not implement Stages 03–09 without their own scoped task. Do not select a controller
 language, daemon, database, Kubernetes or deployment trigger without an explicit
 architectural rationale and the relevant task scope.
 
@@ -23,7 +26,15 @@ architectural rationale and the relevant task scope.
 - [.codex-standards.lock.yaml](.codex-standards.lock.yaml): exact upstream,
   profile `docker-deployment-platform` v1, selections and package-file inventory.
 - `.agents/skills/`: complete local standards; references are loaded on demand.
+- `registry/applications/`, `policy/admission.yaml`: application manifests and
+  separate trust allowlist; policy changes require security review.
+- `schemas/`, `tests/fixtures/`: versioned application/admission schemas and
+  synthetic positive/negative examples; fixtures are not production manifests.
 - `scripts/`: offline development tooling only; Python here does not select the controller runtime.
+- `scripts/validate_registry.py`: `validate_registry(root)` returns validated
+  application documents or raises `RegistryValidationError`, without mutation
+  or network access. Stage 03 can consume this input API; planning is not implemented.
+  See [manifest v1](docs/manifest-v1.md) for the contract, limits and API details.
 - `Makefile`, `requirements-dev.txt`, `.editorconfig`: local check interface/setup.
 
 Use local skills, not a fresh upstream download on each task:
@@ -50,12 +61,17 @@ is stable; `develop` integrates development. New task branches start strictly
 from `develop`. Never force-reset, rebase, discard changes or overwrite origin.
 If `develop` is absent, establish it from `main` before creating a task branch.
 
-Use the existing Makefile as the main interface: `make fix`, targeted checks,
-then `make check` once changes stabilize. Both commands are offline. No broader
-`verify`/`ci` target exists at Stage 01; do not add empty targets. Install the
-pinned development dependency as documented before checks. `make fix` only
-normalizes project-owned text, preserving vendored skills. Checks must fail
-clearly when dependencies or required assets are missing.
+Use the existing Makefile as the main interface. All targets are offline:
+`make fix` normalizes project-owned text, preserving vendored skills;
+`make validate` performs read-only validation of the complete registry and
+admission policy; `make check` runs bootstrap checks, registry validation and
+Stage 02 tests. Run safe fixes before targeted checks, then `make check` once
+implementation stabilizes. Documentation-only changes need targeted documentation
+checks, without rerunning unchanged executable tests. No broader `verify`/`ci`
+target exists through Stage 02; do not add empty targets. Install pinned
+development dependencies as documented before checks. Checks must fail clearly
+when dependencies or required assets are missing. Negative YAML fixtures are
+excluded from bootstrap syntax parsing and covered by dedicated tests.
 
 Add meaningful tests for new behavior and failure boundaries as implementation
 arrives. Reject unsafe manifest inputs before mutation; cover no-op behavior,
@@ -72,7 +88,7 @@ Do not change other repositories as a side effect.
 
 ## Security and operating boundaries
 
-Bootstrap forbids VPS/SSH contact, production Ansible, containers, Caddy, DNS or
+Stage 01–02 work forbids VPS/SSH contact, production Ansible, containers, Caddy, DNS or
 domain changes, requesting/creating production secrets and automatic deployments.
 Future production work also requires explicit operation authorization or an
 approved narrowly scoped policy. No credentials in Git, manifests, logs or

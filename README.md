@@ -125,7 +125,7 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 
 | Stage | Scope | Status |
 | --- | --- | --- |
-| Stage 01 | Project Bootstrap | Implemented in this branch; review pending |
+| Stage 01 | Project Bootstrap | Implemented; PR #1 merged |
 | Stage 02 | Service Registry & Manifest Validation | Implemented offline; review pending |
 | Stage 03 | Desired State & Reconciliation Planning | Planned |
 | Stage 04 | Caddy Gateway Foundation | Planned |

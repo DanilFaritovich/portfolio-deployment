@@ -127,7 +127,7 @@ references; читать references нужно только для текуще�
 
 | Этап | Область | Статус |
 | --- | --- | --- |
-| Stage 01 | Project Bootstrap | Реализован в этой ветке; ожидает review |
+| Stage 01 | Project Bootstrap | Реализован; PR #1 смержен |
 | Stage 02 | Service Registry & Manifest Validation | Implemented offline; review pending |
 | Stage 03 | Desired State & Reconciliation Planning | Planned |
 | Stage 04 | Caddy Gateway Foundation | Planned |

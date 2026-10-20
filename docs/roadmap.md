@@ -8,7 +8,7 @@ repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 | Stage | Deliverable | Status / acceptance boundary |
 | --- | --- | --- |
-| Stage 01 — Project Bootstrap | Local standards, lock, architecture, bilingual documentation, offline checks | Implemented in this branch; PR review pending |
+| Stage 01 — Project Bootstrap | Local standards, lock, architecture, bilingual documentation, offline checks | Implemented; PR #1 merged |
 | Stage 02 — Service Registry & Manifest Validation | Reviewed deployment contract, versioned schema, admission rules and invalid-input fixtures | Implemented offline; review pending |
 | Stage 03 — Desired State & Reconciliation Planning | Desired/actual models, deterministic diff/plan and no-op semantics | Planned; no host mutations |
 | Stage 04 — Caddy Gateway Foundation | Deterministic route rendering, candidate validation and gateway interface | Planned; offline/local foundation, no real domains |
