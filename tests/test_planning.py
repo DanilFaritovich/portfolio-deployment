@@ -399,3 +399,34 @@ def test_cli_degraded_and_json_snapshot_fixture(root, capsys):
     path.write_text(json.dumps(doc))
     assert cli.main(["--root", str(root), "--observed", str(path), "--git-revision", SHA]) == 3
     assert "degraded" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("lifecycle", ["enabled", "disabled", "removed"])
+@pytest.mark.parametrize("route_state", ["unknown", "absent"])
+def test_absent_application_preserves_route_evidence(root, lifecycle, route_state):
+    put(root, "project-router")
+    desired = inputs.build_desired_state(root, SHA)
+    document = observation(desired)
+    app = document["applications"][0]
+    app.update(existence="absent", components=[])
+    app["route"].update(existence=route_state, configuration=None)
+    if lifecycle == "disabled":
+        put(root, "project-router", mutate=lambda spec: spec.update(enabled=False))
+    elif lifecycle == "removed":
+        (root / "registry/applications/project-router.yaml").unlink()
+    desired = inputs.build_desired_state(root, SHA)
+    observed = inputs.load_observed_state(document)
+    result = engine.build_reconciliation_plan(desired, observed)
+    assert observed.document["applications"][0]["route"]["existence"] == route_state
+    if route_state == "unknown":
+        assert result.document["status"] == "blocked"
+        assert result.document["applications"] == [{"id": "project-router", "status": "blocked"}]
+        assert all(entry["status"] == "blocked" for entry in result.document["entries"])
+        assert actions(result, "blocked")[0]["reasons"] == ["unknown-route-or-ownership-conflict"]
+    elif lifecycle == "enabled":
+        assert result.document["status"] == "changes"
+        assert [entry["component"] for entry in actions(result, "create")] == [None, "web"]
+        assert result.to_json() == plan(desired, empty()).to_json()
+    else:
+        assert result.document["status"] == "no-op"
+        assert all(entry["action"] == "no-op" for entry in result.document["entries"])

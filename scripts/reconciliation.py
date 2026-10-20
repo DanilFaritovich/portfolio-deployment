@@ -131,6 +131,12 @@ def build_reconciliation_plan(desired: DesiredState, observed: ObservedState):
         if o and (o["existence"] == "unknown" or not owned(o["owner"], app_id)):
             add(app_id, None, "blocked", ["unknown-state-or-ownership-conflict"], status="blocked")
             continue
+        # Route evidence is independent of container existence and must gate
+        # lifecycle outcomes as well as ordinary convergence.
+        route = o["route"] if o else {"existence": "absent", "configuration": None}
+        if o and (route["existence"] == "unknown" or not owned(route["owner"], app_id)):
+            add(app_id, None, "blocked", ["unknown-route-or-ownership-conflict"], status="blocked")
+            continue
         present = o and o["existence"] == "present"
         if not d or not d.spec["enabled"]:
             if present:
@@ -198,20 +204,16 @@ def build_reconciliation_plan(desired: DesiredState, observed: ObservedState):
                 add(app_id, name, "update-component", ["effective-configuration-diff", "diff-origin-unproven"],
                     canonical(before), c, warnings=warnings)
         desired_route = spec["ingress"]
-        route = o["route"] if present else {"existence": "absent", "configuration": None}
-        if present and (route["existence"] == "unknown" or not owned(route["owner"], app_id)):
-            add(app_id, None, "blocked", ["unknown-route-or-ownership-conflict"], status="blocked")
+        before_route = route["configuration"] if route["existence"] == "present" else None
+        if before_route != desired_route:
+            network_change = any(e["action"] in ("create", "update-component") and
+                                 (e["before"] is None or e["before"].get("proxyNetwork") != e["after"].get("proxyNetwork"))
+                                 for e in entries[start:])
+            add(app_id, None, "route-change" if network_change else "route-only",
+                ["ingress-diff", "network-membership-change" if network_change else "runtime-network-unchanged"],
+                before_route, desired_route)
         else:
-            before_route = route["configuration"] if route["existence"] == "present" else None
-            if before_route != desired_route:
-                network_change = any(e["action"] in ("create", "update-component") and
-                                     (e["before"] is None or e["before"].get("proxyNetwork") != e["after"].get("proxyNetwork"))
-                                     for e in entries[start:])
-                add(app_id, None, "route-change" if network_change else "route-only",
-                    ["ingress-diff", "network-membership-change" if network_change else "runtime-network-unchanged"],
-                    before_route, desired_route)
-            else:
-                add(app_id, None, "no-op", ["route-matches"], warnings=warnings)
+            add(app_id, None, "no-op", ["route-matches"], warnings=warnings)
         # Dependency and route safety is application-scoped. Keep proposed diffs
         # reviewable, but never leave an actionable sibling in a blocked app.
         if any(e["status"] == "blocked" for e in entries[start:]):
