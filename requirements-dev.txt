@@ -1,2 +1,4 @@
-# Bootstrap validation only; not a deployment-controller language decision.
+# Offline validation tooling only; not a deployment-controller runtime decision.
 PyYAML==6.0.3
+jsonschema==4.26.0
+pytest==9.0.2

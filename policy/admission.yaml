@@ -1,0 +1,4 @@
+apiVersion: portfolio.deployment/v1
+kind: AdmissionPolicy
+# Empty until application ownership, GHCR repositories and hostnames are reviewed.
+applications: []

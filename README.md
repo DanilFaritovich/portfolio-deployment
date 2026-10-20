@@ -3,10 +3,11 @@
 [Русская версия](README.ru.md)
 
 Central Docker/GitOps deployment platform for independently built portfolio
-applications on a single Ubuntu VPS. **Current status: Stage 01 — Project
-Bootstrap.** This branch contains standards, architecture, documentation and
-offline development checks. The deployment platform is **Planned**: no controller,
-registry, gateway or applications are deployed by this repository yet.
+applications on a single Ubuntu VPS. **Current status: Stage 02 — Service Registry
+& Manifest Validation.** This branch provides a versioned application contract,
+separate admission policy and bounded offline validation. Runtime deployment is
+**Planned**: no controller, gateway or applications are deployed here. The real
+registry and admission allowlist are empty pending confirmed artifacts and review.
 
 ## Purpose and architecture
 
@@ -16,28 +17,32 @@ Every runtime component in that flow is **Planned** here.
 
 - [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure)
   owns Ubuntu, SSH/users, Docker Engine and host security.
-- **Portfolio Deployment** will own service registration, versioned desired state,
+- **Portfolio Deployment** implements registry contracts and offline admission;
+  future stages will add versioned desired-state planning,
   digest selection, Compose execution, shared proxy networking, domains/HTTPS,
   health gates and deployment-result history.
 - Application repositories such as
   [project-router](https://github.com/DanilFaritovich/project-router) own source,
   tests/CI, image builds and GHCR publication, and supply a deployment contract.
-  Their current deployability is not established by this bootstrap.
+  Their current deployability is not established by offline validation.
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) for responsibilities, flows, trust boundaries
 and recovery constraints.
 
 ## Planned capabilities and technologies
 
-**Planned:** approved central service registry; validated per-service manifests;
-immutable `ghcr.io/<owner>/<image>@sha256:<digest>` updates; deterministic
+**Implemented offline:** closed application/admission schemas, immutable component
+image references, cross-application validation and positive/negative tests. See
+[manifest v1](docs/manifest-v1.md) for fields, policy, limits and the Stage 03 API.
+
+**Planned:** immutable `ghcr.io/<owner>/<image>@sha256:<digest>` rollouts; deterministic
 desired/actual plans and no-op reconciliation; shared Caddy HTTPS gateway;
 isolated private dependencies; bounded health checks; scoped updates; recorded
 last-known-good state and recovery outcomes.
 
 Git, Docker Engine/Compose, GHCR and Caddy are selected target technologies.
 The controller language, execution model and journal format are undecided.
-Python/PyYAML below serve repository validation only. No controller, daemon,
+Python, PyYAML, jsonschema and pytest serve offline validation only. No controller, daemon,
 database or Kubernetes stack is selected or implemented.
 
 ## Repository structure
@@ -51,12 +56,17 @@ ARCHITECTURE.md                 Planned runtime architecture
 README.md / README.ru.md        English / Russian entry points
 docs/roadmap.md                 Preliminary stages and decision gates
 scripts/check_bootstrap.py      Offline repository validation and safe text fixes
-requirements-dev.txt           Pinned bootstrap-only dependency
-Makefile                       fix / check interface
+scripts/validate_registry.py    Bounded offline validator and reusable input API
+registry/applications/         Empty real registry; one manifest per application
+policy/admission.yaml           Empty reviewed allowlist
+schemas/                       Versioned closed application/admission contracts
+tests/fixtures/                 Synthetic examples and hostile YAML inputs
+requirements-dev.txt           Pinned offline validation tools
+Makefile                       fix / validate / check interface
 ```
 
-Runtime directories/configuration are intentionally deferred to the stage that
-implements them; there are no deployable Compose or Caddy files.
+Compose generation and runtime configuration are deferred; there are no
+deployable Compose or Caddy files. Synthetic fixtures are not production manifests.
 
 ## Local development and checks
 
@@ -67,18 +77,22 @@ domains and production credentials are unnecessary. From the repository root:
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 make fix PYTHON=.venv/bin/python
+make validate PYTHON=.venv/bin/python
 make check PYTHON=.venv/bin/python
 ```
 
-Dependency provisioning may use the network; `make fix` and `make check` do not.
+Dependency provisioning may use the network; all Make targets run offline.
 `fix` normalizes line endings, final newlines and trailing whitespace in
 project-owned text, preserving vendored skills. `check` is read-only: it checks
 text conventions, YAML syntax/duplicate keys, standards-lock metadata, complete
 package-file inventory/frontmatter, local Markdown links/anchors and README
-structure/roadmap parity. Translation accuracy also needs human review; checks
-cannot prove semantic equivalence of languages. External URLs are not fetched.
+structure/roadmap parity, then validates the complete registry and runs pytest.
+`validate` checks only registry/admission. Negative YAML fixtures are excluded from
+bootstrap syntax parsing and covered by dedicated tests. Translation accuracy also
+needs human review; checks cannot prove language equivalence. External URLs are
+not fetched.
 
-No GitHub Actions workflow is installed at Stage 01; offline CI is Planned in
+No GitHub Actions workflow is installed through Stage 02; offline CI is Planned in
 Stage 08. No `verify`, `ci` or deployment targets exist yet. Passing these checks
 does not demonstrate live Docker, HTTPS, reconciliation or rollback.
 
@@ -111,8 +125,8 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 
 | Stage | Scope | Status |
 | --- | --- | --- |
-| Stage 01 | Project Bootstrap | Implemented in this branch; review pending |
-| Stage 02 | Service Registry & Manifest Validation | Planned |
+| Stage 01 | Project Bootstrap | Implemented; PR #1 merged |
+| Stage 02 | Service Registry & Manifest Validation | Implemented offline; review pending |
 | Stage 03 | Desired State & Reconciliation Planning | Planned |
 | Stage 04 | Caddy Gateway Foundation | Planned |
 | Stage 05 | Docker Deployment Engine | Planned |
@@ -121,10 +135,10 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
 
-Before Stage 02 review schema/contract versioning, image-producer and domain
-admission, OCI digest/platform policy, required fields, negative fixtures and
-validator-tooling rationale. Controller runtime, production trigger/source,
-secret storage and journal/recovery details require later explicit decisions.
+Stage 02 uses Python for offline tooling without selecting a controller runtime.
+Real ProjectRouter registration requires a confirmed digest; no production
+hostname is invented. Controller execution, production trigger/source, secret
+delivery and journal/recovery details require later explicit decisions.
 
 ## Security, limitations and licensing
 

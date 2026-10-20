@@ -2,12 +2,13 @@
 
 ## Status and scope
 
-Stage 01 — Project Bootstrap provides local development standards, documentation
-and offline repository checks. All runtime components below are **Planned**.
-There is no running controller, service registry, Caddy configuration, Compose
-stack or production deployment in this repository. No VPS integration has been
-performed or verified. This document defines design constraints for review, not
-an implemented API or manifest schema.
+Stages 01–02 provide local development standards, documentation, a versioned
+application registry, admission policy and a bounded offline validator. Runtime
+components remain **Planned**: no controller, Caddy configuration, Compose stack
+or production deployment exists here. The real registry and admission allowlist
+are empty; examples exist only as synthetic test fixtures. No VPS integration
+has been performed or verified. The implemented contract is described in
+[manifest v1](docs/manifest-v1.md).
 
 The target is a small, auditable single-Ubuntu-VPS Docker Compose platform. Docker
 Compose, GHCR, Git and Caddy are selected target technologies. Controller language,
@@ -20,9 +21,10 @@ Kubernetes and a controller database have no established requirement.
 | Owner / component | Responsibility | Status |
 | --- | --- | --- |
 | [Portfolio Server Infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure) | Ubuntu VPS, SSH/users/access policy, Docker Engine, system baseline, firewall and host security | External ownership; integration Planned; operation not verified here |
-| Service registry | Approved service identities, domain ownership, runtime contracts, persistence and network declarations | Planned |
-| Desired state | Versioned per-service manifests selecting exact image digests and configuration references | Planned |
-| Validator and planner | Admission checks; deterministic desired/actual comparison; reviewable mutation plan | Planned |
+| Service registry | Approved application identities, versioned multi-component contracts, references and storage declarations | Implemented offline; empty real registry |
+| Desired state | Per-application manifests selecting component digests and references | Contract implemented; planning remains Planned |
+| Validator | Bounded YAML, closed schemas, semantic/global checks and separate admission policy | Implemented offline |
+| Planner | Deterministic desired/actual comparison and reviewable mutation plan | Planned |
 | Reconciler and Compose executor | Serialized, scoped image pulls and container updates; bounded health gates | Planned |
 | Caddy gateway | Shared public HTTP(S), canonical routes, configuration validation/hot reload, certificate state | Planned |
 | State/result journal | Attempted and last known-good revisions, observed outcomes and recovery evidence | Planned |
@@ -82,26 +84,36 @@ Git approval, green CI, production-source eligibility and operator authorization
 are separate gates. The future production source/release policy must be decided
 before activation; an arbitrary task branch must not be deployed.
 
-## Service registration contract — Planned
+## Application registration contract — Implemented offline
 
-Stage 02 will decide exact schema/serialization and validation rules. Candidate
-contract fields include schema version, unique service ID, owning repository,
-allowed GHCR image repository, immutable SHA-256 digest, platform, internal
-protocol/port, readiness endpoint and timing limits, approved domains/routes,
-environment/secret references, networks, volumes and persistence/migration policy.
-These are requirements for design, not sample deployable manifests.
+One application = one manifest = one future independent Compose project. Each
+component has one immutable GHCR image, explicit `linux/amd64` platform and an
+HTTP readiness or worker image-healthcheck declaration. Each component will map
+to one Compose service, without replica management in v1. Applications have at
+most one public HTTP ingress; frontend-to-backend routing belongs to application
+source. Internal applications may omit ingress entirely.
 
-Admission must reject duplicate identities/domains, unsafe host/path syntax,
-out-of-range ports, ambiguous routes, mutable image references, forbidden image
-origins and privileged runtime requests. Use structured rendering rather than
-shell interpolation of manifest values. Apply size/count limits to untrusted
-inputs; distinguish syntax validity from authorized ownership.
+`registry/applications/<id>.yaml` uses `portfolio.deployment/v1`, `Application`.
+[Application schema](schemas/application-v1.schema.json) and
+[admission schema](schemas/admission-v1.schema.json) reject unknown fields.
+[policy/admission.yaml](policy/admission.yaml) independently approves application
+IDs, source repositories, per-component GHCR repositories, hostnames and platforms.
+Policy changes require security review; branch/approver enforcement is deferred.
 
-Registration requires an available compatible image, documented health behavior,
-approved domain ownership and externally provisioned configuration/secrets.
-Registration, version update, route change, disable and permanent removal are
-different operations. Decommissioning requires a reviewed procedure; omission
-from desired state must not silently delete volumes or unrelated resources.
+`scripts/validate_registry.py` bounds files/bytes/YAML depth/nodes, rejects unsafe
+YAML constructs, validates version/structure, checks references, dependency cycles,
+volume declarations and global IDs/hostnames/proxy aliases, then applies admission.
+Its pure `validate_registry(root)` API returns validated documents or deterministic
+errors; no writes, network, Docker, secret resolution or partial trusted result.
+Python is offline tooling, not a decision about the deployment-controller runtime.
+See [manifest v1](docs/manifest-v1.md) for fields, limits, examples and the API.
+
+Real registration still needs a confirmed compatible image and reviewed runtime
+contract. OCI manifest/index existence, provenance and platform contents are not
+verified offline. Config/secrets are symbolic references, never values. Named
+volumes are declared and used explicitly; host mounts and runtime overrides are
+forbidden. Omission or `enabled: false` authorizes no stop or data deletion.
+Lifecycle, rendering, execution and reconciliation remain future stages.
 
 ## Desired state, observations and journal — Planned
 
@@ -129,8 +141,9 @@ Use `ghcr.io/<owner>/<image>@sha256:<64-hex-digest>` for execution and recovery.
 Do not resolve `latest` during rollout or silently substitute a moving tag.
 Keep Git revision, digest and runtime configuration revision discoverable together.
 Verify that the digest is accessible from the target host and compatible with its
-platform. Decide whether manifests pin an OCI index or platform-specific image;
-multi-platform identity and provenance verification remain review decisions.
+platform. The v1 contract permits either an OCI index or platform-specific manifest digest
+with explicit target platform. Index contents and provenance verification remain
+future deployment preflight requirements.
 
 A digest fixes content identity; it does not prove the artifact is trustworthy,
 vulnerability-free, available indefinitely or compatible with stored data.
@@ -227,13 +240,14 @@ journal is neither a backup nor a disaster-recovery system.
 
 **Implemented:** `make fix` and `make check` validate repository text, local links,
 YAML and installed standards without network, Docker or secrets. Python is only
-development tooling. Dependencies are provisioned separately; clean setup may
-download PyYAML. External URLs are not contacted by checks.
+offline tooling. `make validate` checks the registry, and `make check` additionally
+runs the Stage 02 pytest suite. Dependencies are provisioned separately; clean
+setup may download PyYAML, jsonschema and pytest. External URLs are not contacted by checks.
 
 **Planned offline CI (Stage 08):** use the same Makefile interface, pinned tools,
 read-only checks and least-privilege permissions. No SSH, production endpoints,
 DNS or production credentials. GitHub-hosted tool/source provisioning is distinct
-from offline test execution. No workflow is installed at Stage 01.
+from offline test execution. No workflow is installed through Stage 02.
 
 **Planned local E2E (Stage 07):** disposable Compose projects, mock upstreams and
 isolated local gateway tests; verify no-op, unsafe input rejection, failed health,
@@ -244,8 +258,9 @@ is separate from offline unit/fixture CI.
 artifact, DNS/TLS, health and recovery checks. CI success alone does not authorize
 production mutations. Never present local results as live acceptance evidence.
 
-See the preliminary [roadmap](docs/roadmap.md). Stages 02–09 have not started.
-Before Stage 02, review schema/contract ownership, image/digest policy, exposure
-and admission rules, fixtures and rejection criteria. Decide the validator tooling
-with an explicit rationale; defer execution runtime choice until its requirements
-are established. See [development instructions](AGENTS.md) for workflow boundaries.
+See the preliminary [roadmap](docs/roadmap.md). Stages 01–02 are implemented
+offline; Stages 03–09 remain Planned. The Stage 03 planner can consume the validated
+registry API, but must define desired/observed models and planning semantics
+separately. Execution runtime, production trigger/source, configuration delivery
+and journal/recovery decisions remain open. See
+[development instructions](AGENTS.md) for workflow boundaries.
