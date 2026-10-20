@@ -81,6 +81,33 @@ run recovery-required; component readiness alone never updates last-known-good.
 Run acceptance and every component LKG pointer update occur in one transaction.
 Partial deployment and verified rollback are not release success.
 
+A fully restored application can instead finish the **run** as `recovered`.
+This is terminal for `Journal.incomplete()` but never sets `releaseSuccess` or
+promotes LKG. Component execution results still describe the failed attempt
+(including `rolled-back-verified` and skipped operations); that result alone does
+not prove run recovery. Only the journal's committed `recovered` status does.
+
+Completion is restricted to the current uninterrupted attempt with at least one
+`rolled-back-verified` component. The entire intent set must match the preceding
+accepted application's component set, previous images and runtime/scope identity.
+Other components must be untouched prepared intents or successful baseline no-ops;
+a component still running a newly deployed image prevents completion. The lifecycle
+reconstructs the whole prior LKG application, then obtains fresh ownership, exact
+image/effective-runtime and bounded readiness verification for every component,
+including skipped components and dependencies. A final coherent composite round
+must corroborate all pinned container identities and required gateway/upstream/path
+checks. Missing or conflicting evidence leaves the run blocked.
+
+`Journal.recover()` is the internal persistence step after these trusted lifecycle
+checks, under the existing host lease. One `BEGIN IMMEDIATE` transaction verifies
+SQLite integrity/foreign keys and journal/event/LKG consistency, rechecks the full
+baseline, writes each component's `recovered-verified` / `recovery-verified` event
+with fresh readiness counters, and changes the run to `recovered`. It validates
+the resulting records before commit and never writes `good`. Original target
+images and all earlier events remain. On reopening, recovered history is checked
+against its preceding accepted run, even after a later deployment advances LKG.
+The table schema remains v1; older readers reject the new closed states.
+
 Known Compose errors can still leave partial changes. Unknown outcomes trigger
 rediscovery and require recovery analysis; the executor never replays that
 mutation. Later components remain blocked. Unattempted components retain prepared
@@ -156,6 +183,11 @@ stopped/unidentifiable target is conservatively escalated, not guessed at.
 Persistent, configuration, storage and migration recovery require a separate
 policy and data/backup procedure. Restoring one component does not restore an
 entire partially updated application. LKG remains the previous accepted run.
+Only the full in-process recovery acceptance described above can unblock the next
+deployment; successful component rollback alone cannot. Unknown outcomes, crashes,
+partial restoration, failed readiness/gateway checks and missing complete trusted
+sources remain blocked. Existing recovery-required runs are not retroactively
+closed. There is no replay/resume, journal deletion or operator reset mechanism.
 
 ## Crash recovery and complete observations
 
@@ -187,6 +219,10 @@ a sampling round; they cannot authenticate a forged fixture. There is no real
 reader in Stage 06. Docker-only `LocalStateProvider` remains incomplete/untrusted;
 SQLite is never an observation source. Missing real gateway/runtime observations
 therefore keep ordinary live execution blocked.
+They also prevent live confirmation of `recovered`: the new terminal path is
+exercised only through trusted offline fakes until real providers are separately
+implemented and accepted. A journal or rollback command exit code cannot supply
+the missing evidence.
 
 ## Validation and remaining stages
 

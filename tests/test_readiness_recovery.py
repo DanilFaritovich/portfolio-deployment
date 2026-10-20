@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 
 from scripts.composite_state import CompositeSample, CompositeStateProvider, SourceEvidence
+from scripts.compose import LABEL
 from scripts.deployment import execute, host_lock, LockLease
 from scripts.deployment_journal import Intent, Journal, JournalError, locked_journal
 from scripts.deployment_lifecycle import DeploymentLifecycle, analyze_recovery, plan_rollback, runtime_identity
@@ -358,6 +359,165 @@ def test_stateless_rollback(worker, tmp_path, failure):
     assert not results[0].release_success
     with locked_journal(tmp_path / "j", lock_directory=tmp_path / "l") as j:
         assert j.last_good(worker.id, "worker")["target"] == old
+        if failure is None:
+            assert not j.incomplete()
+            recovered = [r for r in j.rows() if r["run_status"] == "recovered"]
+            assert len(recovered) == 1 and recovered[0]["state"] == "recovered-verified"
+        else:
+            assert j.incomplete()
+    if failure is None:
+        # Opening the journal validates recovered history; a new deployment can
+        # advance LKG without invalidating that historical restoration.
+        results, _, lifecycle = run(world, tmp_path)
+        assert results[0].release_success
+        with locked_journal(tmp_path / "j", lock_directory=tmp_path / "l") as j:
+            assert not j.incomplete()
+            assert j.last_good(worker.id, "worker")["run"] == lifecycle.run_id
+    else:
+        with pytest.raises(JournalError, match="unfinished"):
+            run(world, tmp_path)
+
+
+@pytest.mark.parametrize("failure", [None, "readiness", "ownership", "incomplete", "replacement", "late-replacement", "gateway", "late-gateway", "partial", "crash"])
+def test_whole_application_recovery(root, tmp_path, monkeypatch, failure):
+    put(root, "project-router")
+    app = build_desired_state(root, SHA).applications[0]
+    spec = app.spec
+    # Three independent components exercise an accepted no-op, rollback and
+    # unattempted prepared intent. None may escape the final baseline checks.
+    first = spec["components"][0]
+    spec["components"] = [dict(first, name=n, dependsOn=[]) for n in ("alpha", "middle", "omega")]
+    spec["ingress"]["component"] = "alpha"
+    for c in spec["components"]:
+        c["proxyNetwork"] = c["name"] == "alpha"
+    app = replace(app, spec_json=encode(spec))
+    world = World(app, present=True)
+    accepted, _, baseline = run(world, tmp_path)
+    assert all(r.release_success for r in accepted)
+    old = first["image"]
+    spec = app.spec
+    spec["components"][1]["image"] = old.split("@")[0] + "@sha256:" + "b" * 64
+    if failure == "partial":
+        spec["components"][0]["image"] = old.split("@")[0] + "@sha256:" + "c" * 64
+    world.app = replace(app, spec_json=encode(spec))
+    world.desired = DesiredState("b" * 40, (world.app,))
+    world.extra_images = (image(old),)
+    class TargetFails(Probes):
+        def probe(self, component, *args, **kwargs):
+            unhealthy = component["name"] == "middle" and component["image"] != old
+            return ProbeResult(True, 503 if unhealthy else 200)
+    probes = TargetFails()
+    class ScopedAdapter(FakeAdapter):
+        def up(self, artifact, service):
+            self.calls.append((artifact.project, service))
+            actual = world.actual.applications[0]
+            current = actual.spec
+            next(c for c in current["components"] if c["name"] == service)["image"] = artifact.model["services"][service]["image"]
+            world.actual = DesiredState(SHA, (replace(actual, spec_json=encode(current)),))
+    original = DeploymentLifecycle.complete
+    class Crash(BaseException):
+        pass
+    def finish(self, results):
+        assert results[1].status == "rolled-back-verified"
+        if failure == "crash":
+            raise Crash()
+        if failure == "readiness":
+            probes.results = [ProbeResult(True, 503)]
+            # TargetFails overrides the result list, so explicitly fail the
+            # untouched component only in final verification.
+            self.probes = Probes(fail_name="omega")
+        if failure == "gateway":
+            world.gateway = False
+        late = False
+        if failure in ("late-replacement", "late-gateway"):
+            class LateProbe(Probes):
+                def probe(self, component, *args, **kwargs):
+                    nonlocal late
+                    if component["name"] == "omega":
+                        late = True
+                        if failure == "late-gateway":
+                            world.gateway = False
+                    return ProbeResult(True, 200)
+            self.probes = LateProbe()
+        def corrupt(sample):
+            if failure == "incomplete":
+                return replace(sample, sources=sample.sources[:-1])
+            if failure in ("ownership", "replacement") or (failure == "late-replacement" and late):
+                resources = []
+                for r in sample.docker.resources:
+                    if r.kind == "container" and r.facts["labels"].get("com.docker.compose.service") == "alpha":
+                        if failure == "ownership":
+                            facts = r.facts
+                            facts["labels"][f"{LABEL}.application"] = "foreign"
+                            r = replace(r, facts_json=encode(facts))
+                        else:
+                            r = replace(r, identifier=r.identifier + ("-late" if late else str(world.calls)))
+                    resources.append(r)
+                return replace(sample, docker=replace(sample.docker, resources=tuple(resources)))
+            return sample
+        world.mutate_sample = corrupt
+        return original(self, results)
+    monkeypatch.setattr(DeploymentLifecycle, "complete", finish)
+    if failure == "crash":
+        with pytest.raises(Crash):
+            run(world, tmp_path, probes, adapter=ScopedAdapter(), side_effects_excluded=True)
+    else:
+        results, _, lifecycle = run(world, tmp_path, probes, adapter=ScopedAdapter(), side_effects_excluded=True)
+        assert not any(r.release_success for r in results)
+    with locked_journal(tmp_path / "j", lock_directory=tmp_path / "l") as j:
+        assert all(j.last_good(app.id, n)["run"] == baseline.run_id for n in ("alpha", "middle", "omega"))
+        if failure is None:
+            assert not j.incomplete()
+            rows = [r for r in j.rows() if r["run"] == lifecycle.run_id]
+            assert all(r["run_status"] == "recovered" and r["state"] == "recovered-verified" for r in rows)
+            assert j.db.execute("SELECT count(*) FROM events WHERE run=? AND reason='recovery-verified'", (lifecycle.run_id,)).fetchone()[0] == 3
+        else:
+            assert j.incomplete()
+    if failure:
+        monkeypatch.setattr(DeploymentLifecycle, "complete", original)
+        world.mutate_sample = lambda s: s
+        world.gateway = True
+        with pytest.raises(JournalError, match="unfinished"):
+            run(world, tmp_path)
+
+
+@pytest.mark.parametrize("fault", ["event-write", "integrity", "final-integrity"])
+def test_recovery_commit_is_atomic(worker, tmp_path, monkeypatch, fault):
+    world = World(worker)
+    _, _, baseline = run(world, tmp_path)
+    old = worker.spec["components"][0]["image"]
+    world.app = upgraded(worker)
+    world.desired = DesiredState("b" * 40, (world.app,))
+    world.extra_images = (image(old),)
+    class TargetFails(Probes):
+        def probe(self, component, *args, **kwargs):
+            return ProbeResult(True, health="healthy" if component["image"] == old else "unhealthy")
+    original = Journal.recover
+    def fail(self, run_id, evidence):
+        if fault == "event-write":
+            self.db.execute("CREATE TEMP TRIGGER injected BEFORE INSERT ON events WHEN NEW.state='recovered-verified' BEGIN SELECT RAISE(ABORT, 'injected'); END")
+        elif fault == "final-integrity":
+            self.db.execute("CREATE TEMP TRIGGER injected AFTER UPDATE ON runs WHEN NEW.status='recovered' BEGIN UPDATE events SET readiness='corrupt' WHERE run=NEW.id; END")
+        else:
+            self.db.execute("UPDATE events SET readiness='corrupt' WHERE run=? AND state='prepared'", (run_id,))
+        return original(self, run_id, evidence)
+    monkeypatch.setattr(Journal, "recover", fail)
+    with pytest.raises(JournalError):
+        run(world, tmp_path, TargetFails(), side_effects_excluded=True)
+    # Read durable state independently, including the deliberately corrupt case.
+    with sqlite3.connect(tmp_path / "j/journal.sqlite3") as db:
+        assert db.execute("SELECT run FROM good").fetchone()[0] == baseline.run_id
+        assert not db.execute("SELECT id FROM runs WHERE status='recovered'").fetchall()
+        assert not db.execute("SELECT run FROM events WHERE state='recovered-verified'").fetchall()
+    if fault != "integrity":
+        with locked_journal(tmp_path / "j", lock_directory=tmp_path / "l") as j:
+            assert j.incomplete()
+        with pytest.raises(JournalError, match="unfinished"):
+            run(world, tmp_path)
+    else:
+        with pytest.raises(JournalError):
+            with locked_journal(tmp_path / "j", lock_directory=tmp_path / "l"):
+                pass
 
 
 def test_persistent_and_changed_runtime_rollback_blocked(worker):

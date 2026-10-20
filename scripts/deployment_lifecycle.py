@@ -102,8 +102,8 @@ class DeploymentLifecycle:
     def _transition(self, name, state, reason, evidence=None):
         self.journal.transition(self.run_id, name, state, reason, evidence)
 
-    def _fresh_target(self, app, name):
-        d, observed, docker = self.provider.refresh()
+    def _fresh_target(self, app, name, *, snapshot=None):
+        d, observed, docker = self.provider.refresh() if snapshot is None else snapshot
         if d != self.desired:
             raise DockerError("desired-revision-or-content-changed")
         artifact = render_compose(app, test_session=self.adapter.test_session)
@@ -256,6 +256,38 @@ class DeploymentLifecycle:
                 code = error.code if isinstance(error, DockerError) and error.code in ("gateway-unverified", "readiness-failed") else "fresh-state-unavailable"
                 self.journal.fail_run(self.run_id, code)
                 return [replace(r, status="recovery-required", reasons=("release-verification-incomplete",)) for r in results]
+        if any(r.status == "rolled-back-verified" for r in results):
+            try:
+                good = self.journal.recovery_baseline(self.run_id)
+                spec = self.app.spec
+                if set(good) != {c["name"] for c in spec["components"]}:
+                    raise DockerError("runtime-unverified")
+                for c in spec["components"]:
+                    c["image"] = good[c["name"]]["target"]
+                old_app = replace(self.app, spec_json=encode(spec))
+                evidence, identities = {}, {}
+                for name in sorted(good):
+                    resource, _ = self._fresh_target(old_app, name)
+                    identities[name] = resource.identifier
+                    evidence[name] = self._verify(old_app, name)
+                    if evidence[name].status != "verified":
+                        raise DockerError("readiness-failed")
+                # One final coherent round must still corroborate EVERY pinned
+                # component and the gateway after all readiness probes finish.
+                snapshot = self.provider.refresh()
+                for name in sorted(good):
+                    resource, _ = self._fresh_target(old_app, name, snapshot=snapshot)
+                    if resource.identifier != identities[name]:
+                        raise DockerError("runtime-unverified")
+                if not self._gateway_verified():
+                    raise DockerError("gateway-unverified")
+            except Exception:
+                # Includes an absent/mismatched LKG or partial rollback. Never
+                # use component rollback evidence alone to clear the run.
+                self.journal.fail_run(self.run_id)
+                return results
+            self.journal.recover(self.run_id, evidence)
+            return results
         self.journal.fail_run(self.run_id)
         return results
 

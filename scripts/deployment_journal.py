@@ -22,18 +22,19 @@ class JournalError(RuntimeError):
 
 
 TRANSITIONS = {
-    "prepared": {"applying", "verifying", "recovery-required"},
+    "prepared": {"applying", "verifying", "recovery-required", "recovered-verified"},
     "applying": {"verifying", "failed", "outcome-unknown", "recovery-required"},
     "verifying": {"succeeded", "failed", "recovery-required"},
     "failed": {"rolling-back", "recovery-required"},
     "outcome-unknown": {"recovery-required"},
     "rolling-back": {"rolled-back-verified", "recovery-required"},
-    "succeeded": set(), "rolled-back-verified": set(), "recovery-required": set(),
+    "succeeded": {"recovered-verified"}, "rolled-back-verified": {"recovered-verified"},
+    "recovered-verified": set(), "recovery-required": set(),
 }
 REASONS = {"intent-recorded", "mutation-started", "mutation-completed", "mutation-failed",
            "mutation-outcome-unknown", "readiness-verified", "readiness-failed", "fresh-state-unavailable",
            "dependency-readiness-unverified", "gateway-unverified", "rollback-started", "rollback-verified",
-           "rollback-failed", "rollback-unsafe", "recovery-analysis-required", "runtime-unverified"}
+           "rollback-failed", "rollback-unsafe", "recovery-analysis-required", "runtime-unverified", "recovery-verified"}
 SCHEMA = (
     "CREATE TABLE runs (id TEXT PRIMARY KEY, application TEXT NOT NULL, revision TEXT NOT NULL, created REAL NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, updated REAL NOT NULL)",
     "CREATE TABLE attempts (run TEXT NOT NULL REFERENCES runs(id), component TEXT NOT NULL, previous TEXT, target TEXT NOT NULL, runtime TEXT NOT NULL, state TEXT NOT NULL, reason TEXT NOT NULL, readiness TEXT NOT NULL, probes INTEGER NOT NULL, consecutive INTEGER NOT NULL, updated REAL NOT NULL, PRIMARY KEY(run,component))",
@@ -184,12 +185,15 @@ class Journal:
                 not valid_intent(Intent(r["component"], r["previous"], r["target"], r["runtime"])) or
                 (type(r["updated"]) not in (int, float) or not math.isfinite(r["updated"])) or
                 r["run_reason"] not in REASONS or type(r["run_updated"]) not in (int, float) or not math.isfinite(r["run_updated"]) or
-                r["run_status"] not in ("active", "succeeded", "recovery-required") or
+                r["run_status"] not in ("active", "succeeded", "recovery-required", "recovered") or
                 (r["run_status"] == "succeeded" and r["state"] != "succeeded") or
+                ((r["run_status"] == "recovered") != (r["state"] == "recovered-verified")) or
+                ((r["run_status"] == "recovered") != (r["run_reason"] == "recovery-verified")) or
+                (r["run_status"] == "recovered" and r["run_updated"] != r["updated"]) or
                 r["state"] not in TRANSITIONS or r["reason"] not in REASONS or
                 r["readiness"] not in ("unknown", "running", "ready", "failed", "verified") or
                 type(r["probes"]) is not int or type(r["consecutive"]) is not int or not 0 <= r["consecutive"] <= r["probes"] <= 3001 or
-                (r["state"] in ("succeeded", "rolled-back-verified") and
+                (r["state"] in ("succeeded", "rolled-back-verified", "recovered-verified") and
                  (r["readiness"] != "verified" or r["consecutive"] < 2))):
                 raise JournalError("corrupt-journal-record")
             events = [dict(e) for e in self.db.execute("SELECT * FROM events WHERE run=? AND component=? ORDER BY sequence", (r["run"], r["component"]))]
@@ -200,12 +204,15 @@ class Journal:
                     e["reason"] not in REASONS or e["readiness"] not in ("unknown", "running", "ready", "failed", "verified") or
                     type(e["probes"]) is not int or type(e["consecutive"]) is not int or not 0 <= e["consecutive"] <= e["probes"] <= 3001 or
                     type(e["at"]) not in (int, float) or not math.isfinite(e["at"]) or
-                    (e["state"] in ("succeeded", "rolled-back-verified") and
+                    ((e["state"] == "recovered-verified") != (e["reason"] == "recovery-verified")) or
+                    (e["state"] in ("succeeded", "rolled-back-verified", "recovered-verified") and
                      (e["readiness"] != "verified" or e["consecutive"] < 2))):
                     raise JournalError("corrupt-journal-events")
                 state = e["state"]
             if not events or any(events[-1][k] != r[k] for k in ("state", "reason", "readiness", "probes", "consecutive")) or events[-1]["at"] != r["updated"]:
                 raise JournalError("incomplete-journal-record")
+        for run in {r["run"] for r in rows if r["run_status"] == "recovered"}:
+            self.recovery_baseline(run, completed=True)
         for good in self.db.execute("SELECT * FROM good"):
             run = [r for r in rows if r["run"] == good["run"]]
             if (not run or any(r["state"] != "succeeded" or r["run_status"] != "succeeded" for r in run) or
@@ -243,7 +250,7 @@ class Journal:
         self.db.execute("INSERT INTO events(run,component,state,reason,readiness,probes,consecutive,at) SELECT run,component,state,reason,readiness,probes,consecutive,updated FROM attempts WHERE run=? AND component=?", (run, component))
 
     def transition(self, run, component, state, reason, evidence=None):
-        if reason not in REASONS:
+        if reason not in REASONS or state == "recovered-verified" or reason == "recovery-verified":
             raise JournalError("invalid-journal-reason")
         with self.transaction():
             row = self.db.execute("SELECT * FROM attempts WHERE run=? AND component=?", (run, component)).fetchone()
@@ -273,6 +280,64 @@ class Journal:
         row = self.db.execute("SELECT attempts.*, runs.revision FROM good JOIN attempts ON good.run=attempts.run AND good.component=attempts.component JOIN runs ON runs.id=attempts.run WHERE good.application=? AND good.component=?", (application, component)).fetchone()
         return dict(row) if row else None
 
+    def recovery_baseline(self, run, *, completed=False):
+        """Require the entire preceding accepted application, never a mixed LKG.
+
+        Historical validation uses the preceding success, since later successful
+        deployments may legitimately advance the current good pointers.
+        """
+        self._locked()
+        rows = [r for r in self.rows() if r["run"] == run]
+        if not rows or any(r["run_status"] != ("recovered" if completed else "active") for r in rows):
+            raise JournalError("unverified-recovery")
+        baseline = self.db.execute("SELECT id FROM runs WHERE application=? AND status='succeeded' AND rowid < (SELECT rowid FROM runs WHERE id=?) ORDER BY rowid DESC LIMIT 1",
+                                   (rows[0]["application"], run)).fetchone()
+        good = {r["component"]: r for r in self.rows() if baseline and r["run"] == baseline[0]}
+        if set(good) != {r["component"] for r in rows}:
+            raise JournalError("incomplete-recovery-baseline")
+        restored = False
+        for r in rows:
+            events = self.db.execute("SELECT state FROM events WHERE run=? AND component=? ORDER BY sequence", (run, r["component"])).fetchall()
+            state = events[-2][0] if completed and len(events) >= 2 else r["state"]
+            g = good[r["component"]]
+            if (state not in ("prepared", "succeeded", "rolled-back-verified") or
+                r["previous"] != g["target"] or r["runtime"] != g["runtime"] or
+                (state == "succeeded" and r["target"] != g["target"]) or
+                (state == "rolled-back-verified" and r["target"] == g["target"])):
+                raise JournalError("unverified-recovery")
+            restored |= state == "rolled-back-verified"
+            if not completed and self.last_good(r["application"], r["component"])["run"] != baseline[0]:
+                raise JournalError("recovery-baseline-changed")
+        if not restored:
+            raise JournalError("unverified-recovery")
+        return good
+
+    def recover(self, run, evidence):
+        """Close an in-process verified restoration without accepting its target.
+
+        The trusted lifecycle supplies fresh whole-app runtime/ownership/gateway
+        checks and readiness, under the same host lease. No post-crash API.
+        """
+        with self.transaction():
+            if [r[0] for r in self.db.execute("PRAGMA quick_check")] != ["ok"]:
+                raise JournalError("corrupt-journal")
+            if self.db.execute("PRAGMA foreign_key_check").fetchone() is not None:
+                raise JournalError("corrupt-journal")
+            self.validate()
+            good = self.recovery_baseline(run)
+            if set(evidence) != set(good) or any(
+                e.status != "verified" or type(e.probes) is not int or type(e.consecutive) is not int or
+                not 2 <= e.consecutive <= e.probes <= 3001 for e in evidence.values()
+            ):
+                raise JournalError("invalid-readiness-evidence")
+            now = time.time()
+            for name, e in evidence.items():
+                self.db.execute("UPDATE attempts SET state='recovered-verified',reason='recovery-verified',readiness=?,probes=?,consecutive=?,updated=? WHERE run=? AND component=?",
+                                (e.status, e.probes, e.consecutive, now, run, name))
+                self._event(run, name)
+            self.db.execute("UPDATE runs SET status='recovered',reason='recovery-verified',updated=? WHERE id=?", (now, run))
+            self.validate()
+
     def fail_run(self, run, reason="recovery-analysis-required"):
         if reason not in REASONS:
             raise JournalError("invalid-journal-reason")
@@ -280,7 +345,7 @@ class Journal:
             self.db.execute("UPDATE runs SET status='recovery-required',reason=?,updated=? WHERE id=? AND status='active'", (reason, time.time(), run))
 
     def incomplete(self):
-        return [r for r in self.rows() if r["run_status"] != "succeeded"]
+        return [r for r in self.rows() if r["run_status"] not in ("succeeded", "recovered")]
 
 
 @contextmanager

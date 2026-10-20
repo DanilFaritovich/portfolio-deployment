@@ -344,6 +344,16 @@ composite discovery → pinned bounded readiness → rediscovery → component s
 The application remains active until final component and required gateway checks
 pass; only then do run success and all LKG pointers commit atomically. Partial
 rollout or verified rollback does not imply release success.
+An uninterrupted attempt may instead commit terminal run `recovered`, with fresh
+`recovered-verified` component events, only after the whole application is verified
+against its preceding LKG: exact images/runtime, ownership, bounded readiness and
+a final coherent round corroborating every pinned container and required gateway
+checks. This SQLite transaction checks integrity and record consistency, preserves
+all previous LKG pointers and failed-target history, and allows a subsequent run
+without declaring the failed deployment successful. Partial rollback, unknown
+outcomes, crashes and missing evidence still block; no replay/resume or journal
+clearing is provided. Real composite providers remain absent, so live recovery
+confirmation remains closed.
 
 The SQLite database and sidecars use private owned directories/files, NOFOLLOW
 path walking, exact versioned schema/integrity/record validation, bounded metadata,
