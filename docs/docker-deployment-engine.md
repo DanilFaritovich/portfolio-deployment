@@ -8,6 +8,10 @@ mutation entry point is the separately authorized disposable local smoke harness
 No live smoke, VPS operation, gateway activation or production deployment was
 performed during implementation. Stage 04 PR #4 is merged into `develop`.
 
+Stage 05 PR #5 is merged into `develop`. This document describes the foundation
+without lifecycle hooks. [Stage 06](readiness-recovery.md) extends the same executor
+with offline readiness, SQLite/LKG and constrained recovery; production remains blocked.
+
 ## Modules and interfaces
 
 | Module | Contract |

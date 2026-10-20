@@ -1,7 +1,7 @@
 """Serialized, scoped execution. Stage 03 is a diff, never authorization."""
 
 from dataclasses import dataclass
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import fcntl
 import json
 import os
@@ -33,6 +33,8 @@ class ExecutionResult:
     reasons: tuple[str, ...]
     resources: tuple[str, ...] = ()
     next_checks: tuple[str, ...] = ()
+    readiness_verified: bool = False
+    release_success: bool = False
 
     @property
     def document(self):
@@ -40,7 +42,12 @@ class ExecutionResult:
         return {"application": o.application, "component": o.component, "gitRevision": o.git_revision,
                 "image": o.image, "action": o.action, "status": self.status, "reasons": list(self.reasons),
                 "resources": list(self.resources), "requiredNextChecks": list(self.next_checks),
-                "readinessVerified": False, "releaseSuccess": False}
+                "readinessVerified": self.readiness_verified, "releaseSuccess": self.release_success}
+
+
+@dataclass
+class LockLease:
+    active: bool = True
 
 
 @contextmanager
@@ -59,7 +66,8 @@ def host_lock(directory="/tmp/portfolio-deployment-locks"):
             raise DockerError("unsafe-lock-directory")
         fd = os.open(path / "host.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1:
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or
+            info.st_nlink != 1 or info.st_mode & 0o077):
             raise DockerError("unsafe-lock-file")
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -71,9 +79,11 @@ def host_lock(directory="/tmp/portfolio-deployment-locks"):
         if isinstance(error, DockerError):
             raise
         raise DockerError("host-lock-unavailable") from None
+    lease = LockLease()
     try:
-        yield
+        yield lease
     finally:
+        lease.active = False
         os.close(fd)
 
 
@@ -176,7 +186,7 @@ def deployment_preview(desired, observed, plan, application):
     return tuple(operations)
 
 
-def execute(desired, observed, plan, application, adapter, provider, *, lock_directory="/tmp/portfolio-deployment-locks"):
+def execute(desired, observed, plan, application, adapter, provider, *, lock_directory="/tmp/portfolio-deployment-locks", lifecycle=None):
     """Provider refresh() -> (admitted desired, full observed, DockerObservation).
 
     Local live provider cannot supply complete Stage 03 evidence yet. Offline fake
@@ -187,7 +197,9 @@ def execute(desired, observed, plan, application, adapter, provider, *, lock_dir
     def all_blocked(code):
         return tuple(ExecutionResult(o, "blocked", (code,)) for o in operations)
     try:
-        with host_lock(lock_directory):
+        with host_lock(lock_directory) as lease, ExitStack() as stack:
+            if lifecycle is not None:
+                stack.enter_context(lifecycle.open(lease, adapter, provider))
             fresh_desired, fresh_observed, docker = provider.refresh()
             if fresh_desired != desired:
                 return all_blocked("desired-revision-or-content-changed")
@@ -235,6 +247,8 @@ def execute(desired, observed, plan, application, adapter, provider, *, lock_dir
                     current.facts["labels"].get(f"{LABEL}.runtime") != digest(c) or
                     not container_runtime(current, old_artifact, o.component, image)):
                     return all_blocked("effective-runtime-not-established")
+            if lifecycle is not None:
+                lifecycle.prepare(desired, app, operations, plan)
             results, stopped = [], False
             for o in operations:
                 component = next(c for c in app.spec["components"] if c["name"] == o.component)
@@ -243,11 +257,21 @@ def execute(desired, observed, plan, application, adapter, provider, *, lock_dir
                     continue
                 # Dependencies must already be observed healthy; just started is insufficient.
                 dependencies = [containers.get(name) for name in component["dependsOn"]]
-                if any(r is None or r.facts["state"].get("Status") != "running" or
-                       r.facts["state"].get("Health", {}).get("Status") != "healthy" for r in dependencies):
+                dependency_blocked = (not lifecycle.dependencies_ready(component) if lifecycle is not None else
+                    any(r is None or r.facts["state"].get("Status") != "running" or
+                        r.facts["state"].get("Health", {}).get("Status") != "healthy" for r in dependencies))
+                if dependency_blocked:
                     results.append(ExecutionResult(o, "blocked", ("dependency-readiness-unverified",),
                                                    next_checks=("fresh-discovery", "dependency-readiness")))
+                    if lifecycle is not None:
+                        lifecycle.block(o.component, "dependency-readiness-unverified")
                     stopped = True
+                    continue
+                if lifecycle is not None:
+                    # The Stage 06 hook journals intent and delegates the same scoped adapter.up.
+                    result = lifecycle.step(o, artifact)
+                    results.append(result)
+                    stopped = result.status != "succeeded"
                     continue
                 if o.action == "no-op":
                     results.append(ExecutionResult(o, "no-op", ("effective-runtime-matches",)))
@@ -264,6 +288,8 @@ def execute(desired, observed, plan, application, adapter, provider, *, lock_dir
                     results.append(ExecutionResult(o, "unknown", ("adapter-outcome-unavailable",),
                                                    (f"{artifact.project}/{o.component}",), ("fresh-discovery",)))
                     stopped = True
+            if lifecycle is not None:
+                results = lifecycle.complete(results)
             return tuple(results)
     except DockerError as error:
         return all_blocked(error.code)

@@ -13,3 +13,9 @@ coverage/
 .coverage
 *.log
 .pytest_cache/
+
+# Private controller journal and SQLite sidecars
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*

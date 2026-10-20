@@ -3,10 +3,12 @@
 [English version](README.md)
 
 Централизованная платформа Docker/GitOps-деплоя независимо собираемых портфолио-
-приложений на одном Ubuntu VPS. **Текущее состояние: Stage 05 — Docker Deployment Engine foundation.**
+приложений на одном Ubuntu VPS. **Текущее состояние: Stage 06 — Readiness, Journal & Recovery (офлайн).**
 Реализованы registry/admission, offline-планирование и retained Caddy previews;
-PR #4 Stage 04 смержен в `develop`. Stage 05 добавляет детерминированный Compose,
+PR #4 Stage 04 и PR #5 Stage 05 смержены в `develop`. Stage 05 добавляет детерминированный Compose,
 ограниченный Docker discovery, preflight, lock и адресный executor с offline mocks.
+Stage 06 добавляет bounded readiness, SQLite journal/LKG, ограниченный rollback
+и анализ crash recovery в существующий executor.
 Production-деплой остаётся **Planned**: Docker не даёт полный registry/gateway
 snapshot Stage 03. Production apply интерфейса нет. Реальный реестр/admission
 allowlist пуст; локальный smoke не запускался.
@@ -15,14 +17,16 @@ allowlist пуст; локальный smoke не запускался.
 
 Целевая цепочка: CI приложения → immutable-образ в GHCR → утверждённое desired
 state в Git → reconciliation → Docker Compose → проверка готовности → маршрутизация
-Caddy. Production integration, readiness, recovery и активация gateway — **Planned**.
+Caddy. Реальная production integration и активация gateway — **Planned**; readiness
+и recovery реализованы с offline interfaces и fake transports.
 
 - [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure)
   отвечает за Ubuntu, SSH/пользователей, Docker Engine и безопасность хоста.
 - **Portfolio Deployment** реализует контракт реестра, офлайн-admission и
   планирование по явному snapshot, детерминированный Compose и ограниченный
   execution foundation. Следующие этапы добавят полную runtime-интеграцию,
-  домены/HTTPS, readiness и постоянную историю результатов деплоя.
+  домены/HTTPS и реальные observation/transport adapters. Readiness и постоянная
+  история результатов реализованы офлайн в Stage 06.
 - Прикладные репозитории, например
   [project-router](https://github.com/DanilFaritovich/project-router), отвечают за
   исходный код, тесты/CI, сборку и публикацию образов в GHCR и предоставляют
@@ -50,13 +54,18 @@ host flock и адресное выполнение компонентов. Не
 storage changes, неизвестные/чужие ресурсы и недоказанный image mapping блокируют
 выполнение. Docker-only discovery намеренно возвращает неполный snapshot Stage 03.
 
-**Planned:** production rollouts, полное live reconciliation, общий Caddy HTTPS,
-readiness, last-known-good state и восстановление. Zero-downtime не обещается.
+[Stage 06](docs/readiness-recovery.md) добавляет bounded HTTP/worker readiness,
+приватный SQLite intent/events, atomic application last-known-good, ограниченный
+stateless image rollback, анализ crash recovery и composite observation contracts.
+Реальные probes/readers и авторизация mutations после рестарта отложены.
+
+**Planned:** production rollouts, полное live reconciliation и общий Caddy HTTPS.
+Zero-downtime не обещается.
 
 Целевые технологии: Git, Docker Engine/Compose, GHCR и Caddy. Для Stage 05 выбран
-Python CLI с повторным использованием PyYAML/jsonschema и pytest. Daemon, база
-данных и Kubernetes не реализованы. Формат журнала и защищённые production
-source/trigger остаются открытыми решениями.
+Python CLI с повторным использованием PyYAML/jsonschema и pytest. Журнал использует
+SQLite стандартной библиотеки; сервер БД, daemon и Kubernetes не реализованы.
+Защищённые production source/trigger остаются открытыми решениями.
 
 ## Структура репозитория
 
@@ -65,7 +74,7 @@ source/trigger остаются открытыми решениями.
 .codex-standards.lock.yaml      Ревизия upstream, профиль и состав пакетов
 .editorconfig / .gitignore     Формат текста и исключения локальных файлов/секретов
 AGENTS.md                      Workflow Codex и границы разрешённых операций
-ARCHITECTURE.md                 Планируемая runtime-архитектура
+ARCHITECTURE.md                 Архитектура и runtime-границы
 README.md / README.ru.md        Английская / русская точки входа
 docs/roadmap.md                 Предварительные этапы и границы решений
 scripts/check_bootstrap.py      Offline-проверки и безопасная нормализация текста
@@ -81,6 +90,10 @@ scripts/deployment.py           Preflight, host flock, адресные operatio
 scripts/docker_adapter.py       Ограниченный локальный adapter и offline mock
 scripts/docker_discovery.py     Docker-only observations, неполный registry provider
 scripts/deployment_cli.py       Offline Compose и deployment previews
+scripts/readiness.py            Bounded probe interfaces, без реального transport
+scripts/composite_state.py      Контракт полных observation sources
+scripts/deployment_journal.py   Приватный versioned SQLite intent/events/LKG
+scripts/deployment_lifecycle.py Readiness, ограниченный rollback и recovery analysis
 scripts/local_docker_smoke.py   Отдельный opt-in disposable test lifecycle
 registry/applications/         Пустой реальный реестр; один manifest на приложение
 policy/admission.yaml           Пустой allowlist для отдельного review
@@ -172,7 +185,7 @@ SMOKE_AUTHORIZE=disposable-local-docker. `check` никогда его не вы
 Успех Compose — `applied-unverified`; timeout/disconnect — `unknown` с обязательным
 fresh discovery. Readiness и release success остаются неподтверждёнными.
 
-GitHub Actions до Stage 05 включительно не настроен; CI — Planned в Stage 08.
+GitHub Actions до Stage 06 включительно не настроен; CI — Planned в Stage 08.
 Targets `verify`, `ci`, deploy и production apply отсутствуют. Успешные offline
 проверки не доказывают live Docker, HTTPS, reconciliation или rollback.
 
@@ -210,8 +223,8 @@ references; читать references нужно только для текуще�
 | Stage 02 | Service Registry & Manifest Validation | Implemented offline; PR #2 merged |
 | Stage 03 | Desired State & Reconciliation Planning | Implemented offline; PR #3 merged |
 | Stage 04 | Caddy Gateway Foundation | Implemented offline; PR #4 merged into develop |
-| Stage 05 | Docker Deployment Engine | Implemented foundation; smoke not-performed; production apply blocked |
-| Stage 06 | Health Checks, Rollback & Recovery | Planned |
+| Stage 05 | Docker Deployment Engine | Implemented foundation; PR #5 merged; smoke not-performed; production apply blocked |
+| Stage 06 | Readiness, Journal & Recovery | Implemented offline; SQLite/LKG, constrained rollback, analysis-only recovery; real integration pending |
 | Stage 07 | Local E2E & Integration Testing | Planned |
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
@@ -222,9 +235,16 @@ rollback, journal и recovery; Stage 07 расширяет изолирован�
 observations, защищённый production source, доставка конфигурации и index mapping
 требуют review до production-выполнения.
 
+SQLite durability зависит от надёжного локального storage/fsync. Журнал не заменяет
+live state или backup. Незавершённые runs блокируют новые journaled operations;
+crash analysis не повторяет mutations и не снимает неопределённость. Для production
+ещё нужны полные реальные Docker/gateway/runtime observations, защищённый source
+и authorization contract, доставка конфигурации, artifact retention, backup/recovery
+ownership и live acceptance. См. [ограничения и API Stage 06](docs/readiness-recovery.md).
+
 ## Безопасность, ограничения и лицензирование
 
-Stage 05 разрешает только отдельно авторизованный disposable local Docker smoke;
+Stages 05–06 разрешают только отдельно авторизованный disposable local Docker smoke;
 запрещены VPS/SSH, production Ansible и контейнеры, активация Caddy, изменения DNS/доменов, production-секреты,
 автоматический деплой, изменения других репозиториев, merge и release tags.
 Будущие production-работы требуют отдельного разрешения. PR-проверки не должны
