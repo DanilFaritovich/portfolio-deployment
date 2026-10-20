@@ -1,0 +1,16 @@
+apiVersion: portfolio.deployment/v1
+kind: Application
+metadata:
+  id: internal-jobs
+  sourceRepository: fixtures/internal-jobs
+spec:
+  enabled: true
+  components:
+  - name: worker
+    image: ghcr.io/fixtures/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    platform: linux/amd64
+    type: worker
+    health:
+      strategy: imageHealthcheck
+  storage:
+    type: stateless

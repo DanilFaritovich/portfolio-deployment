@@ -19,8 +19,8 @@ REQUIRED = {
     "github-actions", "continuous-delivery", "caddy-gateway", "gitops-deployment",
     "documentation", "licensing",
 }
-EXCLUDED = {".git", ".venv", "__pycache__", ".aws", ".codex"}
-TEXT_SUFFIXES = {".md", ".yaml", ".yml", ".py", ".txt"}
+EXCLUDED = {".git", ".venv", "__pycache__", ".aws", ".codex", ".pytest_cache"}
+TEXT_SUFFIXES = {".md", ".yaml", ".yml", ".py", ".txt", ".json"}
 TEXT_NAMES = {"Makefile", ".gitignore", ".editorconfig"}
 
 
@@ -175,7 +175,7 @@ def main():
             content = path.read_bytes().decode("utf-8")
             if not path.is_relative_to(ROOT / ".agents"):
                 require(content == normalize(content), f"text normalization required: {path.relative_to(ROOT)}")
-            if path.suffix in {".yaml", ".yml"}:
+            if path.suffix in {".yaml", ".yml"} and not path.is_relative_to(ROOT / "tests/fixtures/invalid"):
                 load_yaml(content)
             if path.suffix == ".md":
                 check_links(path, content)

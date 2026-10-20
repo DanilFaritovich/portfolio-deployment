@@ -1,0 +1,22 @@
+apiVersion: portfolio.deployment/v1
+kind: Application
+metadata:
+  id: project-router
+  sourceRepository: DanilFaritovich/project-router
+spec:
+  enabled: false
+  components:
+  - name: web
+    image: ghcr.io/fixtures/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    platform: linux/amd64
+    type: http
+    health:
+      strategy: http
+      path: /health
+    port: 8080
+  storage:
+    type: stateless
+  ingress:
+    hostname: router.example.test
+    component: web
+    port: 8080

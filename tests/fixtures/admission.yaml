@@ -1,0 +1,33 @@
+apiVersion: portfolio.deployment/v1
+kind: AdmissionPolicy
+applications:
+- id: project-router
+  sourceRepository: DanilFaritovich/project-router
+  imageRepositories:
+    web:
+    - ghcr.io/fixtures/web
+  hostnames:
+  - router.example.test
+  platforms:
+  - linux/amd64
+- id: support-assistant
+  sourceRepository: fixtures/support-assistant
+  imageRepositories:
+    frontend:
+    - ghcr.io/fixtures/frontend
+    backend:
+    - ghcr.io/fixtures/backend
+    worker:
+    - ghcr.io/fixtures/worker
+  hostnames:
+  - support.example.test
+  platforms:
+  - linux/amd64
+- id: internal-jobs
+  sourceRepository: fixtures/internal-jobs
+  imageRepositories:
+    worker:
+    - ghcr.io/fixtures/worker
+  hostnames: []
+  platforms:
+  - linux/amd64
