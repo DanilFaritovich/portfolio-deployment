@@ -22,6 +22,8 @@ class ExecutionOperation:
     git_revision: str
     image: str
     action: str
+    eligibility: str
+    reasons: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -160,12 +162,17 @@ def deployment_preview(desired, observed, plan, application):
     if app is None:
         raise DockerError("unknown-application")
     entries = plan.document["entries"]
+    # The executor rejects the whole reconciliation, including other applications.
+    blockers = {reason for e in entries if e["status"] in ("blocked", "degraded") for reason in e["reasons"]}
+    if plan.document["status"] in ("blocked", "degraded"):
+        blockers.add("reconciliation-not-admissible")
     operations = []
     for name in startup_order(app):
         component = next(c for c in app.spec["components"] if c["name"] == name)
         relevant = [e for e in entries if e["application"] == app.id and e["component"] == name]
         action = next((e["action"] for e in relevant if e["action"] in ("create", "update-component")), "no-op")
-        operations.append(ExecutionOperation(app.id, name, desired.git_revision, component["image"], action))
+        operations.append(ExecutionOperation(app.id, name, desired.git_revision, component["image"], action,
+                                             "blocked" if blockers else "requires-checks", tuple(sorted(blockers))))
     return tuple(operations)
 
 
@@ -216,6 +223,8 @@ def execute(desired, observed, plan, application, adapter, provider, *, lock_dir
                     return all_blocked("stale-component-existence")
                 before = next((e["before"] for e in entries if e["application"] == app.id and
                                e["component"] == o.component and e["action"] == "update-component"), None)
+                if o.action == "update-component" and (not before or not before.get("image")):
+                    return all_blocked("previous-image-reference-unavailable")
                 c = before or next(c for c in app.spec["components"] if c["name"] == o.component)
                 old_spec = app.spec
                 old_spec["components"] = [c if x["name"] == c["name"] else x for x in old_spec["components"]]

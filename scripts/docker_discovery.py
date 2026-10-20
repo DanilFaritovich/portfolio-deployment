@@ -163,12 +163,20 @@ def container_runtime(resource, artifact, service, image):
 
 class LocalStateProvider:
     """Honest integration boundary: re-admit desired; Docker cannot fill Stage 03."""
-    def __init__(self, root, git_revision, adapter):
+    def __init__(self, root, git_revision, adapter, *, previous_observed=None):
         self.root, self.git_revision, self.adapter = root, git_revision, adapter
+        # Validated ObservedState supplies inspection hints only, never trust.
+        self.previous_observed = previous_observed
 
     def refresh(self):
         from scripts.planning_inputs import build_desired_state
         desired = build_desired_state(self.root, self.git_revision)
         references = [c["image"] for app in desired.applications for c in app.spec["components"]]
+        if self.previous_observed is not None:
+            for app in self.previous_observed.document["applications"]:
+                for component in app["components"]:
+                    identity = component["imageIdentity"]
+                    if component["existence"] == "present" and identity is not None:
+                        references.append(identity["pullReference"])
         observation = discover(self.adapter, references)
         return desired, observation.registry_observed(), observation

@@ -311,7 +311,11 @@ No image pulls, builds, ordinary deletions or gateway operations are implemented
 
 `LocalStateProvider` deliberately returns incomplete Stage 03 observations because
 Docker supplies no complete gateway/registry evidence. No production apply CLI
-exists. Only the separate disposable harness can perform real Docker operations,
+exists. Optional `previous_observed` supplies old pull references for fresh Docker
+image inspection alongside desired images, without promoting snapshot trust;
+Stage 06 must integrate fresh full observations. Deployment preview retains
+proposed actions with separate eligibility and blocking reasons.
+Only the separate disposable harness can perform real Docker operations,
 with explicit canonical Unix socket, test namespace, ownership checks, preloaded
 verified images and guarded session cleanup. Socket location is not proof of daemon
 purpose. The local filesystem lock coordinates managed processes on one host,

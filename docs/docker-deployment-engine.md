@@ -112,6 +112,16 @@ live execution. A future provider must supply independently verifiable, fresh,
 complete Stage 03 evidence without weakening the schema or inventing health,
 trust flags or OCI relationships. Fixtures are explicitly synthetic test evidence.
 
+The optional keyword `LocalStateProvider(..., previous_observed=observed)` accepts
+a validated immutable Stage 03 ObservedState as inspection hints. Refresh inspects
+the union of desired images and present observed components' exact
+`imageIdentity.pullReference` values, deduplicated. These hints never establish
+trust or substitute an image/config ID for a pull reference. Missing previous
+references/evidence and unverified old OCI mappings block updates. Stage 06 must
+connect fresh full observations to this input and return independently verified
+Stage 03 evidence under the execution lock; this provider still returns the
+incomplete/untrusted snapshot above.
+
 ## OCI identity and preflight
 
 OCI index digest, platform manifest digest and Docker image/config ID are distinct.
@@ -226,6 +236,13 @@ operations, project/hash and outstanding checks; `executed=false`,
 `authorization=false`. It performs no discovery or mutations. CLI exits: 0 preview,
 1 invalid inputs, 2 blocked, 3 degraded, 4 official validation not passed. GNU Make
 maps failing recipes to its own error code. No deploy/apply target is installed.
+
+Each operation retains its proposed `action` and separately reports `eligibility`
+and `reasons`. Eligibility is `blocked` when the overall reconciliation is blocked
+or degraded, including blockers outside the selected application; reasons contain
+the blocking/degraded plan reasons and `reconciliation-not-admissible`. Otherwise
+it is `requires-checks`, never execution authorization. A blocked proposed create
+or update remains visible for review without implying executable eligibility.
 
 `compose-check` and `make check` use offline tests only. `compose-validate` separately
 runs installed Compose v2 `config -q`, with an intentionally nonexistent Docker

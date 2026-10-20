@@ -424,6 +424,7 @@ def test_cli_and_make_interfaces(root, app, capsys):
     assert deployment_cli.main(["deployment-plan", *args, "--observed", str(snapshot)]) == 0
     report = json.loads(capsys.readouterr().out)
     assert not report["authorization"] and report["operations"]
+    assert all(o["eligibility"] == "requires-checks" and not o["reasons"] for o in report["operations"])
     env_args = ["make", "--silent", "compose-render", f"PYTHON={sys.executable}", f"REGISTRY_ROOT={root}",
                 f"APPLICATION={app.id}", f"GIT_REVISION={SHA}"]
     result = subprocess.run(env_args, capture_output=True, text=True, timeout=10)
@@ -603,3 +604,102 @@ def test_full_smoke_with_stateful_fake(monkeypatch):
     assert report["status"] == "passed", report
     assert report["cleanup"] == "completed" and not resources
     assert calls.count(("sample", "backend")) == 2 and calls.count(("sample", "frontend")) == 1
+
+
+def set_backend_image(root, app, reference):
+    path = root / f"registry/applications/{app.id}.yaml"
+    document = yaml.safe_load(path.read_text())
+    next(c for c in document["spec"]["components"] if c["name"] == "backend")["image"] = reference
+    path.write_text(yaml.safe_dump(document))
+
+
+@pytest.mark.parametrize("case", ["verified", "missing-old", "wrong-mapping", "index", "missing-reference", "no-previous"])
+def test_previous_image_discovery_and_update(root, app, tmp_path, case):
+    old = next(c for c in app.spec["components"] if c["name"] == "backend")["image"]
+    new = "ghcr.io/fixtures/backend@sha256:" + "b" * 64
+    set_backend_image(root, app, new)
+    previous = observation(desired(app))
+    if case == "missing-reference":
+        next(c for c in previous["applications"][0]["components"] if c["name"] == "backend")["imageIdentity"] = None
+    observed = load_observed_state(previous)
+
+    class InspectionAdapter:
+        def __init__(self):
+            self.references = []
+
+        def inventory(self, kind):
+            return []
+
+        def inspect(self, kind, reference):
+            assert kind == "image"
+            self.references.append(reference)
+            if reference == old and case == "missing-old":
+                raise DockerError("missing")
+            descriptor = {"digest": reference.split("@")[1],
+                          "mediaType": "application/vnd.oci.image.manifest.v1+json"}
+            if reference == old and case == "wrong-mapping":
+                descriptor["digest"] = new.split("@")[1]
+            if reference == old and case == "index":
+                descriptor["mediaType"] = "application/vnd.oci.image.index.v1+json"
+            return {"Id": image(reference).image_id, "Os": "linux", "Architecture": "amd64",
+                    "RepoDigests": [reference], "Descriptor": descriptor, "Config": {}}
+
+    inspector = InspectionAdapter()
+    d, limited, discovered = docker_discovery.LocalStateProvider(
+        root, SHA, inspector, previous_observed=None if case == "no-previous" else observed).refresh()
+    assert new in inspector.references
+    assert (old in inspector.references) == (case not in ("missing-reference", "no-previous"))
+    assert len(inspector.references) == len(set(inspector.references))
+    assert limited.document["scope"] == {"kind": "registry", "complete": False, "trusted": False}
+    # Full observations and runtime resources here are explicitly synthetic;
+    # the local provider itself remains unable to authorize execution.
+    state = replace(discovered, resources=docker_state(app, True).resources)
+    adapter = FakeAdapter()
+    results = deployment.execute(d, observed, build_reconciliation_plan(d, observed), app.id,
+                                 adapter, Provider(d, observed, state), lock_directory=tmp_path / "lock")
+    if case == "verified":
+        assert [call[1] for call in adapter.calls] == ["backend"]
+        assert sum(r.status == "applied-unverified" for r in results) == 1
+    else:
+        assert not adapter.calls and {r.status for r in results} == {"blocked"}
+        reason = "reconciliation-not-admissible" if case == "missing-reference" else "effective-runtime-not-established"
+        assert all(reason in r.reasons for r in results)
+
+
+@pytest.mark.parametrize("case,reason", [
+    ("update-health", "health-unobserved"),
+    ("update-storage", "storage-change-requires-lifecycle-policy"),
+    ("create-storage", "storage-change-requires-lifecycle-policy"),
+    ("unknown", "unknown-state-or-ownership-conflict"),
+    ("incomplete", "incomplete-or-untrusted-snapshot"),
+])
+def test_blocked_preview_preserves_proposal(root, app, capsys, case, reason):
+    previous = observation(desired(app))
+    if case.startswith("update"):
+        set_backend_image(root, app, "ghcr.io/fixtures/backend@sha256:" + "b" * 64)
+    actual = previous["applications"][0]
+    backend = next(c for c in actual["components"] if c["name"] == "backend")
+    if case == "update-health":
+        backend["health"] = "unknown"
+    elif case.endswith("storage"):
+        actual["storage"] = {"type": "stateless"}
+        if case == "create-storage":
+            actual["components"].remove(backend)
+    elif case == "unknown":
+        backend.update(existence="unknown", runtime=None, imageIdentity=None)
+    else:
+        previous["scope"]["complete"] = False
+    snapshot = root / "observed.json"
+    snapshot.write_text(encode(previous))
+    assert deployment_cli.main(["deployment-plan", "--root", str(root), "--application", app.id,
+                                "--git-revision", SHA, "--observed", str(snapshot)]) == 2
+    report = json.loads(capsys.readouterr().out)
+    assert not report["authorization"] and not report["executed"]
+    for op in report["operations"]:
+        assert op["eligibility"] == "blocked"
+        assert reason in op["reasons"] and "reconciliation-not-admissible" in op["reasons"]
+    proposal = next(op for op in report["operations"] if op["component"] == "backend")
+    if case.startswith("update"):
+        assert proposal["action"] == "update-component"
+    elif case.startswith("create"):
+        assert proposal["action"] == "create"
