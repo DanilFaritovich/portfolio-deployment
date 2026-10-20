@@ -1,0 +1,2 @@
+# Bootstrap validation only; not a deployment-controller language decision.
+PyYAML==6.0.3

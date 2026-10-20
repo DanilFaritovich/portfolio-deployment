@@ -1,0 +1,251 @@
+# Portfolio Deployment architecture
+
+## Status and scope
+
+Stage 01 — Project Bootstrap provides local development standards, documentation
+and offline repository checks. All runtime components below are **Planned**.
+There is no running controller, service registry, Caddy configuration, Compose
+stack or production deployment in this repository. No VPS integration has been
+performed or verified. This document defines design constraints for review, not
+an implemented API or manifest schema.
+
+The target is a small, auditable single-Ubuntu-VPS Docker Compose platform. Docker
+Compose, GHCR, Git and Caddy are selected target technologies. Controller language,
+invocation model and durable result-store format remain undecided. Prefer a CLI
+or constrained CI invocation before considering a privileged long-running daemon.
+Kubernetes and a controller database have no established requirement.
+
+## Ownership and components
+
+| Owner / component | Responsibility | Status |
+| --- | --- | --- |
+| [Portfolio Server Infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure) | Ubuntu VPS, SSH/users/access policy, Docker Engine, system baseline, firewall and host security | External ownership; integration Planned; operation not verified here |
+| Service registry | Approved service identities, domain ownership, runtime contracts, persistence and network declarations | Planned |
+| Desired state | Versioned per-service manifests selecting exact image digests and configuration references | Planned |
+| Validator and planner | Admission checks; deterministic desired/actual comparison; reviewable mutation plan | Planned |
+| Reconciler and Compose executor | Serialized, scoped image pulls and container updates; bounded health gates | Planned |
+| Caddy gateway | Shared public HTTP(S), canonical routes, configuration validation/hot reload, certificate state | Planned |
+| State/result journal | Attempted and last known-good revisions, observed outcomes and recovery evidence | Planned |
+| [Application repositories, e.g. project-router](https://github.com/DanilFaritovich/project-router) | Source, tests/CI, Docker builds, GHCR publishing and deployment contract | External ownership; integration Planned; deployability not verified |
+
+Portfolio Deployment must not provision SSH/users, install Docker Engine or
+duplicate infrastructure Ansible. It consumes a separately provisioned host and
+documents deployment prerequisites. Host hardening remains an external invariant;
+platform networking changes must respect it.
+
+Applications build once and publish artifacts independently. This repository
+does not rebuild their source on the VPS or take over their CI. A repository name
+alone is not a deployment contract and does not establish that an image exists.
+
+## Target topology — Planned
+
+```text
+Application repository -> tests/build -> GHCR image@sha256:digest
+                                              |
+Deployment Git -> approved desired state -> validate/plan -> reconciler
+                                              |                |
+                                              |          Docker Compose
+                                              |                |
+Internet -> Caddy gateway -> shared proxy network -> HTTP application
+                                                     |
+                                              private service network
+                                                     |
+                                           database / private dependency
+```
+
+Arrows describe intended trust/data flows. They do not imply installed resources.
+Only Caddy intentionally publishes application HTTP(S) host ports (normally
+80/443). Infrastructure-owned management access is a separate boundary.
+
+## Publication and rollout flow — Planned
+
+1. An application validates/tests its source, builds for the supported host
+   platform, publishes to GHCR and exposes the resulting immutable digest plus
+   its runtime contract. A readable commit tag may accompany the digest.
+2. A trusted operator or approved automation proposes a desired-state change in
+   this repository. Publication of an image does not itself authorize rollout.
+3. Offline CI validates declarations and plans with fixtures; reviewers approve
+   service/domain/image ownership and configuration prerequisites. Untrusted PR
+   input is never executable deployment code.
+4. A separately authorized execution selects the exact reviewed Git revision and
+   digest. It verifies access, artifact availability and platform compatibility,
+   then acquires a host-wide mutation lock and observes actual state.
+5. The executor produces/rechecks the plan, pulls the digest and changes only the
+   affected Compose project/services. Unchanged image/config yields no-op.
+6. A newly created service must pass bounded internal readiness before public
+   route activation. A route candidate is validated completely before reload.
+   Image-only changes must not restart Caddy or rewrite unchanged routes.
+7. Verify the affected path, record the outcome and last known-good state, then
+   release the lock. Failure records partial state; it does not claim convergence.
+
+Git approval, green CI, production-source eligibility and operator authorization
+are separate gates. The future production source/release policy must be decided
+before activation; an arbitrary task branch must not be deployed.
+
+## Service registration contract — Planned
+
+Stage 02 will decide exact schema/serialization and validation rules. Candidate
+contract fields include schema version, unique service ID, owning repository,
+allowed GHCR image repository, immutable SHA-256 digest, platform, internal
+protocol/port, readiness endpoint and timing limits, approved domains/routes,
+environment/secret references, networks, volumes and persistence/migration policy.
+These are requirements for design, not sample deployable manifests.
+
+Admission must reject duplicate identities/domains, unsafe host/path syntax,
+out-of-range ports, ambiguous routes, mutable image references, forbidden image
+origins and privileged runtime requests. Use structured rendering rather than
+shell interpolation of manifest values. Apply size/count limits to untrusted
+inputs; distinguish syntax validity from authorized ownership.
+
+Registration requires an available compatible image, documented health behavior,
+approved domain ownership and externally provisioned configuration/secrets.
+Registration, version update, route change, disable and permanent removal are
+different operations. Decommissioning requires a reviewed procedure; omission
+from desired state must not silently delete volumes or unrelated resources.
+
+## Desired state, observations and journal — Planned
+
+Git is the desired-state source of truth: approved manifests at a specific Git
+revision define intended images/configuration/routing. Actual state is discovered
+from Docker/Compose, applied gateway configuration and health observations. It
+may diverge because of failed updates, manual changes, crashes or host reboot.
+
+The planner should report create, update, no-op, route-only changes, drift and
+blocked/error outcomes deterministically. Separate planning from mutation.
+Recheck observations before apply to avoid acting on a stale plan; serialize
+host mutations and define lock ownership/timeouts and crash recovery. Unknown
+remote outcomes require rediscovery rather than blind retries.
+
+Record operation ID, service, desired Git revision, image digest, timestamps,
+attempted/applied state, health evidence, prior known-good revision and result.
+Keep logs bounded and redact secrets. Journal storage/location, retention,
+atomic writes and recovery after interruption need an explicit design. Do not
+commit live observations or secrets into desired-state manifests. A successful
+command exit alone is insufficient deployment evidence.
+
+## Immutable artifact identity — Planned
+
+Use `ghcr.io/<owner>/<image>@sha256:<64-hex-digest>` for execution and recovery.
+Do not resolve `latest` during rollout or silently substitute a moving tag.
+Keep Git revision, digest and runtime configuration revision discoverable together.
+Verify that the digest is accessible from the target host and compatible with its
+platform. Decide whether manifests pin an OCI index or platform-specific image;
+multi-platform identity and provenance verification remain review decisions.
+
+A digest fixes content identity; it does not prove the artifact is trustworthy,
+vulnerability-free, available indefinitely or compatible with stored data.
+Allowlisted producers, retention and supply-chain verification need policy.
+
+## Container and network isolation — Planned
+
+Use stable service aliases and explicit project/resource ownership. Attach only
+gateway-facing HTTP containers to the deployment-owned shared proxy network.
+Keep databases, caches and other private dependencies on service-private networks;
+do not publish their host ports. Avoid global teardown commands affecting other
+Compose projects, gateway state or persistent data.
+
+A shared Docker bridge is not a per-application security boundary: attached
+containers can potentially reach each other. Review this residual lateral-access
+risk; use per-service gateway networks or stronger isolation if requirements
+justify it. Network membership must not imply trusted forwarded headers.
+
+Prefer non-root applications, dropped capabilities, no privilege escalation,
+read-only filesystems where compatible, resource limits and scoped writable
+volumes. Ban privileged containers, host namespaces and Docker socket mounts in
+applications and Caddy without a separately justified policy. Docker API access
+for the executor is effectively host administration and must be tightly scoped.
+
+## Caddy and HTTPS — Planned
+
+The gateway owns public HTTP(S), validated host-to-upstream mappings and persistent
+certificate/configuration storage. Registry data generates one canonical complete
+configuration, avoiding competing manual route edits. Validate a temporary
+candidate before supported hot reload; preserve previous working configuration
+and unrelated routes on failure. Keep Caddy operational across application updates.
+
+Admit only approved unique domains and explicit routing precedence. No implicit
+wildcards/catch-all exposure. Define forwarded-header/client-IP trust, access-log
+redaction and administrative endpoint isolation before implementation.
+
+Public HTTPS requires authorized DNS, reachable ports and successful certificate
+issuance in the real environment. Offline Caddy syntax validation and local test
+TLS do not prove those conditions. Persist and protect certificate state; gateway
+recovery must not depend on rebuilding an application. No domains or DNS records
+are configured during Bootstrap.
+
+## Health gates and failure handling — Planned
+
+Distinguish container started, process liveness, application readiness and external
+route availability. Require explicit endpoint/protocol, timeout, retry budget and
+success criteria. A healthy container alone does not prove public HTTPS works;
+an unhealthy running container is not automatically restarted by Docker health
+status. Gateway availability needs an independent check.
+
+New services receive routes only after internal readiness. Existing service
+updates need a reviewed strategy for readiness and traffic: in-place Compose
+replacement can interrupt traffic. Zero downtime/blue-green is not guaranteed.
+Preserve healthy unrelated routes and journal failed/partial convergence.
+
+## Rollback and recovery boundaries — Planned
+
+Preserve the previous known-good digest, rendered configuration and operation
+evidence before mutation. A failed rollout may restore a compatible prior image
+and gateway configuration, followed by fresh readiness/route checks. Define
+timeouts, retry limits and manual escalation when restoration also fails.
+
+Image rollback cannot reverse database migrations, volume changes, external side
+effects or a missing/garbage-collected artifact. Application contracts must state
+migration order, backward compatibility, backup/restore responsibilities and
+irreversible steps. Do not automate data deletion or promise automatic recovery
+from arbitrary schema changes.
+
+Separate application failure, gateway configuration failure, controller crash,
+host reboot and host loss. Single-VPS operation has no high-availability guarantee.
+Docker restart policy, journal recovery, retained certificates and backups require
+testing. Lost SSH/host access and host rebuild belong to infrastructure recovery;
+application data restore requires its own tested operator procedure. A deployment
+journal is neither a backup nor a disaster-recovery system.
+
+## Trust boundaries, secrets and permissions — Planned
+
+- Application producer -> GHCR: trust approved repository/CI identity; digest
+  selection does not automatically trust arbitrary publishers.
+- PR author -> desired state: validate hostile input offline with no production
+  credentials; never interpolate it into shell commands or privileged templates.
+- Approved Git revision -> executor: require exact-revision checks, protected
+  production source/environment and explicit authorization or approved policy.
+- Executor -> Docker/host: treat Docker group/socket privileges as host-equivalent;
+  minimize credentials, command surface and concurrent mutations.
+- Gateway -> application: validate route ownership and upstream identity; define
+  header trust explicitly and acknowledge shared-network lateral reachability.
+- Runtime configuration -> service: Git stores references only. Keep real secrets
+  server-side or in an approved secret store, with least-privilege read/pull scopes,
+  redaction, rotation and access auditing. Private GHCR pulls need scoped read
+  authorization decided later; do not request any production secret in Stage 01.
+
+## Verification boundaries and implementation sequence
+
+**Implemented:** `make fix` and `make check` validate repository text, local links,
+YAML and installed standards without network, Docker or secrets. Python is only
+development tooling. Dependencies are provisioned separately; clean setup may
+download PyYAML. External URLs are not contacted by checks.
+
+**Planned offline CI (Stage 08):** use the same Makefile interface, pinned tools,
+read-only checks and least-privilege permissions. No SSH, production endpoints,
+DNS or production credentials. GitHub-hosted tool/source provisioning is distinct
+from offline test execution. No workflow is installed at Stage 01.
+
+**Planned local E2E (Stage 07):** disposable Compose projects, mock upstreams and
+isolated local gateway tests; verify no-op, unsafe input rejection, failed health,
+route reload and preservation of unrelated data/services. Local image provisioning
+is separate from offline unit/fixture CI.
+
+**Planned production verification (Stage 09):** separately approved host, access,
+artifact, DNS/TLS, health and recovery checks. CI success alone does not authorize
+production mutations. Never present local results as live acceptance evidence.
+
+See the preliminary [roadmap](docs/roadmap.md). Stages 02–09 have not started.
+Before Stage 02, review schema/contract ownership, image/digest policy, exposure
+and admission rules, fixtures and rejection criteria. Decide the validator tooling
+with an explicit rationale; defer execution runtime choice until its requirements
+are established. See [development instructions](AGENTS.md) for workflow boundaries.
