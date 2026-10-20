@@ -16,13 +16,18 @@ configuration validation; PR #4 is merged into develop. Stage 05 adds a Python C
 Compose engine foundation, bounded Docker-only discovery, preflight, host flock,
 scoped execution and offline mocks. Real operations are limited to separately
 authorized disposable local smoke; it was not run during implementation. Full
-registry/gateway observation integration, production apply, readiness, rollback,
-journal and Stages 06–09 remain **Planned**.
+live registry/gateway observation integration and production apply remain blocked.
+Stage 05 PR #5 is merged into develop. Stage 06 adds offline readiness gates, a
+SQLite journal/LKG, constrained rollback and read-only crash recovery analysis in
+the same executor. Composite observation has only trusted offline interfaces/fakes.
+Stages 07–09 remain **Planned**; no real operations were run for Stage 06.
 Server provisioning, Ubuntu, SSH, users, Docker Engine and host hardening belong
 to `DanilFaritovich/portfolio-server-infrastructure`. Application repositories
 own source, CI, image builds/publication and deployment contracts.
 
-Do not implement Stages 06–09 without their own scoped task. Python CLI is selected for Stage 05. Do not add a daemon, database, Kubernetes
+Do not implement Stages 07–09 without their own scoped task. Python CLI is selected;
+SQLite via standard-library sqlite3 is the Stage 06 local journal, not live state.
+Do not add a daemon, database server, Kubernetes
 or deployment trigger without an explicit
 architectural rationale and the relevant task scope.
 
@@ -56,6 +61,12 @@ architectural rationale and the relevant task scope.
   opt-in official local Caddy validation. See [Stage 04](docs/caddy-gateway.md).
   Desired routes never imply activation; retained candidates preserve active routes.
   Unknown/incomplete gateway scope yields no full Caddyfile. No reload exists.
+- `scripts/readiness.py`, `scripts/composite_state.py`: bounded probe and complete-source
+  contracts, no real HTTP/Docker+Caddy transport.
+- `scripts/deployment_journal.py`, `scripts/deployment_lifecycle.py`: private SQLite
+  transactions under host lock, intent before mutation, application-wide atomic LKG,
+  conservative rollback and analysis-only crash recovery. See [Stage 06](docs/readiness-recovery.md).
+  Unfinished runs block further journaled work; no reset/resume CLI or production apply.
 - `Makefile`, `requirements-dev.txt`, `.editorconfig`: local check interface/setup.
 
 Use local skills, not a fresh upstream download on each task:
@@ -86,7 +97,7 @@ Use the existing Makefile as the main interface. Default checks/previews are off
 `make fix` normalizes project-owned text, preserving vendored skills;
 `make validate` performs read-only validation of the complete registry and
 admission policy; `make check` runs bootstrap checks, registry validation and
-Stage 02–05 tests. `make plan OBSERVED=<local.json> GIT_REVISION=<full-sha>`
+Stage 02–06 tests. `make plan OBSERVED=<local.json> GIT_REVISION=<full-sha>`
 requires explicit offline inputs; blocked/degraded plans are not executable.
 `make gateway-render` requires the same inputs; JSON separates desired/current/retained
 candidate. `make gateway-check` runs offline gateway tests; `make gateway-validate`
@@ -101,7 +112,7 @@ from Docker inventory. Runtime refs and unverified OCI mappings block execution.
 Run safe fixes before targeted checks, then `make check` once implementation
 stabilizes. Documentation-only changes need targeted documentation
 checks, without rerunning unchanged executable tests. No broader `verify`/`ci`
-target exists through Stage 05; do not add empty targets. Install pinned
+target exists through Stage 06; do not add empty targets. Install pinned
 development dependencies as documented before checks. Checks must fail clearly
 when dependencies or required assets are missing. Negative YAML fixtures are
 excluded from bootstrap syntax parsing and covered by dedicated tests.
@@ -121,7 +132,7 @@ Do not change other repositories as a side effect.
 
 ## Security and operating boundaries
 
-Stage 01–05 work forbids VPS/SSH contact, production Ansible/containers, Caddy activation, DNS or
+Stage 01–06 work forbids VPS/SSH contact, production Ansible/containers, Caddy activation, DNS or
 domain changes, requesting/creating production secrets and automatic deployments.
 Only explicitly authorized disposable local Docker smoke is allowed; default
 checks never connect to Docker. Never use production project names for smoke or

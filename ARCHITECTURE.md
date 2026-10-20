@@ -7,11 +7,13 @@ offline Caddy previews. Stage 04 PR #4 is merged into `develop`. Stage 05 adds a
 Python CLI engine foundation: deterministic Compose, bounded Docker-only discovery,
 preflight, host locking, scoped execution, offline mocks and a separate opt-in
 disposable smoke. It is not production-ready and real Docker smoke was not run.
-The real registry/admission allowlist remain empty. No VPS integration is verified.
+Stage 05 PR #5 is merged into `develop`. Stage 06 adds offline readiness, SQLite
+journal/LKG, constrained rollback and crash recovery analysis through the same
+executor. The real registry/admission allowlist remain empty. No VPS integration is verified.
 
 Python CLI, Docker Engine/Compose v2, GHCR, Git and Caddy are selected technologies.
-There is no daemon, database, Kubernetes or production deployment trigger. Durable
-journal format remains undecided. Ordinary live apply is unavailable: Docker-only
+There is no daemon, database server, Kubernetes or production deployment trigger.
+The local durable journal uses standard-library SQLite schema v1. Ordinary live apply is unavailable: Docker-only
 discovery cannot establish full Stage 03 registry/gateway evidence. See the
 [Stage 05 contract](docs/docker-deployment-engine.md) for exact safe boundaries.
 
@@ -26,7 +28,7 @@ discovery cannot establish full Stage 03 registry/gateway evidence. See the
 | Planner | Pure desired/observed comparison using explicit local snapshots; reviewable plan only | Implemented offline |
 | Compose engine | Deterministic renderer, bounded Docker discovery, ownership/preflight, lock and scoped executor | Implemented foundation with mocks; disposable smoke opt-in; full live observation/readiness integration pending |
 | Caddy gateway | Canonical offline route/candidate rendering and opt-in local validation | Foundation implemented offline; runtime, hot reload and certificate state Planned |
-| State/result journal | Attempted and last known-good revisions, observed outcomes and recovery evidence | Planned |
+| State/result journal | Intent/events, readiness evidence, atomic application LKG and recovery status under host lock | Implemented offline with SQLite; live storage/recovery integration pending |
 | [Application repositories, e.g. project-router](https://github.com/DanilFaritovich/project-router) | Source, tests/CI, Docker builds, GHCR publishing and deployment contract | External ownership; integration Planned; deployability not verified |
 
 Portfolio Deployment must not provision SSH/users, install Docker Engine or
@@ -114,7 +116,7 @@ volumes are declared and used explicitly; host mounts and runtime overrides are
 forbidden. Omission or `enabled: false` authorizes no stop or data deletion.
 Stage 05 renders Compose and implements scoped execution under explicit local test boundaries; production runtime reconciliation remains blocked.
 
-## Desired state and observations — Implemented offline; journal Planned
+## Desired state and observations — Implemented offline
 
 Stage 03 data flow is `validate_registry(root)` → immutable `DesiredState` plus
 explicit validated `ObservedState` → pure `build_reconciliation_plan` → immutable
@@ -136,15 +138,15 @@ for actions, normalization, limitations, CLI/API and exit codes.
 
 `make plan` requires explicit snapshot and full Git SHA. Plans always report
 `executed: false` and `authorization: false`. Full registry/gateway state discovery,
-runtime integration and journals remain Planned. Recheck observations before apply and
+runtime observation integration remains Planned; Stage 06 adds the journal. Recheck observations before apply and
 serialize mutations; fixture trust flags cannot authorize production operations.
 
-Record operation ID, service, desired Git revision, image digest, timestamps,
-attempted/applied state, health evidence, prior known-good revision and result.
-Keep logs bounded and redact secrets. Journal storage/location, retention,
-atomic writes and recovery after interruption need an explicit design. Do not
-commit live observations or secrets into desired-state manifests. A successful
-command exit alone is insufficient deployment evidence.
+Stage 06 journals operation/component attempts, Git revision, previous/target
+immutable image, configuration/scope hash, fixed outcomes and bounded readiness
+evidence. SQLite does not supply live observations. The composite provider requires
+fresh Docker, gateway, runtime and readiness source evidence without promoting
+snapshot trust. Only offline readers/fakes exist; ordinary live apply remains
+blocked. See [Stage 06](docs/readiness-recovery.md).
 
 ## Immutable artifact identity — Conservative Stage 05 foundation
 
@@ -218,11 +220,11 @@ TLS do not prove those conditions. Persist and protect certificate state; gatewa
 recovery must not depend on rebuilding an application. No domains or DNS records
 are configured during Bootstrap.
 
-## Health gates and failure handling — Planned
+## Health gates and failure handling — Implemented offline
 
 Distinguish container started, process liveness, application readiness and external
-route availability. Require explicit endpoint/protocol, timeout, retry budget and
-success criteria. A healthy container alone does not prove public HTTPS works;
+route availability. Stage 06 checks HTTP 2xx without redirects or actual worker image-healthcheck
+status, with configurable bounded deadlines and two consecutive successes. A healthy container alone does not prove public HTTPS works;
 an unhealthy running container is not automatically restarted by Docker health
 status. Gateway availability needs an independent check.
 
@@ -231,12 +233,16 @@ updates need a reviewed strategy for readiness and traffic: in-place Compose
 replacement can interrupt traffic. Zero downtime/blue-green is not guaranteed.
 Preserve healthy unrelated routes and journal failed/partial convergence.
 
-## Rollback and recovery boundaries — Planned
+## Rollback and recovery boundaries — Implemented offline; live acceptance pending
 
-Preserve the previous known-good digest, rendered configuration and operation
-evidence before mutation. A failed rollout may restore a compatible prior image
-and gateway configuration, followed by fresh readiness/route checks. Define
-timeouts, retry limits and manual escalation when restoration also fails.
+SQLite v1 commits intent before each mutation and stores component transitions,
+readiness evidence and application-wide atomic LKG pointers. Only proven stateless
+image-only updates may receive one automatic rollback, with exact verified old
+image availability, unchanged configuration/scope and explicit trusted exclusion of
+migrations/side effects. Restored readiness and gateway evidence are required.
+Stage 06 never changes gateway configuration. Unknown outcomes and unsafe rollback
+require recovery; unfinished runs block further journaled operations. Crash recovery
+only analyzes fresh actual state under host lock and never blindly resumes.
 
 Image rollback cannot reverse database migrations, volume changes, external side
 effects or a missing/garbage-collected artifact. Application contracts must state
@@ -272,13 +278,13 @@ journal is neither a backup nor a disaster-recovery system.
 
 **Implemented:** `make fix` and `make check` validate repository text, local links,
 YAML and installed standards without network, Docker or secrets. `make validate` checks the registry, and `make check` additionally
-runs Stage 02–05 pytest suites. `make plan` performs explicit-input offline
+runs Stage 02–06 pytest suites. `make plan` performs explicit-input offline
 planning. Dependencies are provisioned separately; clean setup may download PyYAML, jsonschema and pytest. External URLs are not contacted by checks.
 
 **Planned offline CI (Stage 08):** use the same Makefile interface, pinned tools,
 read-only checks and least-privilege permissions. No SSH, production endpoints,
 DNS or production credentials. GitHub-hosted tool/source provisioning is distinct
-from offline test execution. No workflow is installed through Stage 05.
+from offline test execution. No workflow is installed through Stage 06.
 
 **Planned local E2E (Stage 07):** disposable Compose projects, mock upstreams and
 isolated local gateway tests; verify no-op, unsafe input rejection, failed health,
@@ -291,8 +297,9 @@ production mutations. Never present local results as live acceptance evidence.
 
 See the preliminary [roadmap](docs/roadmap.md). Stages 01–04 are implemented
 offline; Stage 05 is an engine foundation with an unexecuted local smoke harness.
-Stages 06–09 remain Planned. Production source/trigger, configuration delivery,
-full observation integration and journal/recovery remain open. See
+Stage 06 is implemented offline; Stages 07–09 remain Planned. Production
+source/trigger, configuration delivery, full live observation integration and
+operator recovery/retention procedures remain open. See
 [development instructions](AGENTS.md) for workflow boundaries.
 
 ## Stage 05 execution boundary
@@ -313,7 +320,8 @@ No image pulls, builds, ordinary deletions or gateway operations are implemented
 Docker supplies no complete gateway/registry evidence. No production apply CLI
 exists. Optional `previous_observed` supplies old pull references for fresh Docker
 image inspection alongside desired images, without promoting snapshot trust;
-Stage 06 must integrate fresh full observations. Deployment preview retains
+Stage 06 defines the full composite evidence contract, with real readers deferred
+to Stage 07. Deployment preview retains
 proposed actions with separate eligibility and blocking reasons.
 Only the separate disposable harness can perform real Docker operations,
 with explicit canonical Unix socket, test namespace, ownership checks, preloaded
@@ -326,3 +334,33 @@ is `unknown`, requiring fresh discovery. Dependency creation does not prove
 readiness, and partial execution is explicit. Stage 06 owns readiness, journal,
 rollback and recovery; Stage 07 owns extended real E2E evidence. No live Docker
 smoke or production operation was performed during Stage 05 implementation.
+
+## Stage 06 lifecycle and durability boundary
+
+`execute(..., lifecycle=DeploymentLifecycle(...))` reuses Stage 05 planning,
+preflight, scoped adapter and host flock. No production entry point was added.
+Within the same lock: commit prepared/applying intent → scoped mutation → fresh
+composite discovery → pinned bounded readiness → rediscovery → component succeeded.
+The application remains active until final component and required gateway checks
+pass; only then do run success and all LKG pointers commit atomically. Partial
+rollout or verified rollback does not imply release success.
+An uninterrupted attempt may instead commit terminal run `recovered`, with fresh
+`recovered-verified` component events, only after the whole application is verified
+against its preceding LKG: exact images/runtime, ownership, bounded readiness and
+a final coherent round corroborating every pinned container and required gateway
+checks. This SQLite transaction checks integrity and record consistency, preserves
+all previous LKG pointers and failed-target history, and allows a subsequent run
+without declaring the failed deployment successful. Partial rollback, unknown
+outcomes, crashes and missing evidence still block; no replay/resume or journal
+clearing is provided. Real composite providers remain absent, so live recovery
+confirmation remains closed.
+
+The SQLite database and sidecars use private owned directories/files, NOFOLLOW
+path walking, exact versioned schema/integrity/record validation, bounded metadata,
+DELETE journaling and synchronous FULL. Active lock leases are required for journal
+use. No raw logs/errors, HTTP bodies or effective runtime/secret values are stored.
+SQLite durability depends on functioning local storage and fsync; retention,
+backup, disk-loss recovery and real host acceptance remain operator prerequisites.
+A journal is never complete/trusted Docker/Caddy evidence. See the
+[Stage 06 contract](docs/readiness-recovery.md) for APIs, limits, state transitions,
+analysis-only crash recovery and Stage 07–09 prerequisites.

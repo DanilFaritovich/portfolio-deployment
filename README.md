@@ -3,10 +3,12 @@
 [Русская версия](README.ru.md)
 
 Central Docker/GitOps deployment platform for independently built portfolio
-applications on a single Ubuntu VPS. **Current status: Stage 05 — Docker Deployment Engine foundation.**
+applications on a single Ubuntu VPS. **Current status: Stage 06 — Readiness, Journal & Recovery (offline).**
 Registry/admission, offline planning and retained Caddy previews are implemented;
-Stage 04 PR #4 is merged into `develop`. Stage 05 adds deterministic Compose,
+Stage 04 PR #4 and Stage 05 PR #5 are merged into `develop`. Stage 05 adds deterministic Compose,
 bounded Docker discovery, preflight, locking and scoped execution with offline mocks.
+Stage 06 adds bounded readiness, SQLite journal/LKG, constrained rollback and crash
+recovery analysis in the same executor.
 Production deployment remains **Planned**: full registry/gateway observations are
 not available from Docker alone. No production apply interface exists. The real
 registry/admission allowlist remain empty; local smoke was not performed.
@@ -15,14 +17,16 @@ registry/admission allowlist remain empty; local smoke was not performed.
 
 The target flow is application CI → GHCR immutable image → approved desired state
 in Git → reconciliation → Docker Compose → health verification → Caddy routing.
-Production integration, readiness, recovery and gateway activation are **Planned**.
+Real production integration and gateway activation remain **Planned**; readiness
+and recovery have offline-tested interfaces and fake transports.
 
 - [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure)
   owns Ubuntu, SSH/users, Docker Engine and host security.
 - **Portfolio Deployment** implements registry contracts, offline admission and
   explicit-snapshot planning, deterministic Compose and a constrained execution
   foundation. Future stages add complete runtime integration, domains/HTTPS,
-  readiness and durable deployment-result history.
+  real observation/transport integration. Offline readiness and durable deployment
+  history are implemented in Stage 06.
 - Application repositories such as
   [project-router](https://github.com/DanilFaritovich/project-router) own source,
   tests/CI, image builds and GHCR publication, and supply a deployment contract.
@@ -50,13 +54,18 @@ host flock and component-scoped execution. Unresolved refs, unsupported storage
 changes, unknown/foreign resources and unverified image mapping block execution.
 Docker-only discovery deliberately produces an incomplete Stage 03 snapshot.
 
-**Planned:** production rollouts, complete live reconciliation, shared Caddy HTTPS,
-readiness, recorded last-known-good state and recovery. No zero-downtime claim.
+[Stage 06](docs/readiness-recovery.md) adds bounded HTTP/worker readiness, private
+SQLite intent/events, atomic application last-known-good, constrained stateless
+image rollback, analysis-only crash recovery and composite observation contracts.
+Real probes/readers and post-crash mutation authorization are deferred.
+
+**Planned:** production rollouts, complete live reconciliation and shared Caddy
+HTTPS. No zero-downtime claim.
 
 Git, Docker Engine/Compose, GHCR and Caddy are selected target technologies.
 Python CLI is selected for Stage 05, reusing PyYAML/jsonschema and pytest.
-No daemon, database or Kubernetes is implemented. Journal format and protected
-production source/trigger remain undecided.
+The journal uses standard-library SQLite; no database server, daemon or Kubernetes
+is implemented. Protected production source/trigger remain undecided.
 
 ## Repository structure
 
@@ -65,7 +74,7 @@ production source/trigger remain undecided.
 .codex-standards.lock.yaml      Upstream revision, profile and package inventory
 .editorconfig / .gitignore     Text conventions and local/secret exclusions
 AGENTS.md                      Codex workflow and operating boundaries
-ARCHITECTURE.md                 Planned runtime architecture
+ARCHITECTURE.md                 Architecture and runtime boundaries
 README.md / README.ru.md        English / Russian entry points
 docs/roadmap.md                 Preliminary stages and decision gates
 scripts/check_bootstrap.py      Offline repository validation and safe text fixes
@@ -81,6 +90,10 @@ scripts/deployment.py           Preflight, host flock, scoped operations/results
 scripts/docker_adapter.py       Bounded local command adapter and offline mock
 scripts/docker_discovery.py     Docker-only observations, incomplete registry provider
 scripts/deployment_cli.py       Offline Compose and deployment previews
+scripts/readiness.py            Bounded probe interfaces, no real transport
+scripts/composite_state.py      Full-source observation contract
+scripts/deployment_journal.py   Private versioned SQLite intent/events/LKG
+scripts/deployment_lifecycle.py Readiness, constrained rollback and recovery analysis
 scripts/local_docker_smoke.py   Separate opt-in disposable test lifecycle
 registry/applications/         Empty real registry; one manifest per application
 policy/admission.yaml           Empty reviewed allowlist
@@ -171,7 +184,7 @@ isolation, scoped cleanup and incomplete live discovery. Real smoke was not run.
 Compose success is `applied-unverified`; timeout/disconnect is `unknown` and
 requires fresh discovery. Readiness and release success remain unverified.
 
-No GitHub Actions workflow is installed through Stage 05; CI is Planned in Stage 08.
+No GitHub Actions workflow is installed through Stage 06; CI is Planned in Stage 08.
 No `verify`, `ci`, deploy or production apply target exists. Passing offline checks
 does not prove live Docker, HTTPS, reconciliation or rollback.
 
@@ -208,8 +221,8 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | Stage 02 | Service Registry & Manifest Validation | Implemented offline; PR #2 merged |
 | Stage 03 | Desired State & Reconciliation Planning | Implemented offline; PR #3 merged |
 | Stage 04 | Caddy Gateway Foundation | Implemented offline; PR #4 merged into develop |
-| Stage 05 | Docker Deployment Engine | Implemented foundation; smoke not-performed; production apply blocked |
-| Stage 06 | Health Checks, Rollback & Recovery | Planned |
+| Stage 05 | Docker Deployment Engine | Implemented foundation; PR #5 merged; smoke not-performed; production apply blocked |
+| Stage 06 | Readiness, Journal & Recovery | Implemented offline; SQLite/LKG, constrained rollback, analysis-only recovery; real integration pending |
 | Stage 07 | Local E2E & Integration Testing | Planned |
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
@@ -220,9 +233,16 @@ readiness, rollback, journal and recovery; Stage 07 expands isolated E2E. Full l
 observation, protected production source, configuration delivery and index mapping
 need review before production execution.
 
+SQLite durability requires reliable local storage/fsync. The journal is not live
+state or a backup. Unfinished runs block new journaled work; crash analysis never
+replays mutations or clears uncertainty. Production still needs real coherent
+Docker/gateway/runtime observations, protected source and operation authorization,
+configuration delivery, artifact retention, backup/recovery ownership and live
+acceptance. See [Stage 06 limits and APIs](docs/readiness-recovery.md).
+
 ## Security, limitations and licensing
 
-Stage 05 permits only separately authorized disposable local Docker smoke; no
+Stages 05–06 permit only separately authorized disposable local Docker smoke; no
 VPS/SSH, production Ansible or containers,
 Caddy activation, DNS/domain changes, production secrets, automatic deployment,
 other-repository modifications, merges or release tags. Future production work
