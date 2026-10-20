@@ -3,24 +3,26 @@
 [Русская версия](README.ru.md)
 
 Central Docker/GitOps deployment platform for independently built portfolio
-applications on a single Ubuntu VPS. **Current status: Stage 04 — Caddy Gateway Foundation.** This branch provides admitted registry validation,
-immutable desired/observed models, deterministic offline planning and retained
-Caddy route/candidate previews. Runtime deployment is
-**Planned**: no controller, gateway or applications are deployed here. The real
-registry and admission allowlist are empty pending confirmed artifacts and review.
+applications on a single Ubuntu VPS. **Current status: Stage 05 — Docker Deployment Engine foundation.**
+Registry/admission, offline planning and retained Caddy previews are implemented;
+Stage 04 PR #4 is merged into `develop`. Stage 05 adds deterministic Compose,
+bounded Docker discovery, preflight, locking and scoped execution with offline mocks.
+Production deployment remains **Planned**: full registry/gateway observations are
+not available from Docker alone. No production apply interface exists. The real
+registry/admission allowlist remain empty; local smoke was not performed.
 
 ## Purpose and architecture
 
 The target flow is application CI → GHCR immutable image → approved desired state
 in Git → reconciliation → Docker Compose → health verification → Caddy routing.
-Every runtime component in that flow is **Planned** here.
+Production integration, readiness, recovery and gateway activation are **Planned**.
 
 - [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure)
   owns Ubuntu, SSH/users, Docker Engine and host security.
 - **Portfolio Deployment** implements registry contracts, offline admission and
-  explicit-snapshot desired-state planning; future stages will add
-  artifact verification, Compose execution, shared proxy networking, domains/HTTPS,
-  health gates and deployment-result history.
+  explicit-snapshot planning, deterministic Compose and a constrained execution
+  foundation. Future stages add complete runtime integration, domains/HTTPS,
+  readiness and durable deployment-result history.
 - Application repositories such as
   [project-router](https://github.com/DanilFaritovich/project-router) own source,
   tests/CI, image builds and GHCR publication, and supply a deployment contract.
@@ -42,15 +44,19 @@ Caddyfile rendering, separate desired/current/retained sets and opt-in official
 local Caddy validation. Unconfirmed changes retain existing active routes;
 unknown or untrusted gateway scope blocks a full candidate.
 
-**Planned:** immutable `ghcr.io/<owner>/<image>@sha256:<digest>` rollouts; live
-state discovery and runtime reconciliation; shared Caddy HTTPS gateway;
-isolated private dependencies; bounded health checks; scoped updates; recorded
-last-known-good state and recovery outcomes.
+[Stage 05](docs/docker-deployment-engine.md) adds immutable Compose artifacts,
+independent projects/private networks, named volumes, ownership/OCI preflight,
+host flock and component-scoped execution. Unresolved refs, unsupported storage
+changes, unknown/foreign resources and unverified image mapping block execution.
+Docker-only discovery deliberately produces an incomplete Stage 03 snapshot.
+
+**Planned:** production rollouts, complete live reconciliation, shared Caddy HTTPS,
+readiness, recorded last-known-good state and recovery. No zero-downtime claim.
 
 Git, Docker Engine/Compose, GHCR and Caddy are selected target technologies.
-The controller language, execution model and journal format are undecided.
-Python, PyYAML, jsonschema and pytest serve offline validation and planning only. No controller, daemon,
-database or Kubernetes stack is selected or implemented.
+Python CLI is selected for Stage 05, reusing PyYAML/jsonschema and pytest.
+No daemon, database or Kubernetes is implemented. Journal format and protected
+production source/trigger remain undecided.
 
 ## Repository structure
 
@@ -70,6 +76,12 @@ scripts/plan_registry.py        Explicit-input offline planning CLI
 scripts/gateway.py              Pure routes, retained candidates and Caddyfile renderer
 scripts/gateway_cli.py          Explicit-input offline gateway preview CLI
 scripts/gateway_validation.py   Opt-in official local Caddy validation
+scripts/compose.py              Immutable deterministic Compose artifact
+scripts/deployment.py           Preflight, host flock, scoped operations/results
+scripts/docker_adapter.py       Bounded local command adapter and offline mock
+scripts/docker_discovery.py     Docker-only observations, incomplete registry provider
+scripts/deployment_cli.py       Offline Compose and deployment previews
+scripts/local_docker_smoke.py   Separate opt-in disposable test lifecycle
 registry/applications/         Empty real registry; one manifest per application
 policy/admission.yaml           Empty reviewed allowlist
 schemas/                       Versioned closed application/admission contracts
@@ -78,8 +90,8 @@ requirements-dev.txt           Pinned offline validation tools
 Makefile                       fix / validate / check / plan / gateway-* interface
 ```
 
-Compose generation and runtime configuration are deferred; there are no
-deployable Compose or production Caddy files; generated Caddyfiles are previews. Synthetic fixtures are not production manifests.
+Compose generation is implemented; runtime config delivery and production Caddy
+activation remain pending. Synthetic fixtures are not production manifests.
 
 ## Local development and checks
 
@@ -94,7 +106,8 @@ make validate PYTHON=.venv/bin/python
 make check PYTHON=.venv/bin/python
 ```
 
-Dependency provisioning may use the network; all Make targets run offline.
+Dependency provisioning may use the network; default checks/previews run offline.
+Official syntax validation and local smoke are separate opt-in commands.
 `fix` normalizes line endings, final newlines and trailing whitespace in
 project-owned text, preserving vendored skills. `check` is read-only: it checks
 text conventions, YAML syntax/duplicate keys, standards-lock metadata, complete
@@ -136,9 +149,31 @@ honestly; nothing is downloaded. Official validation checks syntax, never readin
 or activation permission. `make check` includes Stage 04 tests. See the gateway
 document for APIs, trust boundaries and future reload/TLS prerequisites.
 
-No GitHub Actions workflow is installed through Stage 04; offline CI is Planned in
-Stage 08. No `verify`, `ci` or deployment targets exist yet. Passing these checks
-does not demonstrate live Docker, HTTPS, reconciliation or rollback.
+Stage 05 interfaces require explicit root, application and revision:
+
+```sh
+make compose-render PYTHON=.venv/bin/python REGISTRY_ROOT=. APPLICATION=APP GIT_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa COMPOSE_FORMAT=json
+make deployment-plan PYTHON=.venv/bin/python REGISTRY_ROOT=. APPLICATION=APP GIT_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa OBSERVED=tests/fixtures/observed/noop.json
+make compose-check PYTHON=.venv/bin/python
+```
+
+Replace APP with an admitted application; the real registry is empty. Preview JSON
+is machine-readable and never authorizes execution. `compose-validate` with the
+same root/application/revision optionally invokes installed Compose v2 `config -q`
+without daemon contact; missing prerequisites report `not-performed`.
+
+`local-docker-smoke` requires explicit SMOKE_ENDPOINT (canonical Unix socket),
+SMOKE_SESSION (unused 16-hex token), two preloaded immutable GHCR manifest images
+SMOKE_IMAGE_A/B with Engine Descriptor evidence, and
+SMOKE_AUTHORIZE=disposable-local-docker. It is never invoked by `check`.
+The [Stage 05 guide](docs/docker-deployment-engine.md) describes prerequisites,
+isolation, scoped cleanup and incomplete live discovery. Real smoke was not run.
+Compose success is `applied-unverified`; timeout/disconnect is `unknown` and
+requires fresh discovery. Readiness and release success remain unverified.
+
+No GitHub Actions workflow is installed through Stage 05; CI is Planned in Stage 08.
+No `verify`, `ci`, deploy or production apply target exists. Passing offline checks
+does not prove live Docker, HTTPS, reconciliation or rollback.
 
 ## Development standards and Git delivery
 
@@ -172,21 +207,23 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | Stage 01 | Project Bootstrap | Implemented; PR #1 merged |
 | Stage 02 | Service Registry & Manifest Validation | Implemented offline; PR #2 merged |
 | Stage 03 | Desired State & Reconciliation Planning | Implemented offline; PR #3 merged |
-| Stage 04 | Caddy Gateway Foundation | Implemented offline; review pending |
-| Stage 05 | Docker Deployment Engine | Planned |
+| Stage 04 | Caddy Gateway Foundation | Implemented offline; PR #4 merged into develop |
+| Stage 05 | Docker Deployment Engine | Implemented foundation; smoke not-performed; production apply blocked |
 | Stage 06 | Health Checks, Rollback & Recovery | Planned |
 | Stage 07 | Local E2E & Integration Testing | Planned |
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
 
-Stages 02–04 use Python for offline tooling without selecting a controller runtime.
-Real ProjectRouter registration requires a confirmed digest; no production
-hostname is invented. Controller execution, production trigger/source, secret
-delivery and journal/recovery details require later explicit decisions.
+Stage 05 selects Python CLI without changing Stage 02–04 contracts. Real
+ProjectRouter registration still requires a confirmed digest. Stage 06 owns
+readiness, rollback, journal and recovery; Stage 07 expands isolated E2E. Full live
+observation, protected production source, configuration delivery and index mapping
+need review before production execution.
 
 ## Security, limitations and licensing
 
-Bootstrap is local/GitHub only: no VPS/SSH, production Ansible or containers,
+Stage 05 permits only separately authorized disposable local Docker smoke; no
+VPS/SSH, production Ansible or containers,
 Caddy activation, DNS/domain changes, production secrets, automatic deployment,
 other-repository modifications, merges or release tags. Future production work
 needs separate authorization. PR checks must never receive production secrets.

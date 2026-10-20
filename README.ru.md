@@ -3,25 +3,26 @@
 [English version](README.md)
 
 Централизованная платформа Docker/GitOps-деплоя независимо собираемых портфолио-
-приложений на одном Ubuntu VPS. **Текущее состояние: Stage 04 — Caddy Gateway Foundation.** Реализованы валидация реестра с admission, глубоко
-неизменяемые desired/observed модели, детерминированное офлайн-планирование
-и preview сохранённых Caddy routes/candidates. Runtime-деплой — **Planned**:
-контроллер, gateway и приложения здесь не развёрнуты. Реальный реестр и allowlist
-пусты до подтверждения артефактов и review.
+приложений на одном Ubuntu VPS. **Текущее состояние: Stage 05 — Docker Deployment Engine foundation.**
+Реализованы registry/admission, offline-планирование и retained Caddy previews;
+PR #4 Stage 04 смержен в `develop`. Stage 05 добавляет детерминированный Compose,
+ограниченный Docker discovery, preflight, lock и адресный executor с offline mocks.
+Production-деплой остаётся **Planned**: Docker не даёт полный registry/gateway
+snapshot Stage 03. Production apply интерфейса нет. Реальный реестр/admission
+allowlist пуст; локальный smoke не запускался.
 
 ## Назначение и архитектура
 
 Целевая цепочка: CI приложения → immutable-образ в GHCR → утверждённое desired
 state в Git → reconciliation → Docker Compose → проверка готовности → маршрутизация
-Caddy. Все runtime-компоненты этой цепочки здесь имеют статус **Planned**.
+Caddy. Production integration, readiness, recovery и активация gateway — **Planned**.
 
 - [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure)
   отвечает за Ubuntu, SSH/пользователей, Docker Engine и безопасность хоста.
 - **Portfolio Deployment** реализует контракт реестра, офлайн-admission и
-  планирование desired state по явно заданному snapshot; следующие этапы добавят
-  проверку артефактов,
-  выполнение Compose, общую proxy-сеть, домены/HTTPS,
-  проверки готовности и историю результатов деплоя.
+  планирование по явному snapshot, детерминированный Compose и ограниченный
+  execution foundation. Следующие этапы добавят полную runtime-интеграцию,
+  домены/HTTPS, readiness и постоянную историю результатов деплоя.
 - Прикладные репозитории, например
   [project-router](https://github.com/DanilFaritovich/project-router), отвечают за
   исходный код, тесты/CI, сборку и публикацию образов в GHCR и предоставляют
@@ -43,16 +44,19 @@ Caddyfile renderer, раздельные desired/current/retained наборы �
 официальным локальным Caddy. Неподтверждённые изменения сохраняют active routes;
 unknown или недоверенный gateway scope блокирует полный кандидат.
 
-**Planned:** обновления по immutable `ghcr.io/<owner>/<image>@sha256:<digest>`; обнаружение
-реального состояния и runtime reconciliation; общий Caddy HTTPS gateway;
-изоляция приватных зависимостей; ограниченные по времени health checks; адресные
-обновления; сохранение последнего работоспособного состояния и результатов
-восстановления.
+[Stage 05](docs/docker-deployment-engine.md) добавляет immutable Compose artifacts,
+независимые projects/private networks, named volumes, ownership/OCI preflight,
+host flock и адресное выполнение компонентов. Неопределённые refs, запрещённые
+storage changes, неизвестные/чужие ресурсы и недоказанный image mapping блокируют
+выполнение. Docker-only discovery намеренно возвращает неполный snapshot Stage 03.
 
-Целевые технологии: Git, Docker Engine/Compose, GHCR и Caddy. Язык контроллера,
-способ его запуска и формат журнала не выбраны. Python, PyYAML, jsonschema и pytest
-используются только для офлайн-валидации и планирования. Контроллер, daemon, база данных и Kubernetes-стек
-не выбраны и не реализованы.
+**Planned:** production rollouts, полное live reconciliation, общий Caddy HTTPS,
+readiness, last-known-good state и восстановление. Zero-downtime не обещается.
+
+Целевые технологии: Git, Docker Engine/Compose, GHCR и Caddy. Для Stage 05 выбран
+Python CLI с повторным использованием PyYAML/jsonschema и pytest. Daemon, база
+данных и Kubernetes не реализованы. Формат журнала и защищённые production
+source/trigger остаются открытыми решениями.
 
 ## Структура репозитория
 
@@ -72,6 +76,12 @@ scripts/plan_registry.py        Offline CLI с явно заданными вх�
 scripts/gateway.py              Чистые routes, retained candidates и Caddyfile renderer
 scripts/gateway_cli.py          Offline CLI для gateway preview
 scripts/gateway_validation.py   Явная проверка официальным локальным Caddy
+scripts/compose.py              Immutable детерминированный Compose artifact
+scripts/deployment.py           Preflight, host flock, адресные operations/results
+scripts/docker_adapter.py       Ограниченный локальный adapter и offline mock
+scripts/docker_discovery.py     Docker-only observations, неполный registry provider
+scripts/deployment_cli.py       Offline Compose и deployment previews
+scripts/local_docker_smoke.py   Отдельный opt-in disposable test lifecycle
 registry/applications/         Пустой реальный реестр; один manifest на приложение
 policy/admission.yaml           Пустой allowlist для отдельного review
 schemas/                       Версионированные закрытые схемы
@@ -80,9 +90,9 @@ requirements-dev.txt           Закреплённые инструменты �
 Makefile                       Интерфейс fix / validate / check / plan / gateway-*
 ```
 
-Генерация Compose и runtime-конфигурация отложены; готовых к запуску Compose- и
-production Caddy-файлов нет; сгенерированные Caddyfiles являются preview.
-Синтетические fixtures не являются production-манифестами.
+Генерация Compose реализована; доставка runtime-конфигурации и production Caddy
+activation остаются будущими задачами. Синтетические fixtures не являются
+production-манифестами.
 
 ## Локальная разработка и проверки
 
@@ -97,7 +107,8 @@ make validate PYTHON=.venv/bin/python
 make check PYTHON=.venv/bin/python
 ```
 
-Установка зависимостей может использовать сеть; все Make targets работают офлайн.
+Установка зависимостей может использовать сеть; обычные проверки/previews — офлайн.
+Официальная syntax validation и локальный smoke — отдельные opt-in команды.
 `fix` нормализует окончания строк, завершающий перевод строки и пробелы в конце
 строк собственных файлов проекта, сохраняя vendored skills. `check` работает без
 изменений файлов: проверяет формат текста, синтаксис YAML/дубликаты ключей,
@@ -139,9 +150,31 @@ pending), 1 — ошибка входов, 2 — blocked, 3 — нет Caddyfile
 и разрешения активации. `make check` включает Stage 04. API, границы доверия,
 будущий reload и TLS prerequisites описаны в документе gateway.
 
-GitHub Actions до Stage 04 включительно не настроен; offline CI — **Planned** в Stage 08.
-Targets `verify`, `ci` и deployment пока отсутствуют. Успешные проверки не
-подтверждают работу Docker, HTTPS, reconciliation или rollback на сервере.
+Интерфейсы Stage 05 требуют явные root, application и revision:
+
+```sh
+make compose-render PYTHON=.venv/bin/python REGISTRY_ROOT=. APPLICATION=APP GIT_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa COMPOSE_FORMAT=json
+make deployment-plan PYTHON=.venv/bin/python REGISTRY_ROOT=. APPLICATION=APP GIT_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa OBSERVED=tests/fixtures/observed/noop.json
+make compose-check PYTHON=.venv/bin/python
+```
+
+Замени APP на admitted application; реальный реестр пуст. Машинный JSON preview
+не разрешает выполнение. `compose-validate` с теми же root/application/revision
+отдельно вызывает установленный Compose v2 `config -q` без daemon contact;
+отсутствующие prerequisites дают `not-performed`.
+
+`local-docker-smoke` требует явные SMOKE_ENDPOINT (канонический Unix socket),
+SMOKE_SESSION (неиспользованный 16-hex token), два заранее загруженных immutable
+GHCR manifest image SMOKE_IMAGE_A/B с Engine Descriptor evidence и
+SMOKE_AUTHORIZE=disposable-local-docker. `check` никогда его не вызывает.
+[Документ Stage 05](docs/docker-deployment-engine.md) описывает prerequisites,
+изоляцию, адресный cleanup и неполный live discovery. Реальный smoke не запускался.
+Успех Compose — `applied-unverified`; timeout/disconnect — `unknown` с обязательным
+fresh discovery. Readiness и release success остаются неподтверждёнными.
+
+GitHub Actions до Stage 05 включительно не настроен; CI — Planned в Stage 08.
+Targets `verify`, `ci`, deploy и production apply отсутствуют. Успешные offline
+проверки не доказывают live Docker, HTTPS, reconciliation или rollback.
 
 ## Стандарты разработки и Git delivery
 
@@ -176,22 +209,23 @@ references; читать references нужно только для текуще�
 | Stage 01 | Project Bootstrap | Реализован; PR #1 смержен |
 | Stage 02 | Service Registry & Manifest Validation | Implemented offline; PR #2 merged |
 | Stage 03 | Desired State & Reconciliation Planning | Implemented offline; PR #3 merged |
-| Stage 04 | Caddy Gateway Foundation | Implemented offline; review pending |
-| Stage 05 | Docker Deployment Engine | Planned |
+| Stage 04 | Caddy Gateway Foundation | Implemented offline; PR #4 merged into develop |
+| Stage 05 | Docker Deployment Engine | Implemented foundation; smoke not-performed; production apply blocked |
 | Stage 06 | Health Checks, Rollback & Recovery | Planned |
 | Stage 07 | Local E2E & Integration Testing | Planned |
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
 
-Stages 02–04 используют Python для офлайн-инструментов, не выбирая runtime
-контроллера. Реальный ProjectRouter требует подтверждённого digest; production
-hostname не выдумывается. Выполнение контроллера, production-trigger/source,
-доставка секретов и журнал/восстановление требуют отдельных решений позже.
+Stage 05 выбирает Python CLI без изменений контрактов Stage 02–04. Реальному
+ProjectRouter всё ещё нужен подтверждённый digest. Stage 06 отвечает за readiness,
+rollback, journal и recovery; Stage 07 расширяет изолированные E2E. Полные live
+observations, защищённый production source, доставка конфигурации и index mapping
+требуют review до production-выполнения.
 
 ## Безопасность, ограничения и лицензирование
 
-Bootstrap выполняется только локально и в GitHub: запрещены VPS/SSH, production
-Ansible и контейнеры, активация Caddy, изменения DNS/доменов, production-секреты,
+Stage 05 разрешает только отдельно авторизованный disposable local Docker smoke;
+запрещены VPS/SSH, production Ansible и контейнеры, активация Caddy, изменения DNS/доменов, production-секреты,
 автоматический деплой, изменения других репозиториев, merge и release tags.
 Будущие production-работы требуют отдельного разрешения. PR-проверки не должны
 получать production-секреты. Git хранит ссылки на конфигурацию, без реальных
