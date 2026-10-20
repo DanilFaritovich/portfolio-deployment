@@ -8,15 +8,16 @@ setup is in [README.md](README.md) / [README.ru.md](README.ru.md).
 
 Stage 01 provides documentation and offline development checks. Stage 02
 implements the Service Registry contract, separate admission policy and bounded
-offline manifest validator with an API for Stage 03. The real registry and
-admission allowlist are empty pending reviewed applications and confirmed digests.
+offline manifest validator. Stage 03 adds immutable desired/observed models and
+a pure offline reconciliation planner using explicit local snapshots. The real
+registry and admission allowlist are empty pending reviewed applications and confirmed digests.
 Docker execution, Caddy, reconciliation, production deployment and all other
-Stages 03–09 components remain **Planned**.
+Stages 04–09 components remain **Planned**.
 Server provisioning, Ubuntu, SSH, users, Docker Engine and host hardening belong
 to `DanilFaritovich/portfolio-server-infrastructure`. Application repositories
 own source, CI, image builds/publication and deployment contracts.
 
-Do not implement Stages 03–09 without their own scoped task. Do not select a controller
+Do not implement Stages 04–09 without their own scoped task. Do not select a controller
 language, daemon, database, Kubernetes or deployment trigger without an explicit
 architectural rationale and the relevant task scope.
 
@@ -33,8 +34,12 @@ architectural rationale and the relevant task scope.
 - `scripts/`: offline development tooling only; Python here does not select the controller runtime.
 - `scripts/validate_registry.py`: `validate_registry(root)` returns validated
   application documents or raises `RegistryValidationError`, without mutation
-  or network access. Stage 03 can consume this input API; planning is not implemented.
+  or network access. Stage 03 consumes this API without duplicating admission.
   See [manifest v1](docs/manifest-v1.md) for the contract, limits and API details.
+- `scripts/planning_inputs.py`: validated immutable input adapters;
+  `scripts/reconciliation.py`: pure comparison engine; `scripts/plan_registry.py`:
+  offline CLI. See [Stage 03](docs/reconciliation-planning.md) for snapshot schema,
+  bounds, ownership, OCI limitations and exit codes. No real-state discovery.
 - `Makefile`, `requirements-dev.txt`, `.editorconfig`: local check interface/setup.
 
 Use local skills, not a fresh upstream download on each task:
@@ -65,10 +70,12 @@ Use the existing Makefile as the main interface. All targets are offline:
 `make fix` normalizes project-owned text, preserving vendored skills;
 `make validate` performs read-only validation of the complete registry and
 admission policy; `make check` runs bootstrap checks, registry validation and
-Stage 02 tests. Run safe fixes before targeted checks, then `make check` once
-implementation stabilizes. Documentation-only changes need targeted documentation
+Stage 02–03 tests. `make plan OBSERVED=<local.json> GIT_REVISION=<full-sha>`
+requires explicit offline inputs; blocked/degraded plans are not executable.
+Run safe fixes before targeted checks, then `make check` once implementation
+stabilizes. Documentation-only changes need targeted documentation
 checks, without rerunning unchanged executable tests. No broader `verify`/`ci`
-target exists through Stage 02; do not add empty targets. Install pinned
+target exists through Stage 03; do not add empty targets. Install pinned
 development dependencies as documented before checks. Checks must fail clearly
 when dependencies or required assets are missing. Negative YAML fixtures are
 excluded from bootstrap syntax parsing and covered by dedicated tests.
@@ -88,7 +95,7 @@ Do not change other repositories as a side effect.
 
 ## Security and operating boundaries
 
-Stage 01–02 work forbids VPS/SSH contact, production Ansible, containers, Caddy, DNS or
+Stage 01–03 work forbids VPS/SSH contact, production Ansible, containers, Caddy, DNS or
 domain changes, requesting/creating production secrets and automatic deployments.
 Future production work also requires explicit operation authorization or an
 approved narrowly scoped policy. No credentials in Git, manifests, logs or

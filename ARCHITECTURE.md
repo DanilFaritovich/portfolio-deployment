@@ -2,9 +2,9 @@
 
 ## Status and scope
 
-Stages 01–02 provide local development standards, documentation, a versioned
-application registry, admission policy and a bounded offline validator. Runtime
-components remain **Planned**: no controller, Caddy configuration, Compose stack
+Stages 01–03 provide local development standards, documentation, a versioned
+application registry, admission policy, a bounded offline validator and a
+deterministic offline planner. Runtime components remain **Planned**: no controller, Caddy configuration, Compose stack
 or production deployment exists here. The real registry and admission allowlist
 are empty; examples exist only as synthetic test fixtures. No VPS integration
 has been performed or verified. The implemented contract is described in
@@ -22,9 +22,9 @@ Kubernetes and a controller database have no established requirement.
 | --- | --- | --- |
 | [Portfolio Server Infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure) | Ubuntu VPS, SSH/users/access policy, Docker Engine, system baseline, firewall and host security | External ownership; integration Planned; operation not verified here |
 | Service registry | Approved application identities, versioned multi-component contracts, references and storage declarations | Implemented offline; empty real registry |
-| Desired state | Per-application manifests selecting component digests and references | Contract implemented; planning remains Planned |
+| Desired state | Per-application manifests selecting component digests and references | Deeply immutable normalized model implemented offline |
 | Validator | Bounded YAML, closed schemas, semantic/global checks and separate admission policy | Implemented offline |
-| Planner | Deterministic desired/actual comparison and reviewable mutation plan | Planned |
+| Planner | Pure desired/observed comparison using explicit local snapshots; reviewable plan only | Implemented offline |
 | Reconciler and Compose executor | Serialized, scoped image pulls and container updates; bounded health gates | Planned |
 | Caddy gateway | Shared public HTTP(S), canonical routes, configuration validation/hot reload, certificate state | Planned |
 | State/result journal | Attempted and last known-good revisions, observed outcomes and recovery evidence | Planned |
@@ -115,18 +115,30 @@ volumes are declared and used explicitly; host mounts and runtime overrides are
 forbidden. Omission or `enabled: false` authorizes no stop or data deletion.
 Lifecycle, rendering, execution and reconciliation remain future stages.
 
-## Desired state, observations and journal — Planned
+## Desired state and observations — Implemented offline; journal Planned
 
-Git is the desired-state source of truth: approved manifests at a specific Git
-revision define intended images/configuration/routing. Actual state is discovered
-from Docker/Compose, applied gateway configuration and health observations. It
-may diverge because of failed updates, manual changes, crashes or host reboot.
+Stage 03 data flow is `validate_registry(root)` → immutable `DesiredState` plus
+explicit validated `ObservedState` → pure `build_reconciliation_plan` → immutable
+`ReconciliationPlan`. Input adapters and CLI live in `scripts/planning_inputs.py`
+and `scripts/plan_registry.py`; models/comparison live in `scripts/reconciliation.py`.
+Canonical JSON strings and tuples provide deep immutability; accessors return
+copies. The existing application/admission v1 contract is unchanged.
 
-The planner should report create, update, no-op, route-only changes, drift and
-blocked/error outcomes deterministically. Separate planning from mutation.
-Recheck observations before apply to avoid acting on a stale plan; serialize
-host mutations and define lock ownership/timeouts and crash recovery. Unknown
-remote outcomes require rediscovery rather than blind retries.
+The versioned bounded [observed schema](schemas/observed-v1.schema.json) models
+complete/trusted registry scope, absent/present/unknown, exact ownership,
+minimal effective runtime, OCI pull-to-manifest identity and health observations.
+Only explicit local JSON/native API fixtures are loaded; no live state discovery
+exists. Incomplete evidence never means absence. The deterministic plan separates
+component updates, routes, drift, health and pending lifecycle decisions. Storage
+and mount changes block; matching reference IDs do not prove unchanged contents.
+Blocking outranks degraded health, then changes, then no-op. Git revision changes
+alone do not restart services. See [planning contract](docs/reconciliation-planning.md)
+for actions, normalization, limitations, CLI/API and exit codes.
+
+`make plan` requires explicit snapshot and full Git SHA. Plans always report
+`executed: false` and `authorization: false`. Future actual-state discovery,
+execution and journals remain Planned. Recheck observations before apply and
+serialize mutations; fixture trust flags cannot authorize production operations.
 
 Record operation ID, service, desired Git revision, image digest, timestamps,
 attempted/applied state, health evidence, prior known-good revision and result.
@@ -241,13 +253,13 @@ journal is neither a backup nor a disaster-recovery system.
 **Implemented:** `make fix` and `make check` validate repository text, local links,
 YAML and installed standards without network, Docker or secrets. Python is only
 offline tooling. `make validate` checks the registry, and `make check` additionally
-runs the Stage 02 pytest suite. Dependencies are provisioned separately; clean
-setup may download PyYAML, jsonschema and pytest. External URLs are not contacted by checks.
+runs Stage 02–03 pytest suites. `make plan` performs explicit-input offline
+planning. Dependencies are provisioned separately; clean setup may download PyYAML, jsonschema and pytest. External URLs are not contacted by checks.
 
 **Planned offline CI (Stage 08):** use the same Makefile interface, pinned tools,
 read-only checks and least-privilege permissions. No SSH, production endpoints,
 DNS or production credentials. GitHub-hosted tool/source provisioning is distinct
-from offline test execution. No workflow is installed through Stage 02.
+from offline test execution. No workflow is installed through Stage 03.
 
 **Planned local E2E (Stage 07):** disposable Compose projects, mock upstreams and
 isolated local gateway tests; verify no-op, unsafe input rejection, failed health,
@@ -258,9 +270,9 @@ is separate from offline unit/fixture CI.
 artifact, DNS/TLS, health and recovery checks. CI success alone does not authorize
 production mutations. Never present local results as live acceptance evidence.
 
-See the preliminary [roadmap](docs/roadmap.md). Stages 01–02 are implemented
-offline; Stages 03–09 remain Planned. The Stage 03 planner can consume the validated
-registry API, but must define desired/observed models and planning semantics
-separately. Execution runtime, production trigger/source, configuration delivery
-and journal/recovery decisions remain open. See
+See the preliminary [roadmap](docs/roadmap.md). Stages 01–03 are implemented
+offline; Stages 04–09 remain Planned. Stage 03 uses the admitted registry API and
+explicit snapshots; it performs no deployment or real-state discovery. Execution
+runtime, production trigger/source, configuration delivery and journal/recovery
+decisions remain open. See
 [development instructions](AGENTS.md) for workflow boundaries.
