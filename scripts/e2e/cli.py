@@ -5,12 +5,59 @@ import os
 from pathlib import Path
 import sys
 
-from scripts.deployment_journal import JournalError
-from scripts.docker_adapter import DockerError
-from scripts.e2e import fixture_bundle, fixture_execution, orchestration, vm
-from scripts.e2e.host_state import Store
+try:
+    from scripts.deployment_journal import JournalError
+    from scripts.docker_adapter import DockerError
+    from scripts.e2e import bootstrap, fixture_bundle, fixture_execution, orchestration, vm
+    from scripts.e2e.host_state import Store
+    from scripts.e2e.images import Images
+    from scripts.e2e.safety import require
+except ModuleNotFoundError as error:
+    print(json.dumps({"status": "blocked", "reason": "missing-python-dependency", "missing": error.name,
+                      "help": "Install pinned dependencies with your selected Python: python -m pip install -r requirements-dev.txt; then run make e2e PYTHON=<that-python>."}))
+    raise SystemExit(2) from None
 
 LEGACY = ("prerequisites", "prepare", "status", "images", "test", "clean", "diagnose")
+
+
+def fixtures(args):
+    owner = args.owner
+    if args.plan or args.manifests:
+        require(bool(args.base), "offline-plan-needs-immutable-base")
+        return fixture_bundle.prepare(args.output, owner, args.base, epoch=args.epoch, manifests=args.manifests)
+    with Store(args.output).locked() as store:
+        receipt = store.read("execution.json")
+        plan = store.read("plan.json")
+        base = args.base or (plan["base"] if plan else "")
+        if receipt is not None:
+            require(receipt.get("status") == "passed" and receipt.get("phase") == "complete",
+                    "fixture-execution-unfinished-no-retry")
+            images = Images(store.path / "artifacts/lock.json")
+            require(images.records == receipt["references"], "published-fixture-lock-changed")
+    if receipt is not None:
+        fixture_bundle.prepare(args.output, owner, base, epoch=args.epoch)
+        return receipt
+    orchestration.confirm(
+        "Prepare six fixture images in separate disposable builder/publisher VMs. "
+        "First resolve anonymous official Python manifest/config metadata and pin linux/amd64 locally. "
+        "VM creation, build, GHCR publication and public verification each require separate confirmation.",
+        "prepare-fixtures")
+    base = bootstrap.resolve_base(args.output, base)
+    return fixture_execution.execute(args.output, owner, base, epoch=args.epoch)
+
+
+def guidance(reason):
+    if "origin" in reason or "owner" in reason:
+        return "Set a single GitHub origin fetch/push URL for this repository (git remote -v); use E2E_FIXTURE_OWNER only to override the target GHCR owner."
+    if "base" in reason or "python3" in reason:
+        return "Check HTTPS access to auth.docker.io and registry-1.docker.io and e2e/python-base.json. E2E_PYTHON_BASE accepts an official docker.io/library/python@sha256 direct linux/amd64 digest. Retain any existing pin; use a new private directory for changed inputs."
+    if "prerequisite" in reason or "multipass" in reason:
+        return "Install/authenticate Multipass; use Linux amd64 with accessible /dev/kvm, 64 GiB free disk for fixtures (20 GiB for E2E), and capacity for 2 CPU/4 GiB per VM. Check make e2e-prerequisites; allow Ubuntu/package/registry network access."
+    if "confirmation" in reason or "declined" in reason:
+        return "Run make e2e in a real interactive terminal and type each printed token only for operations you authorize. Inspect existing receipts before continuing."
+    if "lock" in reason or "image" in reason or "manifest" in reason:
+        return "Check the lock and its six exact raw manifests; correct E2E_IMAGES or prepare fixtures with make e2e-fixtures in a new private directory. No rebuild or retry was attempted."
+    return "Inspect make e2e-report and private execution.json/session receipts; for a VM use the printed e2e-diagnose command. Resolve missing files/permissions or unfinished state manually; no automatic retry, reset or cleanup is performed."
 
 
 def main(argv=None):
@@ -27,25 +74,48 @@ def main(argv=None):
     parser.add_argument("--epoch", type=int, default=os.environ.get("E2E_SOURCE_DATE_EPOCH") or 0)
     parser.add_argument("--manifests", default=os.environ.get("E2E_RAW_MANIFESTS") or None)
     parser.add_argument("--execute", action="store_true", default=os.environ.get("E2E_FIXTURE_EXECUTE") == "yes")
+    parser.add_argument("--plan", action="store_true", help="offline plan only; requires an explicit immutable --base")
     args = parser.parse_args(argv)
     try:
+        if args.action in ("run", "fixtures"):
+            args.owner = bootstrap.owner_from_origin(args.owner)
         if args.action == "run":
-            result = orchestration.run(args.images or str(Path(args.output) / "artifacts/lock.json"), args.state_dir)
+            # Never build fixtures while an earlier E2E mutation is unresolved.
+            with Store(args.state_dir).locked() as store:
+                previous = orchestration.current(store)
+                require(previous is None or previous["status"] == "passed" or not previous["mutationStarted"],
+                        "previous-e2e-unfinished-diagnose-required")
+            lock = args.images or str(Path(args.output) / "artifacts/lock.json")
+            if not args.images:
+                with Store(args.output).locked() as store:
+                    receipt = store.read("execution.json")
+                    require(receipt is None or receipt.get("status") == "passed" and receipt.get("phase") == "complete",
+                            "fixture-execution-unfinished-no-retry")
+                    if receipt is not None:
+                        require(Images(lock).records == receipt["references"], "published-fixture-lock-changed")
+                if not os.path.lexists(lock):
+                    result = fixtures(args)
+                    if result["status"] != "passed":
+                        result["help"] = guidance(result.get("reason", "fixture-incomplete"))
+                        print(json.dumps(result, sort_keys=True))
+                        return 2
+            Images(lock)  # Invalid existing locks fail closed, never trigger a rebuild.
+            result = orchestration.run(lock, args.state_dir)
         elif args.action == "fixtures":
-            if args.execute:
-                if args.manifests:
-                    raise ValueError("execute-and-import-are-mutually-exclusive")
-                result = fixture_execution.execute(args.output, args.owner, args.base, epoch=args.epoch)
-            else:
-                result = fixture_bundle.prepare(args.output, args.owner, args.base, epoch=args.epoch, manifests=args.manifests)
+            require(not (args.execute and (args.manifests or args.plan)), "execute-and-import-are-mutually-exclusive")
+            result = fixtures(args)
         else:
             with Store(args.state_dir).locked() as store:
                 result = orchestration.current(store) or {"status": "blocked", "reason": "no-local-e2e-receipt"}
+        if result["status"] != "passed":
+            result["help"] = guidance(result.get("reason", result.get("result", {}).get("reason", "incomplete")))
         print(json.dumps(result, sort_keys=True))
         return 0 if result["status"] == "passed" else 2
-    except (DockerError, JournalError, OSError, ValueError, KeyError, TypeError) as error:
+    except (DockerError, JournalError, OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         print(json.dumps({"status": "blocked", "reason": error.code if isinstance(error, DockerError)
-                          else "e2e-prerequisite-or-host-state-invalid", "realE2E": "not-performed-by-this-call"}))
+                          else "e2e-prerequisite-or-host-state-invalid",
+                          "help": guidance(error.code if isinstance(error, DockerError) else "invalid-state"),
+                          "realE2E": "not-performed-by-this-call"}))
         return 2
 
 

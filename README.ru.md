@@ -245,24 +245,23 @@ ownership и live acceptance. См. [ограничения и API Stage 06](doc
 
 ## Изолированный локальный E2E
 
-[Инструкция Stage 07](docs/local-e2e.md) разделяет три шага: подготовку OCI fixtures,
-подготовку VM и запуск 15 сценариев. `make e2e E2E_IMAGES=/absolute/lock.json`
-создаёт уникальную сессию и выполняет prepare → images → test с отдельными
-интерактивными подтверждениями создания VM, pulls, Docker mutations и активации
-loopback Caddy. Используется готовый проверенный lock; сборки и публикации нет.
-Нужны Linux amd64, KVM, аутентифицированный Multipass, доступ к VM/packages и шесть
-публичных direct GHCR manifests с точными raw bytes. Docker основной системы не используется.
+`make e2e` выполняет первый и повторные запуски без экспорта переменных окружения.
+Lowercase GHCR owner определяется из проверенного GitHub origin; приватный каталог
+по умолчанию — `.e2e-fixtures`. Без готового lock команда предлагает подготовить
+шесть образов, разрешает официальный Python 3 source из `e2e/python-base.json`
+в проверенный direct linux/amd64 digest и фиксирует raw manifest/config до сборки.
+Отдельные подтверждения обязательны для создания builder VM, сборок, создания
+publisher VM, публикации GHCR, проверки публичности, создания тестовой VM, immutable
+pulls, Docker mutations и активации loopback Caddy. Credentials остаются только в
+publisher VM. При готовом проверенном lock сборка и публикация пропускаются.
+Нужны Linux amd64, KVM, аутентифицированный Multipass, доступ к сети/packages и
+достаточные ресурсы VM. Docker основной системы не используется; все `E2E_*`
+переменные — необязательные overrides.
 
-`make e2e-fixtures` создаёт офлайн-план шести сборок с pinned base и исходниками;
-`E2E_FIXTURE_EXECUTE=yes` включает отдельные подтверждения подготовки builder,
-шести сборок, подготовки publisher, публикации GHCR и анонимной публичной проверки.
-Disposable builder/publisher VM используют Buildah/Skopeo без daemon; credentials
-публикации остаются только в publisher. Сохраняются точные bytes/digests direct
-schema-2 manifests и worker healthcheck. После публикации `make e2e` использует
-готовый `E2E_FIXTURE_DIR/artifacts/lock.json` (по умолчанию `.e2e-fixtures`) без пересборки.
-Офлайн-импорт raw manifests остаётся доступным без утверждения о публикации или
-provenance. Unknown fixture operations сохраняют evidence и блокируют retry.
-См. [действия оператора](docs/local-e2e.md#first-build-and-publication--operator-only).
+`make e2e-fixtures` отдельно готовит fixtures с теми же defaults и подтверждениями.
+CLI `fixtures --plan --base <immutable-reference>` и импорт raw manifests остаются
+офлайн. Unknown outcome сохраняет evidence и блокирует retry; автоматического
+reset или cleanup нет. См. [инструкцию оператора Stage 07](docs/local-e2e.md).
 Digests не выдумываются; реальные сборки/публикация остаются **not-performed**.
 `make e2e-report` читает приватные локальные receipts сессии; `e2e-diagnose` читает VM.
 CLI: `python -m scripts.e2e.cli`; отдельные prepare/images/test/status/clean остаются

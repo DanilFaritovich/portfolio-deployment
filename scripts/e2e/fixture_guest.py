@@ -134,6 +134,7 @@ def build(plan, root=ROOT):
     direct(raw)  # Refuse indexes even if Skopeo could select a child platform.
     config = command("skopeo", "inspect", "--retry-times=0", "--config", "--raw", base)
     need("sha256:" + sha256(config).hexdigest() == json.loads(raw)["config"]["digest"])
+    need(len(config) == json.loads(raw)["config"]["size"])
     platform_config(config)
     (root / "base-manifest.json").write_bytes(raw)
     versions = {tool: command(tool, "--version").decode().strip() for tool in ("buildah", "skopeo")}

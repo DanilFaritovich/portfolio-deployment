@@ -378,9 +378,14 @@ snapshot, durable phase intents and a persistent whole-operation flock. Separate
 interactive confirmations authorize VM creation, immutable pulls, Docker mutations
 and Caddy activation. Host receipts pin VM machine/daemon identity; failed or unknown
 sessions block another orchestration in that state directory without replay/reset.
-`e2e-report` reads local receipts, not live state. `e2e-fixtures` prepares an offline
-base/source-pinned six-image plan and imports exact raw manifests into a validated
-lock. An explicit fixture execution opt-in adds separate disposable Ubuntu builder
+`e2e-report` reads local receipts, not live state. Missing fixtures are offered by
+`make e2e`; `e2e-fixtures` prepares them separately with the same defaults and
+confirmations. Verified GitHub origin supplies a lowercase owner. The reviewed
+official Python source in `e2e/python-base.json` is resolved anonymously to one
+direct linux/amd64 manifest; raw manifest/config digests, sizes, platform and
+Python 3 metadata are checked and privately pinned before building. No mutable
+tag is used after pinning. Explicit CLI `--plan --base` and raw-manifest import
+remain offline. Separately confirmed execution adds disposable Ubuntu builder
 and publisher VMs, with independent preparation/build/publication/public-verification
 confirmations. Buildah runs daemonless in the builder; Skopeo preserves exact
 exported direct Docker schema-2 manifests (including worker healthcheck) in GHCR.

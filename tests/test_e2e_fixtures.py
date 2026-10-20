@@ -200,13 +200,13 @@ def test_public_verification_rejects_manifest_reserialization(tmp_path, monkeypa
 
 def test_cli_execute_opt_in_and_default_ready_lock(tmp_path, monkeypatch, capsys):
     calls = []
-    monkeypatch.setattr(cli.fixture_execution, "execute", lambda *a, **kw: calls.append((a, kw)) or {"status": "passed"})
+    monkeypatch.setattr(cli.bootstrap, "owner_from_origin", lambda owner: owner)
+    monkeypatch.setattr(cli.orchestration, "confirm", lambda *a: calls.append("confirm"))
+    monkeypatch.setattr(cli.bootstrap, "resolve_base", lambda *a: BASE)
+    monkeypatch.setattr(cli.fixture_execution, "execute", lambda *a, **kw: calls.append("execute") or {"status": "passed"})
     args = ["fixtures", "--output", str(tmp_path / "bundle"), "--owner", "fixtures", "--base", BASE]
-    assert cli.main(args) == 2 and calls == []
-    assert cli.main(args + ["--execute"]) == 0 and len(calls) == 1
-    monkeypatch.setattr(cli.orchestration, "run", lambda lock, state: calls.append(lock) or {"status": "passed"})
-    assert cli.main(["run", "--output", str(tmp_path / "bundle")]) == 0
-    assert calls[-1] == str(tmp_path / "bundle/artifacts/lock.json")
+    assert cli.main(args + ["--plan"]) == 2 and calls == []
+    assert cli.main(args + ["--execute"]) == 0 and calls == ["confirm", "execute"]
     assert cli.main(args + ["--execute", "--manifests", str(tmp_path)]) == 2
 
 

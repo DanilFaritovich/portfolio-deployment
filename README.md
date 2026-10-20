@@ -243,24 +243,22 @@ acceptance. See [Stage 06 limits and APIs](docs/readiness-recovery.md).
 
 ## Disposable local E2E
 
-[Stage 07 instructions](docs/local-e2e.md) separate three steps: prepare OCI fixtures,
-prepare a VM, and run the 15 scenarios. `make e2e E2E_IMAGES=/absolute/lock.json`
-creates a unique session and orchestrates prepare → images → test with separate
-interactive confirmations for VM creation, pulls, Docker mutations and loopback
-Caddy activation. It reuses a verified lock; it never builds or publishes images.
-Linux amd64, KVM, authenticated Multipass, VM/package network access and six public
-direct GHCR manifests with exact raw bytes are required. Host Docker is unused.
+`make e2e` handles first and repeated runs without environment exports. It derives
+a lowercase GHCR owner from verified GitHub origin and uses private `.e2e-fixtures`.
+Without a ready lock it offers preparation of six images, resolves the official
+Python 3 source in `e2e/python-base.json` to a verified direct linux/amd64 digest,
+and pins raw manifest/config metadata before building. Separate confirmations
+remain mandatory for builder VM creation, builds, publisher VM creation, GHCR
+publication, public verification, test VM creation, immutable pulls, Docker
+mutations and loopback Caddy activation. Credentials stay only in the publisher VM.
+With a verified ready lock, later runs skip build/publication. Linux amd64, KVM,
+authenticated Multipass, network/package access and adequate VM resources are
+required. Host Docker is unused; all `E2E_*` variables are optional overrides.
 
-`make e2e-fixtures` creates an offline pinned-base/source build plan for six roles;
-`E2E_FIXTURE_EXECUTE=yes` enables separately confirmed builder preparation, six
-builds, publisher preparation, GHCR publication and anonymous public verification.
-Disposable builder/publisher VMs use daemonless Buildah/Skopeo; publication credentials
-stay only in the publisher. Exact direct schema-2 manifest bytes/digests and worker
-healthcheck are preserved. After publication, `make e2e` uses the ready
-`E2E_FIXTURE_DIR/artifacts/lock.json` (default `.e2e-fixtures`) without rebuilding.
-Offline raw-manifest import remains available without claiming publication or
-provenance. Unknown fixture operations retain evidence and block retry. See the
-[operator steps](docs/local-e2e.md#first-build-and-publication--operator-only).
+`make e2e-fixtures` prepares fixtures separately with the same defaults and
+confirmations. CLI `fixtures --plan --base <immutable-reference>` and raw-manifest
+import remain offline. Unknown outcomes preserve evidence and block retry; no
+reset or cleanup runs automatically. See the [Stage 07 operator instructions](docs/local-e2e.md).
 No digests are fabricated; real builds/publication remain **not-performed**.
 `make e2e-report` reads private local session receipts; `e2e-diagnose` reads the VM.
 The CLI is `python -m scripts.e2e.cli`; separate prepare/images/test/status/clean

@@ -72,7 +72,9 @@ def run(lock, directory, *, factory=VM, consent=confirm):
         session = secrets.token_hex(8)
         machine = factory(session)
         prerequisites = machine.prerequisites()
-        require(prerequisites["status"] == "passed", "e2e-host-prerequisites-blocked")
+        if prerequisites["status"] != "passed":
+            return {**prerequisites, "reason": "e2e-host-prerequisites-blocked",
+                    "missing": [name for name, passed in prerequisites.get("checks", {}).items() if not passed]}
         # Freeze the validated lock and exact raw manifests in a private session directory.
         snapshot = store.path / session
         snapshot.mkdir(mode=0o700)  # Exclusive; never adopt a collision.

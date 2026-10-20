@@ -103,34 +103,65 @@ remain available; component readiness alone cannot promote LKG.
 
 ## Preparing immutable fixture images
 
-`make e2e-fixtures` defaults to an offline pinned-source/base plan. Choose a
-reviewed **direct linux/amd64 Python 3 manifest**, a lower-case GHCR owner and a
-private artifact directory. There is no default tag or base digest.
+First and subsequent runs use one command, with no environment exports:
 
 ```sh
-export E2E_FIXTURE_OWNER=your-owner
-export E2E_PYTHON_BASE="$REVIEWED_PYTHON_BASE"
-export E2E_FIXTURE_DIR=/absolute/private-fixture-bundle
-make e2e-fixtures PYTHON=.venv/bin/python
+make e2e
 ```
 
-Set `REVIEWED_PYTHON_BASE` first to the full reviewed
-`docker.io/library/python@sha256:<64 hex characters>` reference. Offline planning
-creates `plan.json`, `repositories.json`, and the exact `context/{Dockerfile,app.py}`
-with source SHA-256, all six build arguments, platform and source epoch
-(`E2E_SOURCE_DATE_EPOCH`, default 0). It returns **blocked / exit 2**, reason
-`fixture-execution-requires-separate-opt-in`, without contacting Multipass or a
-registry. Repeating identical inputs verifies the bundle. Changed owner, base,
-epoch, source or an older incompatible plan requires a new directory; retain the
-old evidence. Plans do not establish registry availability or producer provenance.
+Install the pinned development dependencies first (see README); if they are in
+`.venv`, pass `PYTHON=.venv/bin/python` to Make. A real terminal is required.
+Without a ready `.e2e-fixtures/artifacts/lock.json`, the command offers preparation
+of six images (`prepare-fixtures`, default deny), then requests every separate
+approval listed below. A verified existing lock skips build/publication and goes
+straight to VM prepare → immutable pulls → real E2E. An invalid lock or an
+unfinished fixture/E2E receipt stops the run; it never triggers a rebuild.
+
+The GHCR owner comes from this checkout's single verified GitHub `origin` fetch
+and push URLs (HTTPS, scp-style SSH or `ssh://git@github.com/`). Both must name the
+same repository; unknown hosts, credentials in URLs, multiple URLs or conflicting
+identities fail closed. The owner is normalized to lowercase. `E2E_FIXTURE_OWNER`
+overrides the target owner after origin verification. All `E2E_*` settings are
+optional overrides; `.e2e-fixtures` and `.e2e-state` are private defaults.
+
+The reviewed source in `e2e/python-base.json` is Docker Official Image
+`docker.io/library/python:3.13-slim-bookworm`, maintained at
+[Docker Library Python](https://github.com/docker-library/python).
+After initial confirmation the host reads anonymous registry metadata only, with
+no image layer pulls or Docker daemon. It selects exactly one direct linux/amd64
+manifest, checks its raw digest/size, config digest/size, platform and Python 3
+version metadata, then fsyncs `python-base.json` in the private fixture directory.
+The immutable direct reference drives `plan.json` and every build argument; the
+tag is never used after pinning. The builder independently rechecks the pinned
+manifest/config/platform before any build. `E2E_PYTHON_BASE` may override this with
+an official `docker.io/library/python@sha256:<64 hex>` direct manifest; it is
+validated in the same way. No current digest is fabricated or committed here.
 
 ### First build and publication — operator only
 
-The following command is live and was **not run during implementation**:
+To prepare fixtures separately, without running the test VM:
 
 ```sh
-make e2e-fixtures PYTHON=.venv/bin/python E2E_FIXTURE_EXECUTE=yes
+make e2e-fixtures
 ```
+
+This uses the same defaults, source resolution and confirmations as `make e2e`.
+`E2E_FIXTURE_EXECUTE=yes` / CLI `--execute` remains accepted, but never bypasses
+interactive approvals. For an offline source/base plan only, supply an immutable
+base explicitly:
+
+```sh
+.venv/bin/python -m scripts.e2e.cli fixtures --plan \
+  --base docker.io/library/python@sha256:REVIEWED_DIRECT_MANIFEST_DIGEST
+```
+
+Replace the placeholder with a reviewed 64-hex digest. Offline planning returns
+blocked/exit 2 (`fixture-execution-requires-separate-opt-in`); it never resolves a
+tag or contacts Multipass/registries. Repeating identical inputs verifies the
+bundle. Changed owner/base/epoch/source needs a new directory, retaining old
+evidence; never bypass an unknown operation by selecting fresh state.
+The source epoch defaults to 0 (`E2E_SOURCE_DATE_EPOCH` override).
+Real fixture operations and real E2E remain **not-performed** in implementation.
 
 Requirements: a real TTY, Linux amd64/KVM, authenticated Multipass, Ubuntu/package
 and registry network access, at least 64 GiB free host disk for fixture work, and
@@ -209,6 +240,7 @@ With the same owner/base/epoch inputs, use:
 
 ```sh
 make e2e-fixtures PYTHON=.venv/bin/python \
+  E2E_PYTHON_BASE="docker.io/library/python@sha256:REVIEWED_DIRECT_MANIFEST_DIGEST" \
   E2E_RAW_MANIFESTS=/absolute/exported-raw-manifests
 ```
 
@@ -261,19 +293,18 @@ must already be verified/preloaded when deployment starts; missing images block.
 
 ## Unified run — only after separate authorization
 
-After the artifact preparation above, run the committed revision from a real TTY:
+Run the committed revision from a real TTY (missing fixtures are offered first):
 
 ```sh
 make e2e-prerequisites PYTHON=.venv/bin/python
-make e2e PYTHON=.venv/bin/python \
-  E2E_FIXTURE_DIR=/absolute/private-fixture-bundle
+make e2e PYTHON=.venv/bin/python
 make e2e-report PYTHON=.venv/bin/python
 ```
 
 After successful fixture publication, `make e2e` automatically uses
 `$E2E_FIXTURE_DIR/artifacts/lock.json` (default `.e2e-fixtures/artifacts/lock.json`).
-`E2E_IMAGES=/absolute/lock.json` remains an explicit override. It never rebuilds or
-publishes; the prepared lock drives Multipass prepare → pulls → real scenarios.
+`E2E_IMAGES=/absolute/lock.json` remains an explicit override. With this verified lock it skips build/publication; the lock drives Multipass
+prepare → pulls → real scenarios. Without it, initial preparation is offered.
 
 `make e2e` is an orchestrator of the existing `VM.prepare`, transfer/images and
 run paths, not another deployment engine. It validates all images offline,

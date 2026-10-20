@@ -111,13 +111,16 @@ def execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=confi
             return state
         require(not (store.path / "artifacts").exists(), "offline-import-not-publication-use-new-directory")
         pinned_plan = store.read("plan.json")
+        session = secrets.token_hex(8)
+        builder, publisher = factory(session, "builder"), factory(session, "publisher")
+        prerequisites = builder.prerequisites()
+        if prerequisites["status"] != "passed":
+            return {**prerequisites, "reason": "fixture-host-prerequisites-blocked",
+                    "missing": [name for name, passed in prerequisites.get("checks", {}).items() if not passed]}
         payload = source_bytes(ROOT / "scripts/e2e/fixture_guest.py")
         with (store.path / "fixture_guest.py").open("xb") as out:
             out.write(payload)
         (store.path / "fixture_guest.py").chmod(0o600)
-        session = secrets.token_hex(8)
-        builder, publisher = factory(session, "builder"), factory(session, "publisher")
-        require(builder.prerequisites()["status"] == "passed", "fixture-host-prerequisites-blocked")
         state = {"version": 1, "session": session, "builder": builder.name, "publisher": publisher.name,
                  "phase": "planned", "status": "planned", "identities": {}, "references": {},
                  "payloadSha256": sha256(payload).hexdigest()}

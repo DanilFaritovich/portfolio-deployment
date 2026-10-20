@@ -809,7 +809,8 @@ def test_fixture_bundle_rejects_invalid_inputs_without_publishing_lock(images, t
 
 
 def test_unified_cli_fixtures_and_report_are_offline(images, tmp_path, capsys, monkeypatch):
-    args = ["fixtures", "--output", str(tmp_path / "bundle"), "--owner", "fixtures", "--base", BASE]
+    monkeypatch.setattr(cli.bootstrap, "owner_from_origin", lambda owner: owner)
+    args = ["fixtures", "--plan", "--output", str(tmp_path / "bundle"), "--owner", "fixtures", "--base", BASE]
     assert cli.main(args) == 2
     assert json.loads(capsys.readouterr().out)["reason"] == "fixture-execution-requires-separate-opt-in"
     assert cli.main(args + ["--manifests", str(tmp_path)]) == 0
@@ -834,10 +835,11 @@ def test_vm_local_prerequisite_checks_do_not_execute_hypervisor(monkeypatch):
 def test_host_orchestration_prerequisite_failure_precedes_any_confirmation(images, tmp_path):
     class Missing(HostVM):
         def prerequisites(self):
-            return {"status": "blocked"}
-    with pytest.raises(DockerError, match="prerequisites-blocked"):
-        orchestration.run(tmp_path / "lock.json", tmp_path / "host", factory=Missing,
-                          consent=lambda *a: pytest.fail("prompt before valid prerequisites"))
+            return {"status": "blocked", "checks": {"multipass": False, "linuxAmd64": True}}
+    result = orchestration.run(tmp_path / "lock.json", tmp_path / "host", factory=Missing,
+                               consent=lambda *a: pytest.fail("prompt before valid prerequisites"))
+    assert result["reason"] == "e2e-host-prerequisites-blocked"
+    assert result["missing"] == ["multipass"]
     assert not (tmp_path / "host" / "current.json").exists()
 
 
