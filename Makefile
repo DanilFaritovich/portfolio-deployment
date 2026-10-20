@@ -39,3 +39,24 @@ gateway-check:
 
 gateway-validate:
 	@$(PYTHON) -c 'import os,sys; from scripts.gateway_cli import main; sys.exit(main(["--root",os.environ["REGISTRY_ROOT"],"--observed",os.environ.get("OBSERVED",""),"--git-revision",os.environ.get("GIT_REVISION",""),"--format","json","--official"]))'
+
+# Stage 05 previews and tests remain offline. No implicit application selection.
+.PHONY: compose-render deployment-plan compose-check compose-validate local-docker-smoke
+COMPOSE_FORMAT ?= json
+export APPLICATION COMPOSE_FORMAT
+compose-render:
+	@$(PYTHON) -c 'import os,sys; from scripts.deployment_cli import main; sys.exit(main(["compose-render","--root",os.environ["REGISTRY_ROOT"],"--application",os.environ.get("APPLICATION",""),"--git-revision",os.environ.get("GIT_REVISION",""),"--format",os.environ["COMPOSE_FORMAT"]]))'
+
+deployment-plan:
+	@$(PYTHON) -c 'import os,sys; from scripts.deployment_cli import main; sys.exit(main(["deployment-plan","--root",os.environ["REGISTRY_ROOT"],"--application",os.environ.get("APPLICATION",""),"--git-revision",os.environ.get("GIT_REVISION",""),"--observed",os.environ.get("OBSERVED",""),"--format","json"]))'
+
+compose-check:
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_deployment.py
+
+# Official local syntax validation only; separate from the offline compose-check.
+compose-validate:
+	@$(PYTHON) -c 'import os,sys; from scripts.deployment_cli import main; sys.exit(main(["compose-validate","--root",os.environ["REGISTRY_ROOT"],"--application",os.environ.get("APPLICATION",""),"--git-revision",os.environ.get("GIT_REVISION","")]))'
+
+export SMOKE_ENDPOINT SMOKE_SESSION SMOKE_IMAGE_A SMOKE_IMAGE_B SMOKE_AUTHORIZE
+local-docker-smoke:
+	@$(PYTHON) -c 'import os,sys; from scripts.local_docker_smoke import main; sys.exit(main(["--endpoint",os.environ.get("SMOKE_ENDPOINT",""),"--session",os.environ.get("SMOKE_SESSION",""),"--image-a",os.environ.get("SMOKE_IMAGE_A",""),"--image-b",os.environ.get("SMOKE_IMAGE_B",""),"--authorize",os.environ.get("SMOKE_AUTHORIZE","")]))'

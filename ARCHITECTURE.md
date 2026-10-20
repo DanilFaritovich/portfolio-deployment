@@ -2,20 +2,18 @@
 
 ## Status and scope
 
-Stages 01–04 provide local development standards, documentation, a versioned
-application registry, admission policy, a bounded offline validator and a
-deterministic offline planner plus Caddy route/candidate previews and validation.
-Runtime components remain **Planned**: no controller, active gateway, Compose stack
-or production deployment exists here. The real registry and admission allowlist
-are empty; examples exist only as synthetic test fixtures. No VPS integration
-has been performed or verified. The implemented contract is described in
-[manifest v1](docs/manifest-v1.md).
+Stages 01–04 provide registry/admission validation, immutable planning models and
+offline Caddy previews. Stage 04 PR #4 is merged into `develop`. Stage 05 adds a
+Python CLI engine foundation: deterministic Compose, bounded Docker-only discovery,
+preflight, host locking, scoped execution, offline mocks and a separate opt-in
+disposable smoke. It is not production-ready and real Docker smoke was not run.
+The real registry/admission allowlist remain empty. No VPS integration is verified.
 
-The target is a small, auditable single-Ubuntu-VPS Docker Compose platform. Docker
-Compose, GHCR, Git and Caddy are selected target technologies. Controller language,
-invocation model and durable result-store format remain undecided. Prefer a CLI
-or constrained CI invocation before considering a privileged long-running daemon.
-Kubernetes and a controller database have no established requirement.
+Python CLI, Docker Engine/Compose v2, GHCR, Git and Caddy are selected technologies.
+There is no daemon, database, Kubernetes or production deployment trigger. Durable
+journal format remains undecided. Ordinary live apply is unavailable: Docker-only
+discovery cannot establish full Stage 03 registry/gateway evidence. See the
+[Stage 05 contract](docs/docker-deployment-engine.md) for exact safe boundaries.
 
 ## Ownership and components
 
@@ -26,7 +24,7 @@ Kubernetes and a controller database have no established requirement.
 | Desired state | Per-application manifests selecting component digests and references | Deeply immutable normalized model implemented offline |
 | Validator | Bounded YAML, closed schemas, semantic/global checks and separate admission policy | Implemented offline |
 | Planner | Pure desired/observed comparison using explicit local snapshots; reviewable plan only | Implemented offline |
-| Reconciler and Compose executor | Serialized, scoped image pulls and container updates; bounded health gates | Planned |
+| Compose engine | Deterministic renderer, bounded Docker discovery, ownership/preflight, lock and scoped executor | Implemented foundation with mocks; disposable smoke opt-in; full live observation/readiness integration pending |
 | Caddy gateway | Canonical offline route/candidate rendering and opt-in local validation | Foundation implemented offline; runtime, hot reload and certificate state Planned |
 | State/result journal | Attempted and last known-good revisions, observed outcomes and recovery evidence | Planned |
 | [Application repositories, e.g. project-router](https://github.com/DanilFaritovich/project-router) | Source, tests/CI, Docker builds, GHCR publishing and deployment contract | External ownership; integration Planned; deployability not verified |
@@ -106,7 +104,7 @@ YAML constructs, validates version/structure, checks references, dependency cycl
 volume declarations and global IDs/hostnames/proxy aliases, then applies admission.
 Its pure `validate_registry(root)` API returns validated documents or deterministic
 errors; no writes, network, Docker, secret resolution or partial trusted result.
-Python is offline tooling, not a decision about the deployment-controller runtime.
+Stage 05 selects Python CLI execution while preserving this offline validator boundary.
 See [manifest v1](docs/manifest-v1.md) for fields, limits, examples and the API.
 
 Real registration still needs a confirmed compatible image and reviewed runtime
@@ -114,7 +112,7 @@ contract. OCI manifest/index existence, provenance and platform contents are not
 verified offline. Config/secrets are symbolic references, never values. Named
 volumes are declared and used explicitly; host mounts and runtime overrides are
 forbidden. Omission or `enabled: false` authorizes no stop or data deletion.
-Lifecycle execution, Compose rendering and runtime reconciliation remain future stages.
+Stage 05 renders Compose and implements scoped execution under explicit local test boundaries; production runtime reconciliation remains blocked.
 
 ## Desired state and observations — Implemented offline; journal Planned
 
@@ -128,8 +126,8 @@ copies. The existing application/admission v1 contract is unchanged.
 The versioned bounded [observed schema](schemas/observed-v1.schema.json) models
 complete/trusted registry scope, absent/present/unknown, exact ownership,
 minimal effective runtime, OCI pull-to-manifest identity and health observations.
-Only explicit local JSON/native API fixtures are loaded; no live state discovery
-exists. Incomplete evidence never means absence. The deterministic plan separates
+Stage 03 loads explicit local JSON/native API fixtures. Stage 05 Docker discovery
+remains separate and cannot claim full registry/gateway completeness. Incomplete evidence never means absence. The deterministic plan separates
 component updates, routes, drift, health and pending lifecycle decisions. Storage
 and mount changes block; matching reference IDs do not prove unchanged contents.
 Blocking outranks degraded health, then changes, then no-op. Git revision changes
@@ -137,8 +135,8 @@ alone do not restart services. See [planning contract](docs/reconciliation-plann
 for actions, normalization, limitations, CLI/API and exit codes.
 
 `make plan` requires explicit snapshot and full Git SHA. Plans always report
-`executed: false` and `authorization: false`. Future actual-state discovery,
-execution and journals remain Planned. Recheck observations before apply and
+`executed: false` and `authorization: false`. Full registry/gateway state discovery,
+runtime integration and journals remain Planned. Recheck observations before apply and
 serialize mutations; fixture trust flags cannot authorize production operations.
 
 Record operation ID, service, desired Git revision, image digest, timestamps,
@@ -148,21 +146,21 @@ atomic writes and recovery after interruption need an explicit design. Do not
 commit live observations or secrets into desired-state manifests. A successful
 command exit alone is insufficient deployment evidence.
 
-## Immutable artifact identity — Planned
+## Immutable artifact identity — Conservative Stage 05 foundation
 
 Use `ghcr.io/<owner>/<image>@sha256:<64-hex-digest>` for execution and recovery.
 Do not resolve `latest` during rollout or silently substitute a moving tag.
 Keep Git revision, digest and runtime configuration revision discoverable together.
 Verify that the digest is accessible from the target host and compatible with its
 platform. The v1 contract permits either an OCI index or platform-specific manifest digest
-with explicit target platform. Index contents and provenance verification remain
-future deployment preflight requirements.
+with explicit target platform. Stage 05 only accepts preloaded manifest descriptors with corroborating Engine
+evidence; index mapping and provenance verification remain future prerequisites.
 
 A digest fixes content identity; it does not prove the artifact is trustworthy,
 vulnerability-free, available indefinitely or compatible with stored data.
 Allowlisted producers, retention and supply-chain verification need policy.
 
-## Container and network isolation — Planned
+## Container and network isolation — Rendered; production integration Planned
 
 Use stable service aliases and explicit project/resource ownership. Attach only
 gateway-facing HTTP containers to the deployment-owned shared proxy network.
@@ -201,7 +199,7 @@ sets remain preserved under other plan blockers. No status authorizes reload.
 `scripts/gateway_validation.py` supports opt-in `caddy adapt` then stronger `caddy
 validate`, fixed subprocess arguments/timeouts and temporary config/storage. Missing
 Caddy reports not-performed; unit tests require no binary. No reload or discovery
-exists. Python remains offline tooling. See [Stage 04](docs/caddy-gateway.md) for
+exists. Stage 05 reuses Python for the separate Docker engine. See [Stage 04](docs/caddy-gateway.md) for
 models, selection, CLI exits, trust limits and the future safe reload procedure.
 
 The gateway owns public HTTP(S), validated host-to-upstream mappings and persistent
@@ -273,15 +271,14 @@ journal is neither a backup nor a disaster-recovery system.
 ## Verification boundaries and implementation sequence
 
 **Implemented:** `make fix` and `make check` validate repository text, local links,
-YAML and installed standards without network, Docker or secrets. Python is only
-offline tooling. `make validate` checks the registry, and `make check` additionally
-runs Stage 02–04 pytest suites. `make plan` performs explicit-input offline
+YAML and installed standards without network, Docker or secrets. `make validate` checks the registry, and `make check` additionally
+runs Stage 02–05 pytest suites. `make plan` performs explicit-input offline
 planning. Dependencies are provisioned separately; clean setup may download PyYAML, jsonschema and pytest. External URLs are not contacted by checks.
 
 **Planned offline CI (Stage 08):** use the same Makefile interface, pinned tools,
 read-only checks and least-privilege permissions. No SSH, production endpoints,
 DNS or production credentials. GitHub-hosted tool/source provisioning is distinct
-from offline test execution. No workflow is installed through Stage 04.
+from offline test execution. No workflow is installed through Stage 05.
 
 **Planned local E2E (Stage 07):** disposable Compose projects, mock upstreams and
 isolated local gateway tests; verify no-op, unsafe input rejection, failed health,
@@ -293,8 +290,35 @@ artifact, DNS/TLS, health and recovery checks. CI success alone does not authori
 production mutations. Never present local results as live acceptance evidence.
 
 See the preliminary [roadmap](docs/roadmap.md). Stages 01–04 are implemented
-offline; Stages 05–09 remain Planned. Stage 03 uses the admitted registry API and
-explicit snapshots; it performs no deployment or real-state discovery. Execution
-runtime, production trigger/source, configuration delivery and journal/recovery
-decisions remain open. See
+offline; Stage 05 is an engine foundation with an unexecuted local smoke harness.
+Stages 06–09 remain Planned. Production source/trigger, configuration delivery,
+full observation integration and journal/recovery remain open. See
 [development instructions](AGENTS.md) for workflow boundaries.
+
+## Stage 05 execution boundary
+
+Validated DesiredApplication → immutable ComposeArtifact → matching Stage 03 plan
+→ fixed host flock → freshly re-admitted desired plus refreshed observations →
+preflight → scoped service update → immutable unverified outcome. Module details
+and CLI commands are in the [engine contract](docs/docker-deployment-engine.md).
+
+The project identity is `portfolio-<id>`, private internal bridge
+`portfolio-<id>-private`, persistent volumes `portfolio-<id>-<volume>`. Only ingress
+joins preprovisioned `portfolio-proxy` with `<id>-<component>` alias. Component
+runtime labels exclude Git revision and sibling image choices. Config/secret refs
+block until delivery is specified; existing storage/mount changes remain blocked.
+No image pulls, builds, ordinary deletions or gateway operations are implemented.
+
+`LocalStateProvider` deliberately returns incomplete Stage 03 observations because
+Docker supplies no complete gateway/registry evidence. No production apply CLI
+exists. Only the separate disposable harness can perform real Docker operations,
+with explicit canonical Unix socket, test namespace, ownership checks, preloaded
+verified images and guarded session cleanup. Socket location is not proof of daemon
+purpose. The local filesystem lock coordinates managed processes on one host,
+not external Docker clients or runners on other hosts.
+
+Mutation success is `applied-unverified`, never release success; timeout/disconnect
+is `unknown`, requiring fresh discovery. Dependency creation does not prove
+readiness, and partial execution is explicit. Stage 06 owns readiness, journal,
+rollback and recovery; Stage 07 owns extended real E2E evidence. No live Docker
+smoke or production operation was performed during Stage 05 implementation.

@@ -12,14 +12,18 @@ offline manifest validator. Stage 03 adds immutable desired/observed models and
 a pure offline reconciliation planner using explicit local snapshots. The real
 registry and admission allowlist are empty pending reviewed applications and confirmed digests.
 Stage 04 adds deterministic offline Caddy route/candidate previews and opt-in local
-configuration validation. Docker execution, gateway activation, runtime reconciliation
-and all Stages 05–09 components remain **Planned**.
+configuration validation; PR #4 is merged into develop. Stage 05 adds a Python CLI
+Compose engine foundation, bounded Docker-only discovery, preflight, host flock,
+scoped execution and offline mocks. Real operations are limited to separately
+authorized disposable local smoke; it was not run during implementation. Full
+registry/gateway observation integration, production apply, readiness, rollback,
+journal and Stages 06–09 remain **Planned**.
 Server provisioning, Ubuntu, SSH, users, Docker Engine and host hardening belong
 to `DanilFaritovich/portfolio-server-infrastructure`. Application repositories
 own source, CI, image builds/publication and deployment contracts.
 
-Do not implement Stages 05–09 without their own scoped task. Do not select a controller
-language, daemon, database, Kubernetes or deployment trigger without an explicit
+Do not implement Stages 06–09 without their own scoped task. Python CLI is selected for Stage 05. Do not add a daemon, database, Kubernetes
+or deployment trigger without an explicit
 architectural rationale and the relevant task scope.
 
 ## Repository map and standards
@@ -32,7 +36,13 @@ architectural rationale and the relevant task scope.
   separate trust allowlist; policy changes require security review.
 - `schemas/`, `tests/fixtures/`: versioned application/admission schemas and
   synthetic positive/negative examples; fixtures are not production manifests.
-- `scripts/`: offline development tooling only; Python here does not select the controller runtime.
+- `scripts/`: offline tooling plus constrained Stage 05 Python CLI engine; no production apply interface.
+- `scripts/compose.py`, `scripts/deployment.py`: immutable Compose/operations/results,
+  resource preflight and scoped execution under host flock.
+- `scripts/docker_adapter.py`, `scripts/docker_discovery.py`: bounded local-only
+  commands, offline mock and deliberately incomplete registry observation provider.
+- `scripts/deployment_cli.py`, `scripts/local_docker_smoke.py`: offline previews
+  and separate disposable test lifecycle. See [Stage 05](docs/docker-deployment-engine.md).
 - `scripts/validate_registry.py`: `validate_registry(root)` returns validated
   application documents or raises `RegistryValidationError`, without mutation
   or network access. Stage 03 consumes this API without duplicating admission.
@@ -72,19 +82,26 @@ is stable; `develop` integrates development. New task branches start strictly
 from `develop`. Never force-reset, rebase, discard changes or overwrite origin.
 If `develop` is absent, establish it from `main` before creating a task branch.
 
-Use the existing Makefile as the main interface. All targets are offline:
+Use the existing Makefile as the main interface. Default checks/previews are offline:
 `make fix` normalizes project-owned text, preserving vendored skills;
 `make validate` performs read-only validation of the complete registry and
 admission policy; `make check` runs bootstrap checks, registry validation and
-Stage 02–04 tests. `make plan OBSERVED=<local.json> GIT_REVISION=<full-sha>`
+Stage 02–05 tests. `make plan OBSERVED=<local.json> GIT_REVISION=<full-sha>`
 requires explicit offline inputs; blocked/degraded plans are not executable.
 `make gateway-render` requires the same inputs; JSON separates desired/current/retained
 candidate. `make gateway-check` runs offline gateway tests; `make gateway-validate`
 explicitly requires a local trusted Caddy binary and never downloads or reloads it.
+`make compose-render` and `make deployment-plan` require explicit APPLICATION and
+GIT_REVISION; the latter also requires OBSERVED. `make compose-check` is offline;
+`make compose-validate` invokes installed Compose syntax validation without daemon
+contact. `make local-docker-smoke` requires explicit endpoint, session, preloaded
+images and disposable authorization; never run it automatically. No production
+apply/deploy target exists. Do not fabricate complete/trusted Stage 03 snapshots
+from Docker inventory. Runtime refs and unverified OCI mappings block execution.
 Run safe fixes before targeted checks, then `make check` once implementation
 stabilizes. Documentation-only changes need targeted documentation
 checks, without rerunning unchanged executable tests. No broader `verify`/`ci`
-target exists through Stage 04; do not add empty targets. Install pinned
+target exists through Stage 05; do not add empty targets. Install pinned
 development dependencies as documented before checks. Checks must fail clearly
 when dependencies or required assets are missing. Negative YAML fixtures are
 excluded from bootstrap syntax parsing and covered by dedicated tests.
@@ -104,8 +121,11 @@ Do not change other repositories as a side effect.
 
 ## Security and operating boundaries
 
-Stage 01–04 work forbids VPS/SSH contact, production Ansible, containers, Caddy activation, DNS or
+Stage 01–05 work forbids VPS/SSH contact, production Ansible/containers, Caddy activation, DNS or
 domain changes, requesting/creating production secrets and automatic deployments.
+Only explicitly authorized disposable local Docker smoke is allowed; default
+checks never connect to Docker. Never use production project names for smoke or
+remove preexisting volumes. Keep the fixed host lock inode; no unlink/prune/down.
 Future production work also requires explicit operation authorization or an
 approved narrowly scoped policy. No credentials in Git, manifests, logs or
 images; reference server-side secrets. Untrusted PRs receive no production
