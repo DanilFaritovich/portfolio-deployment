@@ -127,8 +127,16 @@ def container_runtime(resource, artifact, service, image):
     defaults = json.loads(image.defaults_json)
     if config.get("Image") != wanted["image"] or f["imageId"] != image.image_id or not image.verified:
         return False
+    empty_defaults = {"Cmd": [], "Entrypoint": [], "Env": [], "ExposedPorts": {}, "Volumes": {}}
     for key in ("Cmd", "Entrypoint", "Env", "User", "WorkingDir", "Healthcheck", "ExposedPorts", "Volumes"):
-        if config.get(key) != defaults.get(key):
+        actual, expected = config.get(key), defaults.get(key)
+        if key in empty_defaults:
+            empty = empty_defaults[key]
+            if actual is None:
+                actual = empty
+            if expected is None:
+                expected = empty
+        if actual != expected:
             return False
     if (host.get("Privileged") or host.get("PortBindings") or host.get("PublishAllPorts") or
         host.get("Binds") or host.get("CapAdd") or host.get("Devices") or host.get("DeviceRequests") or

@@ -503,6 +503,18 @@ def test_actual_runtime_overrides_block_noop(app, tmp_path, mutation):
     assert "never-print" not in encode([r.document for r in results])
 
 
+def test_actual_runtime_accepts_typed_empty_image_defaults(app, tmp_path):
+    state = docker_state(app, True)
+    empty_defaults = {"Cmd": [], "Entrypoint": [], "Env": [], "ExposedPorts": {}, "Volumes": {}}
+    artifact = compose.render_compose(app, test_session=SESSION)
+    images = {item.reference: replace(item, defaults_json=encode(empty_defaults)) for item in state.images}
+    for item in state.resources:
+        if item.kind != "container":
+            continue
+        service = item.facts["labels"]["com.docker.compose.service"]
+        assert docker_discovery.container_runtime(item, artifact, service, images[artifact.model["services"][service]["image"]])
+
+
 def test_local_provider_never_promotes_docker_to_full_snapshot(root, app, monkeypatch):
     monkeypatch.setattr(docker_discovery, "discover", lambda *a: docker_state(app, True))
     d, o, state = docker_discovery.LocalStateProvider(root, SHA, object()).refresh()
