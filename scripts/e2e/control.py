@@ -1,4 +1,4 @@
-"""Fixed host-wide fence and narrow evidence-based closure of absent builder VM.
+"""Fixed host-wide fence and narrow evidence-based builder preparation closure.
 
 Original receipts and locks are immutable evidence for closure. A closure never
 resumes a phase; only a separately confirmed new session may follow.
@@ -52,6 +52,14 @@ def check(control, path, kind):
 
 
 def check_all(control):
+    require(not any(name.endswith(".pending") for name in os.listdir(control.fd)), "e2e-control-pending-review-required")
+    # Existing-builder decisions retain their source directory as durable evidence.
+    for name in os.listdir(control.fd):
+        if re.fullmatch(r"closed-[0-9a-f]{16}\.json", name):
+            decision = control.read(name)
+            if decision.get("decision") == "closed-stopped-failed-builder-no-replay":
+                from scripts.e2e.builder_recovery import verify_retained
+                verify_retained(decision, control)
     # Fixed defaults are checked regardless of overrides: legacy unknown cannot
     # be bypassed by selecting a fresh output/state directory.
     base = Path.home() / ".local/share/portfolio-deployment"
@@ -70,11 +78,12 @@ def guard(path, kind):
         check_all(control)
         # A durable path must exist before registration. With no receipt yet,
         # callers cannot have dispatched VM mutations (intent precedes dispatch).
-        with Store(path).locked():
-            pass
+        with Store(path).locked() as selected:
+            state = receipt(selected, kind)
+            require(not closed(control, state, selected.path), "e2e-closed-session-no-replay-use-new-directory")
         # Register before the caller can mutate; retain the fixed lock inode.
         control.write("active.json", {"directory": str(Path(path).absolute()), "kind": kind})
-        yield
+        yield control
 
 
 def preflight():
@@ -112,6 +121,7 @@ def close_unknown(path, session, evidence_path, *, consent=None, factory=None):
     from scripts.e2e.orchestration import confirm
     from scripts.e2e.vm import VM
     session_id(session)
+    require(session != "b616980ef1c99192", "e2e-existing-builder-requires-specific-closure")
     # Evidence is bounded private JSON; no arbitrary comments or secrets persisted.
     from scripts.e2e.staging import source
     with source(evidence_path, private=True) as stream:

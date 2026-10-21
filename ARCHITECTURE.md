@@ -393,9 +393,18 @@ guest artifacts. Staging files/transfer receipts are retained; GHCR credentials
 remain exclusively in the publisher. `multipass.py` classifies transport,
 cloud-init and identity failures with bounded allowlisted stderr evidence.
 `control.py` adds a fixed private host-wide operation fence independent of output
-path overrides. Only independently reviewed absent-builder unknown preparation
-can receive a separate immutable closure decision; the original unknown receipt,
-locks and artifacts remain, and no phase is resumed. Phase approvals use separate
+path overrides. Independently reviewed absent-builder unknown preparation can
+receive a separate immutable closure decision. Incident-specific `builder_recovery.py`
+also closes failed preparation for session `b616980ef1c99192`: a read-only Running
+guest identity/continuation review is recorded first, then independent operator
+evidence and a separate manual stop are required. Closure accepts only Stopped,
+rechecks inputs/inventory around confirmation and publishes a no-replace decision.
+Running, missing/deleted or uncertain VMs remain blocked. The original unknown receipt,
+locks, staging and evidence remain; no phase is resumed. Retained source/review
+hashes are checked before new work, and the old directory/session cannot replay.
+Stopped Multipass metadata does not expose guest machine-id: continuity across
+stop explicitly relies on independent operator no-replacement attestation.
+Phase approvals use separate
 default-deny `y/N` prompts; cleanup separately approves the exact resource list.
 
 

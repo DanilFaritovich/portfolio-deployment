@@ -587,53 +587,155 @@ argument-type check runs; this is not full schema validation. A host schema pass
 does not prove the guest's merged configuration or boot success. Nonzero guest
 `cloud-init status --wait`, including degraded exit 2, still aborts preparation.
 
-Safe incident handoff/closure procedure for this specific session (operator-only;
-no commands below were run during this fix):
+The separate commands below support **only** this incident: the original directory
+`~/.local/share/portfolio-deployment/e2e-fixtures-attempt-2`, session
+`b616980ef1c99192`, and canonical receipt SHA-256
+`55ee11e0476d3026839f2decb989238e57c1fe21a54191b27cbf6b18d01f77a1` are pinned.
+A different hash/path/phase needs independent investigation, not an edited pin.
+The absent-builder command rejects this session even if its VM is deleted.
 
-1. Stop all host E2E/fixture controllers and independently verify that no launch,
-   transfer, exec or cloud-init operation is still running. Do not rerun `make e2e`,
-   preparation, `cloud-init init/clean`, or guest `runcmd`. Do not edit the original
-   YAML, marker, receipts, `.pending` files, fixed fence or lock inodes. Do not use
-   a new directory to bypass the global fence.
-2. Preserve the original private fixture directory and
-   `~/PortfolioDeploymentE2E/b616980ef1c99192/` staging tree in place. Create a
-   separate private evidence directory (0700; files 0600). Copy the receipt,
-   generated cloud-init, plan, transfer receipts and staged YAML without changing
-   the originals; record SHA-256, paths, ownership/modes and collection time.
-   Keep raw evidence private and out of Git/PR logs.
-3. After separately authorizing read-only VM diagnosis, save output and exit
-   status of each command below in that evidence directory. Use the original
-   `E2E_FIXTURE_DIR` override on the make command if one was used:
+Operator procedure follows. None of these live commands was run during implementation.
+Keep the same terminal/environment across steps. Run each step only after reviewing
+its output; do not paste the whole procedure as an unattended script.
+
+1. Stop host E2E/fixture controllers. Independently verify no unfinished Multipass
+   launch/exec/transfer, cloud-init, Buildah/Skopeo or fixture process remains. An
+   exited host process alone is insufficient: review daemon activity and guest
+   state. Keep all locks, receipts, `.pending` files and staging in place. Do not
+   rerun preparation, build, `cloud-init init/clean`, or any guest `runcmd`.
+   Prepare a separate private evidence directory and preserve original bytes:
 
    ```sh
-   make e2e-fixture-diagnose PYTHON=.venv/bin/python E2E_SESSION=b616980ef1c99192
-   multipass list --format json
-   multipass info pd-fixture-builder-b616980ef1c99192 --format json
-   multipass exec pd-fixture-builder-b616980ef1c99192 -- sudo cloud-init status --long
-   multipass exec pd-fixture-builder-b616980ef1c99192 -- sudo cloud-init schema --system --annotate
+   export PYTHON=.venv/bin/python
+   export E2E_SESSION=b616980ef1c99192
+   export E2E_FIXTURE_DIR="$HOME/.local/share/portfolio-deployment/e2e-fixtures-attempt-2"
+   vm=pd-fixture-builder-b616980ef1c99192
+   umask 077
+   evidence_dir=$(mktemp -d "$HOME/.local/share/portfolio-deployment/builder-evidence-b616980ef1c99192.XXXXXXXX")
+   export evidence_dir
+   export E2E_EVIDENCE="$evidence_dir/operator-evidence.json"
+   cp -a -- "$E2E_FIXTURE_DIR" "$evidence_dir/original-fixtures"
+   cp -a -- "$HOME/PortfolioDeploymentE2E/$E2E_SESSION" "$evidence_dir/staging"
+   make e2e-fixture-diagnose > "$evidence_dir/diagnosis.json"
+   multipass list --format json > "$evidence_dir/inventory-running.json"
+   multipass info "$vm" --format json > "$evidence_dir/info-running.json"
    ```
 
-   Exit 2 from status is evidence of degradation, never permission to continue.
-   Read-only collection should also preserve `/var/log/cloud-init.log`,
-   `/var/log/cloud-init-output.log`, `/var/lib/cloud/instance/user-data.txt`,
-   `/var/lib/cloud/instance/cloud-config.txt`, `/var/lib/cloud/instance/runcmd`,
-   `/etc/pd-fixture.json`, hostname and machine-id. Corroborate identity using the
-   marker/session/kind, machine-id, hostname and inventory; a name alone does not
-   authorize adoption or deletion. Hash the collected evidence and record the
-   original receipt's canonical `receiptSha256` from diagnosis.
-4. Record an operator incident decision outside the controller receipts: builder
-   preparation failed validation, VM retained for diagnosis, no build/publication
-   authorized, no replay. This completes evidence handoff, **not** controller
-   session closure. Keep the session `unknown` and the global execution fence.
-   Do not invoke `e2e-close-unknown`: its absent-builder decision would be false
-   for this incident. Stopping or deleting the VM would not establish that no VM
-   was created, either.
-5. Controller closure remains blocked while this VM exists. A separately scoped,
-   reviewed recovery change is required to record an evidence-bound terminal
-   decision for an existing failed builder, retaining the original unknown
-   receipt and preventing replay. Any later VM stop/disposal and any fresh
-   session require separate explicit authorization; this procedure authorizes
-   neither. Do not remove the VM merely to satisfy the absent-builder check.
+   Copied lock files are evidence only: never use the copied directory to execute
+   anything. Compare `receiptSha256` in diagnosis against the exact pin above
+   (it is a canonical JSON hash, distinct from a raw-file checksum).
+2. With separately authorized read-only VM access, collect logs, schema errors
+   and independently corroborate name, session, kind, machine-id, hostname and
+   the private root-owned marker. Save each failing diagnostic's exit status:
+
+   ```sh
+   multipass exec "$vm" -- sudo cloud-init status --long > "$evidence_dir/cloud-status.txt" 2>&1
+   printf '%s\n' "$?" > "$evidence_dir/cloud-status.exit"
+   multipass exec "$vm" -- sudo cloud-init schema --system --annotate > "$evidence_dir/cloud-schema.txt" 2>&1
+   printf '%s\n' "$?" > "$evidence_dir/cloud-schema.exit"
+   multipass exec "$vm" -- sudo cat /etc/pd-fixture.json /etc/machine-id /etc/hostname > "$evidence_dir/independent-identity.txt"
+   multipass exec "$vm" -- sudo stat -c '%U %a %F' /etc/pd-fixture.json > "$evidence_dir/marker-stat.txt"
+   multipass exec "$vm" -- sudo tar -C / -cf - var/log/cloud-init.log var/log/cloud-init-output.log var/lib/cloud/instance/user-data.txt var/lib/cloud/instance/cloud-config.txt var/lib/cloud/instance/runcmd etc/pd-fixture.json etc/machine-id etc/hostname > "$evidence_dir/guest-evidence.tar"
+   make e2e-review-failed-builder > "$evidence_dir/review.json"
+   ```
+
+   Status exit 2 confirms degradation; it never permits continuation. Require
+   `status: passed` from review. This command checks Running inventory/info with
+   no host mounts, marker ownership/type/mode, matching machine-id/session/kind/
+   hostname, bounded process enumeration and no guest build/continuation evidence.
+   Guest fixture root must contain only an empty `context`; transferred payloads,
+   plans, build receipts, archives, auth files or populated container storage block
+   review. Local input files are allowlisted and hashed; unknown files, symlinks,
+   pending receipts or build/publication artifacts block recovery. Do not remove
+   unexpected evidence to pass checks; investigate instead.
+
+   The fixed host lock and original directory lock are held throughout review.
+   The immutable `e2e-control/builder-review-b616980ef1c99192.json` records identity,
+   input hashes, inventory hash, image metadata, timestamp and UID. Collection is
+   single-use: an existing review blocks recollection, leaving its original bytes
+   intact. An interrupted/pending review needs manual investigation. The session
+   remains unknown and globally fenced at this point.
+3. Compare independent identity/diagnostics against the retained review, and
+   confirm no build/publication/continuation occurred. Preserve/hash evidence
+   before stopping the VM. **Stop only this VM, with separate explicit approval**:
+
+   ```sh
+   find "$evidence_dir" -type f -exec sha256sum -- {} + > "$evidence_dir.sha256"
+   printf 'Stop only %s after evidence collection; preserve its disk and all receipts.\n' "$vm"
+   read -r -p 'Continue? [y/N]: ' stop_answer
+   case "$stop_answer" in
+     y|Y|yes|YES) multipass stop "$vm" ;;
+     *) printf 'Not stopped; closure remains blocked.\n' ;;
+   esac
+   multipass list --format json > "$evidence_dir/inventory-after-stop.json"
+   multipass info "$vm" --format json > "$evidence_dir/info-after-stop.json"
+   ```
+
+   Continue only if stop succeeded and both observations show **Stopped**.
+   Running, Deleted, missing, Suspended, unexpected publisher/E2E VM, mounts,
+   transport errors or changed image metadata block closure. Do not delete,
+   replace, rename, start or resume the VM. Multipass stopped metadata does not
+   expose guest machine-id (see [Multipass info fields](https://canonical.com/multipass/docs/latest/reference/command-line-interface/info/)):
+   continuity relies on your independent verification
+   that the reviewed VM was not replaced across the stop. Image hash alone does
+   not prove guest identity. If you cannot attest continuity, leave the fence.
+4. Create an evidence JSON template bound to the saved review. All independent
+   attestations deliberately start false; change each to true **only after**
+   actually verifying it, including separate stop after evidence collection:
+
+   ```sh
+   .venv/bin/python - <<'PYTHON'
+   import json, os
+   from pathlib import Path
+   from scripts.e2e.builder_recovery import ATTESTATIONS, RECEIPT_SHA256, SESSION
+   report = json.loads((Path(os.environ["evidence_dir"]) / "review.json").read_text())
+   assert report["status"] == "passed"
+   assert report["review"]["receiptSha256"] == RECEIPT_SHA256
+   proof = dict.fromkeys(sorted(ATTESTATIONS), False)
+   proof.update(session=SESSION, receiptSha256=RECEIPT_SHA256,
+                reviewSha256=report["reviewSha256"], identity=report["review"]["identity"])
+   with open(os.environ["E2E_EVIDENCE"], "x") as out:
+       json.dump(proof, out, indent=2)
+       out.write("\n")
+   PYTHON
+   ```
+
+   Keep the file private (0600), outside the original fixture directory. Review
+   fields `controllersStopped`, `receiptsReviewed`, `noUnfinishedMultipassOperations`,
+   `noBuildOrPublication`, `vmIdentityIndependentlyChecked`, `noVmReplacementSinceReview`,
+   `evidencePreserved`, `vmStoppedByOperatorAfterReview`, `cloudInitSchemaFailureReviewed`.
+   Do not change identity/hash fields. Keep raw logs and evidence out of Git/PRs.
+5. Close only after all evidence is independently verified, in a real TTY:
+
+   ```sh
+   find "$evidence_dir" -type f -exec sha256sum -- {} + > "$evidence_dir.sha256"
+   make e2e-close-failed-builder
+   ```
+
+   Review session, VM and Stopped state, then answer the ordinary
+   `Continue? [y/N]:` prompt. Decline leaves the fence. Under both locks, the tool
+   rechecks receipt bytes/canonical hash, input hashes, review/evidence and two
+   Stopped inventory/info snapshots around confirmation. It never execs into a
+   stopped VM or starts/stops/deletes it. Successful closure atomically publishes
+   immutable `e2e-control/closed-b616980ef1c99192.json`, with the evidence/review
+   hashes, identity, stopped snapshot, timestamp and operator UID. A crash/pending
+   write, missing evidence or any change leaves new work blocked. The original
+   receipt remains **unknown**, not passed. The VM, lock inodes and Snap staging
+   remain unchanged. Other unresolved sessions still block independently.
+6. Only after `status: passed` from closure, separately authorize a fresh fixture
+   session in a **new** private directory (the command creates one with 0700):
+
+   ```sh
+   unset E2E_SESSION E2E_EVIDENCE
+   new_fixture_dir=$(mktemp -d "$HOME/.local/share/portfolio-deployment/e2e-fixtures-after-recovery.XXXXXXXX")
+   make e2e-fixtures PYTHON=.venv/bin/python E2E_FIXTURE_DIR="$new_fixture_dir"
+   ```
+
+   Answer `y` only for phases you now authorize. No operation from the old session
+   is resumed or retried. Old directory/session reuse, even a generated session-ID
+   collision, is rejected. Original input/review deletion or modification blocks
+   new work again; keep them intact. Do not restart the retained old VM. Closure
+   is a recorded incident decision, not continuous monitoring or E2E acceptance.
 
 ### Absent builder only: earlier session `4d51ffc5eb90ba5a`
 

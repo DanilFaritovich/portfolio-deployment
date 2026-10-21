@@ -112,11 +112,11 @@ class FixtureVM(VM):
 def execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=confirm):
     preflight()
     prepare(directory, owner, base, epoch=epoch)  # Offline validation before registration.
-    with guard(directory, "fixtures"):
-        return _execute(directory, owner, base, epoch=epoch, factory=factory, consent=consent)
+    with guard(directory, "fixtures") as control:
+        return _execute(directory, owner, base, epoch=epoch, factory=factory, consent=consent, control=control)
 
 
-def _execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=confirm):
+def _execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=confirm, control):
     prepare(directory, owner, base, epoch=epoch)  # Verify frozen plan/source before any VM access.
     with Store(directory).locked() as store:
         state = store.read("execution.json")
@@ -128,6 +128,7 @@ def _execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=conf
         require(not (store.path / "artifacts").exists(), "offline-import-not-publication-use-new-directory")
         pinned_plan = store.read("plan.json")
         session = secrets.token_hex(8)
+        require(control.read("closed-" + session + ".json") is None, "e2e-closed-session-no-replay-use-new-session")
         builder, publisher = factory(session, "builder"), factory(session, "publisher")
         prerequisites = builder.prerequisites()
         if prerequisites["status"] != "passed":

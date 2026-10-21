@@ -48,7 +48,7 @@ class Store:
             require(len(raw) <= 65536, "e2e-host-state-too-large")
             return parse_snapshot(raw)
 
-    def write(self, name, value):
+    def write(self, name, value, *, immutable=False):
         # A leftover pending file is uncertainty, never permission to overwrite.
         raw = json.dumps(value, sort_keys=True).encode()
         require(len(raw) <= 65536, "e2e-host-state-too-large")
@@ -62,5 +62,10 @@ class Store:
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
-        os.rename(pending, name, src_dir_fd=self.fd, dst_dir_fd=self.fd)
+        if immutable:
+            # Atomic no-replace publication. A crash leaves pending evidence and blocks work.
+            os.link(pending, name, src_dir_fd=self.fd, dst_dir_fd=self.fd, follow_symlinks=False)
+            os.unlink(pending, dir_fd=self.fd)
+        else:
+            os.rename(pending, name, src_dir_fd=self.fd, dst_dir_fd=self.fd)
         os.fsync(self.fd)

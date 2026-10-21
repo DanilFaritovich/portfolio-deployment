@@ -171,7 +171,7 @@ def test_cloud_init_incident_existing_builder_preserves_unknown_and_fence(tmp_pa
     original = (path / "execution.json").read_bytes()
     lock_inode = (path / "controller.lock").stat().st_ino
     Inventory.records = [{"name": state["builder"], "state": vm_state}]
-    with pytest.raises(DockerError, match="vm-still-present"):
+    with pytest.raises(DockerError, match="existing-builder-requires-specific-closure"):
         control.close_unknown(path, SESSION, evidence, factory=Inventory,
                               consent=lambda *a: pytest.fail("closure confirmation for existing VM"))
     assert (path / "execution.json").read_bytes() == original

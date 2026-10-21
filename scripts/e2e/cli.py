@@ -75,7 +75,8 @@ def main(argv=None):
     if argv and argv[0] in LEGACY:
         return vm.main(argv)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("run", "fixtures", "report", "fixture-diagnose", "close-unknown"))
+    parser.add_argument("action", choices=("run", "fixtures", "report", "fixture-diagnose", "close-unknown",
+                                          "review-failed-builder", "close-failed-builder"))
     parser.add_argument("--session", default=os.environ.get("E2E_SESSION", ""))
     parser.add_argument("--evidence", default=os.environ.get("E2E_EVIDENCE", ""))
     parser.add_argument("--state-dir", default=None)
@@ -122,6 +123,12 @@ def main(argv=None):
             result = control.diagnose(args.output, args.session)
         elif args.action == "close-unknown":
             result = control.close_unknown(args.output, args.session, args.evidence)
+        elif args.action in ("review-failed-builder", "close-failed-builder"):
+            from scripts.e2e import builder_recovery
+            if args.action == "review-failed-builder":
+                result = builder_recovery.collect(args.output, args.session)
+            else:
+                result = builder_recovery.close(args.output, args.session, args.evidence)
         elif args.action == "fixtures":
             require(not (args.execute and (args.manifests or args.plan)), "execute-and-import-are-mutually-exclusive")
             result = fixtures(args)
