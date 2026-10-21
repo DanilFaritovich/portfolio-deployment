@@ -244,7 +244,10 @@ class Runner:
             return {"containerReplaced": True, "volumeMarkerPreserved": True}
         if name == "invalid-caddy-candidate":
             before = self.gateway.active()
-            candidate = {"apps": {"http": {"servers": {"bad": {"listen": ["invalid-listener"]}}}}}
+            candidate = {"apps": {"http": {"servers": {"bad": {
+                "listen": ["127.0.0.1:18080"],
+                "routes": [{"handle": [{"handler": "portfolio_e2e_nonexistent_handler"}]}],
+            }}}}}
             try:
                 self.gateway.validate(candidate)
             except DockerError:

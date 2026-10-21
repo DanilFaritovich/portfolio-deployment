@@ -470,6 +470,38 @@ def test_gateway_foreign_config_cannot_be_loaded(monkeypatch):
         gate.active()
 
 
+def test_invalid_caddy_candidate_rejects_unknown_handler_and_preserves_active():
+    before = {"apps": {"http": {"servers": {"e2e": {"listen": ["127.0.0.1:18080"], "routes": []}}}}}
+    candidate = {"apps": {"http": {"servers": {"bad": {
+        "listen": ["127.0.0.1:18080"],
+        "routes": [{"handle": [{"handler": "portfolio_e2e_nonexistent_handler"}]}],
+    }}}}}
+
+    class FakeGateway:
+        def __init__(self):
+            self.config = before
+            self.validated = None
+
+        def active(self):
+            return self.config
+
+        def validate(self, value):
+            self.validated = value
+            server = next(iter(value["apps"]["http"]["servers"].values()))
+            assert server["listen"] == ["127.0.0.1:18080"]
+            if any(handle["handler"] == "portfolio_e2e_nonexistent_handler"
+                   for route in server["routes"] for handle in route["handle"]):
+                raise DockerError("unknown-http-handler")
+
+    fake = FakeGateway()
+    scenario = runner.Runner.__new__(runner.Runner)
+    scenario.gateway = fake
+    assert scenario.scenario("invalid-caddy-candidate") == {
+        "candidateRejected": True, "activeConfigPreserved": True}
+    assert fake.config == before
+    assert fake.validated == candidate
+
+
 def test_cleanup_preserves_volumes_baseline_and_foreign_attachments(registry, images):
     app = next(a for a in build_desired_state(registry, SHA).applications if a.id == "e2e-data")
     artifact = render_compose(app, test_session=SESSION)
