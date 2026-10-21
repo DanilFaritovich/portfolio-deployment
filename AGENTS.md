@@ -86,33 +86,6 @@ Optional `ansible`, `python-testing`, `structured-logging` are not installed.
 Install only for an active requirement through `standards-sync`. Keep standards
 changes separate from unrelated implementation work.
 
-### Mandatory skill selection and loading
-
-Before a nontrivial task, read the installed
-`.agents/skills/task-development-workflow/SKILL.md`, then select and read every
-other **relevant** installed `SKILL.md` from the map above *before* acting in its
-domain. Read the specific references required by each selected skill for the
-task; do not stop at its entry-point `SKILL.md`. In particular:
-
-- For continuing work, broad/noisy searches, large logs, tool failures, context
-  pressure or MCP delegation, read `task-development-workflow/references/context-efficiency.md`
-  before the investigation.
-- For changes to code, tests, build, integration or operator commands, read
-  `task-development-workflow/references/validation.md`; apply `code-quality`
-  and other affected stack/infrastructure skills.
-- For branching, commit, push, PR or CI delivery, read
-  `task-development-workflow/references/git-delivery.md` before Git actions.
-- Check whether `free_worker.inspect_task` and `free_worker.fix_task` are
-  available. When available, delegate eligible noisy inspection and bounded
-  mechanical fix/check loops according to the context-efficiency reference;
-  keep safety decisions, secrets, live mutations and Git delivery on Codex.
-
-Briefly identify the selected skills/references when planning substantial work.
-If a required installed file cannot be read, disclose the gap instead of
-silently skipping it. Do **not** indiscriminately load all skills, repeatedly
-reread unchanged instructions, or fetch upstream standards per task; updates
-must use a separately requested `standards-sync` workflow.
-
 ## Workflow and checks
 
 Inspect Git status and branches before edits; preserve unrelated work. `main`
