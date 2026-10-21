@@ -195,7 +195,7 @@ Targets `verify`, `ci`, deploy и production apply отсутствуют. Ус�
 Начинай с [AGENTS.md](AGENTS.md). Установлен профиль
 **docker-deployment-platform v1** из
 [codex-development-standards](https://github.com/DanilFaritovich/codex-development-standards)
-на `c98740e6cc66fa20da0c81c6f394dd9a2b03013a` (источник — `develop`).
+на `104a8ed8e10a07fbb9a9ac2d7be669cc93913590` (источник — `develop`).
 
 Обязательные локальные skills: `task-development-workflow`, `standards-sync`,
 `code-quality`, `docker`, `github-actions`, `continuous-delivery`, `caddy-gateway`,

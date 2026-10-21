@@ -194,7 +194,7 @@ does not prove live Docker, HTTPS, reconciliation or rollback.
 Start with [AGENTS.md](AGENTS.md). Installed profile:
 **docker-deployment-platform v1**, from
 [codex-development-standards](https://github.com/DanilFaritovich/codex-development-standards)
-at `c98740e6cc66fa20da0c81c6f394dd9a2b03013a` (`develop` source).
+at `104a8ed8e10a07fbb9a9ac2d7be669cc93913590` (`develop` source).
 
 Required local skills: `task-development-workflow`, `standards-sync`, `code-quality`,
 `docker`, `github-actions`, `continuous-delivery`, `caddy-gateway`,
