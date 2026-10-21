@@ -158,7 +158,7 @@ class LocalDockerAdapter:
     def prerequisites(self):
         try:
             version = self._run(["compose", "version", "--short"]).decode("ascii").strip()
-            if not re.fullmatch(r"v?2\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?", version):
+            if not re.fullmatch(r"v?2\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.~-]+)?", version):
                 raise DockerError("compose-v2-required")
             server = json.loads(self._run(["version", "--format", "{{json .Server}}"]))
             if server.get("Os") != "linux" or server.get("Arch") != "amd64":
@@ -196,7 +196,7 @@ def official_validate(artifact):
             path.write_text(artifact.to_json())
             try:
                 version = run_bounded([binary, "compose", "version", "--short"], cwd=directory).decode("ascii").strip()
-                if not re.fullmatch(r"v?2\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?", version):
+                if not re.fullmatch(r"v?2\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.~-]+)?", version):
                     return {"status": "not-performed", "reason": "compose-v2-required"}
             except (DockerError, UnicodeError):
                 return {"status": "not-performed", "reason": "compose-v2-unavailable"}
