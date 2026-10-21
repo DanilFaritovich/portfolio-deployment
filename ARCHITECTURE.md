@@ -12,7 +12,9 @@ journal/LKG, constrained rollback and crash recovery analysis through the same
 executor; PR #6 is merged into `develop`. Stage 07 adds a disposable Ubuntu VM
 harness and real test-only readers/probes; all 15 real local VM E2E scenarios
 passed on 2026-10-21. This verifies only the disposable test integration.
-The real registry/admission allowlist remain empty. No VPS integration is verified.
+Stage 08 offline CI is merged into `develop`. Stage 09.1 adds offline production
+contracts/security and narrow ProjectRouter admission; the real registry remains
+empty pending a verified origin-bound digest. No VPS integration is verified.
 
 Python CLI, Docker Engine/Compose v2, GHCR, Git and Caddy are selected technologies.
 There is no daemon, database server, Kubernetes or production deployment trigger.
@@ -85,8 +87,9 @@ Only Caddy intentionally publishes application HTTP(S) host ports (normally
    release the lock. Failure records partial state; it does not claim convergence.
 
 Git approval, green CI, production-source eligibility and operator authorization
-are separate gates. The future production source/release policy must be decided
-before activation; an arbitrary task branch must not be deployed.
+are separate gates. Stage 09.1 selects manual deployment from protected `main` in producer and manager;
+protection enforcement and exact-SHA CI evidence are prerequisites. Arbitrary task
+branches, develop artifacts and unapproved tags must not be deployed.
 
 ## Application registration contract — Implemented offline
 
@@ -118,6 +121,20 @@ verified offline. Config/secrets are symbolic references, never values. Named
 volumes are declared and used explicitly; host mounts and runtime overrides are
 forbidden. Omission or `enabled: false` authorizes no stop or data deletion.
 Stage 05 renders Compose and implements scoped execution under explicit local test boundaries; production runtime reconciliation remains blocked.
+
+Stage 09.1 [production contracts/security](docs/production-contracts.md) adds an
+optional closed admission `staticSite` contract: one HTTP component with exact
+port/readiness, ingress matching expected HTTPS build origin, stateless storage
+and no runtime refs/dependencies/mounts. It cannot prove artifact bytes/provenance.
+ProjectRouter eligibility binds `DanilFaritovich/project-router`, its exact GHCR
+repository, `linux/amd64`, `danil-miftakhov.dev`, port 8080 and `/en/`. Canonical
+project/service/alias remain `portfolio-project-router` / `web` /
+`project-router-web`, on external `portfolio-proxy`; the producer's bare alias is
+translated at this boundary. The disabled template stays outside the registry
+until reviewed digest substitution. No production executor or trigger is added.
+Manager runtime hardening matching the producer image is an explicit 09.3 blocker;
+complete observations, protected-source exact-SHA CI, verified OCI/origin evidence
+and manual first-deployment authorization are independent gates before mutation.
 
 ## Desired state and observations — Implemented offline
 
@@ -260,7 +277,7 @@ testing. Lost SSH/host access and host rebuild belong to infrastructure recovery
 application data restore requires its own tested operator procedure. A deployment
 journal is neither a backup nor a disaster-recovery system.
 
-## Trust boundaries, secrets and permissions — Planned
+## Trust boundaries, secrets and permissions — Policy defined offline; enforcement pending
 
 - Application producer -> GHCR: trust approved repository/CI identity; digest
   selection does not automatically trust arbitrary publishers.
@@ -314,8 +331,8 @@ production mutations. Never present local results as production acceptance evide
 See the preliminary [roadmap](docs/roadmap.md). Stages 01–04 are implemented
 offline; Stage 05 is an engine foundation with an unexecuted local smoke harness.
 Stage 06 is implemented offline; Stage 07 infrastructure passed real disposable
-VM acceptance; Stage 08 adds offline CI and Stage 09 remains Planned. Production
-source/trigger, configuration delivery, full live observation integration and
+VM acceptance; Stage 08 adds offline CI and Stage 09.1 defines production contracts/security.
+Stages 09.2–09.5 remain Planned. Protected-source enforcement, configuration delivery, full live observation integration and
 operator recovery/retention procedures remain open. See
 [development instructions](AGENTS.md) for workflow boundaries.
 
@@ -388,7 +405,8 @@ Acceptance evidence is retained outside Git: host receipt
 `~/.local/share/portfolio-deployment/e2e-state-agent.uZQWee44/4963fe050c4567f2.json`
 records `complete/passed`, `mode=real`, `realE2E=performed` and all 15 results.
 The accepted implementation also passed 779 offline tests. Production deployment
-was not performed; Stage 08 adds offline CI, while Stage 09 remains Planned.
+was not performed; Stage 08 adds offline CI and Stage 09.1 defines offline contracts/security;
+Stages 09.2–09.5 remain Planned.
 See [acceptance and failed-attempt history](docs/local-e2e.md#verified-local-acceptance).
 The VM retains its report, baseline, gateway snapshots and intentional crash/unknown
 journals; recovery analysis confirms no automatic completion or replay. Failed
@@ -428,7 +446,6 @@ Stopped Multipass metadata does not expose guest machine-id: continuity across
 stop explicitly relies on independent operator no-replacement attestation.
 Phase approvals use separate
 default-deny `y/N` prompts; cleanup separately approves the exact resource list.
-
 
 `make e2e` orchestrates the existing
 prepare/images/test lifecycle with a generated session, private pinned image-lock

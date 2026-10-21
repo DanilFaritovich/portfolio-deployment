@@ -3,7 +3,8 @@
 [English version](README.md)
 
 Централизованная платформа Docker/GitOps-деплоя независимо собираемых портфолио-
-приложений на одном Ubuntu VPS. **Текущее состояние: Stage 07 — реальный локальный VM E2E пройден, 15/15 сценариев.**
+приложений на одном Ubuntu VPS. **Текущее состояние: Stage 09.1 — production contracts/security реализованы офлайн.**
+Stage 08 смержен в `develop`; реальный локальный VM E2E Stage 07 пройден: 15/15 сценариев.
 Реализованы registry/admission, offline-планирование и retained Caddy previews;
 PR #4 Stage 04, PR #5 Stage 05 и PR #6 Stage 06 смержены в `develop`. Stage 05 добавляет детерминированный Compose,
 ограниченный Docker discovery, preflight, lock и адресный executor с offline mocks.
@@ -12,8 +13,18 @@ Stage 06 добавляет bounded readiness, SQLite journal/LKG, ограни�
 disposable Ubuntu VM и test-only readers/probes; локальная приёмка пройдена,
 а будущие запуски по-прежнему требуют отдельных opt-in.
 Production-деплой остаётся **Planned**: Docker не даёт полный registry/gateway
-snapshot Stage 03. Production apply интерфейса нет. Реальный реестр/admission
-allowlist пуст; отдельный локальный smoke Stage 05 не запускался.
+snapshot Stage 03. Production apply интерфейса нет. Реальный реестр пуст до
+подтверждения digest с нужным origin; admission резервирует ProjectRouter. Отдельный локальный smoke Stage 05 не запускался.
+
+[Контракты и безопасность Stage 09.1](docs/production-contracts.md) фиксируют
+`project-router` → `project-router-web:8080` в `portfolio-proxy`, readiness `/en/`,
+hostname `danil-miftakhov.dev` и ожидаемый build origin `https://danil-miftakhov.dev`.
+[Неактивный шаблон](docs/templates/project-router.yaml) находится вне реестра
+и не проходит validation до подстановки digest. Production digest не заявлен.
+Следующие prerequisites: защищённый source/CI, доказательство artifact/origin,
+отдельно разрешённая read-only диагностика VDS и runtime-security/adapters/Caddy
+integration. Документ содержит acceptance gates 09.2–09.5 и несекретные сведения
+от оператора. Подключений к VPS и production mutations не выполнялось.
 
 ## Назначение и архитектура
 
@@ -67,7 +78,8 @@ Zero-downtime не обещается.
 Целевые технологии: Git, Docker Engine/Compose, GHCR и Caddy. Для Stage 05 выбран
 Python CLI с повторным использованием PyYAML/jsonschema и pytest. Журнал использует
 SQLite стандартной библиотеки; сервер БД, daemon и Kubernetes не реализованы.
-Защищённые production source/trigger остаются открытыми решениями.
+Stage 09.1 выбирает ручное разрешение из защищённой `main`; настройка защиты GitHub
+и production-валидация точного SHA остаются prerequisites. Автоактивации нет.
 
 ## Структура репозитория
 
@@ -98,7 +110,7 @@ scripts/deployment_journal.py   Приватный versioned SQLite intent/event
 scripts/deployment_lifecycle.py Readiness, ограниченный rollback и recovery analysis
 scripts/local_docker_smoke.py   Отдельный opt-in disposable test lifecycle
 registry/applications/         Пустой реальный реестр; один manifest на приложение
-policy/admission.yaml           Пустой allowlist для отдельного review
+policy/admission.yaml           Допуск ProjectRouter; требуется security review
 schemas/                       Версионированные закрытые схемы
 tests/fixtures/                Синтетические примеры и недопустимый YAML
 requirements-dev.txt           Закреплённые инструменты офлайн-валидации
@@ -236,12 +248,12 @@ references; читать references нужно только для текуще�
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Реализован; реальный локальный VM E2E пройден, 15/15; production acceptance ожидается |
 | Stage 08 | GitHub Actions & Automation | Реализован офлайн; ручная процедура завершения VM ожидает live review |
-| Stage 09 | Production Integration & Release | Planned |
+| Stage 09 | Production Integration & Release | 09.1 реализован офлайн; 09.2–09.5 Planned; операции требуют отдельных разрешений |
 
 Stage 05 выбирает Python CLI без изменений контрактов Stage 02–04. Реальному
 ProjectRouter всё ещё нужен подтверждённый digest. Stage 06 отвечает за readiness,
 rollback, journal и recovery; Stage 07 расширяет изолированные E2E. Полные live
-observations, защищённый production source, доставка конфигурации и index mapping
+observations, настройка защиты production source, доставка конфигурации и index mapping
 требуют review до production-выполнения.
 
 SQLite durability зависит от надёжного локального storage/fsync. Журнал не заменяет
@@ -288,7 +300,7 @@ CLI: `python -m scripts.e2e.cli`; отдельные prepare/images/test/status/
 **Подтверждённая локальная приёмка (2026-10-21):** сессия `4963fe050c4567f2`, receipt
 `complete/passed`, `realE2E=performed`, **15/15 реальных сценариев passed**; принятая
 реализация также прошла **779 offline tests**. Production deployment не выполнялся,
-Stage 08 добавляет offline CI; Stage 09 остаётся Planned. Предыдущие неудачные попытки и evidence их закрытия
+Stage 08 добавляет offline CI; Stage 09.1 — офлайн-контракты/security, а 09.2–09.5 остаются Planned. Предыдущие неудачные попытки и evidence их закрытия
 сохранены; journals намеренных crash/unknown сценариев остаются analysis-only,
 без replay. См. [результаты приёмки и историю](docs/local-e2e.md#verified-local-acceptance).
 

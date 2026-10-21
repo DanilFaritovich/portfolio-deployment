@@ -1,4 +1,19 @@
 apiVersion: portfolio.deployment/v1
 kind: AdmissionPolicy
-# Empty until application ownership, GHCR repositories and hostnames are reviewed.
-applications: []
+# Stage 09.1 security-review proposal; eligibility is never deployment approval.
+# No active manifest exists until origin-bound artifact evidence is reviewed.
+applications:
+  - id: project-router
+    sourceRepository: DanilFaritovich/project-router
+    imageRepositories:
+      web:
+        - ghcr.io/danilfaritovich/project-router
+    hostnames:
+      - danil-miftakhov.dev
+    platforms:
+      - linux/amd64
+    staticSite:
+      component: web
+      port: 8080
+      readinessPath: /en/
+      buildOrigin: https://danil-miftakhov.dev

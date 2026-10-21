@@ -224,6 +224,23 @@ def admission(document, policies):
     ingress = document["spec"].get("ingress")
     if ingress and ingress["hostname"] not in policy["hostnames"]:
         errors.append("hostname not admitted")
+    site = policy.get("staticSite")
+    if site:
+        spec = document["spec"]
+        components = spec["components"]
+        if (len(components) != 1 or components[0]["name"] != site["component"] or
+                components[0]["type"] != "http" or components[0].get("port") != site["port"] or
+                components[0]["health"] != {"strategy": "http", "path": site["readinessPath"]}):
+            errors.append("static site component/port/readiness not admitted")
+        if ingress != {"hostname": site["buildOrigin"][8:],
+                       "component": site["component"], "port": site["port"]}:
+            errors.append("static site ingress/build origin not admitted")
+        if spec["storage"] != {"type": "stateless"}:
+            errors.append("static site requires stateless storage")
+        if (spec.get("configRefs") or spec.get("secretRefs") or
+                any(c.get(key) for c in components
+                    for key in ("configRefs", "secretRefs", "dependsOn", "volumeMounts"))):
+            errors.append("static site runtime references/dependencies/mounts not admitted")
     return errors
 
 
@@ -282,6 +299,10 @@ def validate_registry(root=ROOT):
             if entry["id"] in policies:
                 errors.append("policy/admission.yaml: duplicate application ID")
             policies[entry["id"]] = entry
+            site = entry.get("staticSite")
+            if site and (entry["hostnames"] != [site["buildOrigin"][8:]] or
+                         set(entry["imageRepositories"]) != {site["component"]}):
+                errors.append("policy/admission.yaml: static site ownership contract inconsistent")
         hosts = [host for entry in policy["applications"] for host in entry["hostnames"]]
         if duplicates(hosts):
             errors.append("policy/admission.yaml: duplicate hostname")

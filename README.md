@@ -3,7 +3,8 @@
 [Русская версия](README.ru.md)
 
 Central Docker/GitOps deployment platform for independently built portfolio
-applications on a single Ubuntu VPS. **Current status: Stage 07 — real local VM E2E passed, 15/15 scenarios.**
+applications on a single Ubuntu VPS. **Current status: Stage 09.1 — production contracts/security implemented offline.**
+Stage 08 is merged into `develop`; Stage 07 real local VM E2E passed 15/15 scenarios.
 Registry/admission, offline planning and retained Caddy previews are implemented;
 Stage 04 PR #4, Stage 05 PR #5 and Stage 06 PR #6 are merged into `develop`. Stage 05 adds deterministic Compose,
 bounded Docker discovery, preflight, locking and scoped execution with offline mocks.
@@ -13,7 +14,18 @@ VM harness and real test-only observation/probe adapters; local acceptance passe
 and future executions still require separate opt-ins.
 Production deployment remains **Planned**: full registry/gateway observations are
 not available from Docker alone. No production apply interface exists. The real
-registry/admission allowlist remain empty; the separate Stage 05 local smoke was not performed.
+registry remains empty pending a verified origin-bound digest; admission reserves ProjectRouter.
+The separate Stage 05 local smoke was not performed.
+
+[Stage 09.1 contracts and security](docs/production-contracts.md) defines
+`project-router` → `project-router-web:8080` on `portfolio-proxy`, readiness `/en/`,
+hostname `danil-miftakhov.dev` and expected build origin `https://danil-miftakhov.dev`.
+The [inactive template](docs/templates/project-router.yaml) is outside the registry
+and fails validation until its digest is substituted. No production digest is
+claimed. Required next steps include protected-source CI, artifact/origin evidence,
+separately authorized VDS read-only diagnostics and runtime-security/adapters/Caddy
+integration. The document lists acceptance gates for 09.2–09.5 and non-secret
+operator inputs. No VPS connection or production mutation was performed.
 
 ## Purpose and architecture
 
@@ -67,7 +79,8 @@ HTTPS. No zero-downtime claim.
 Git, Docker Engine/Compose, GHCR and Caddy are selected target technologies.
 Python CLI is selected for Stage 05, reusing PyYAML/jsonschema and pytest.
 The journal uses standard-library SQLite; no database server, daemon or Kubernetes
-is implemented. Protected production source/trigger remain undecided.
+is implemented. Stage 09.1 selects manual approval from protected `main`; GitHub enforcement and
+exact-SHA production validation remain prerequisites. No automatic activation exists.
 
 ## Repository structure
 
@@ -98,7 +111,7 @@ scripts/deployment_journal.py   Private versioned SQLite intent/events/LKG
 scripts/deployment_lifecycle.py Readiness, constrained rollback and recovery analysis
 scripts/local_docker_smoke.py   Separate opt-in disposable test lifecycle
 registry/applications/         Empty real registry; one manifest per application
-policy/admission.yaml           Empty reviewed allowlist
+policy/admission.yaml           ProjectRouter eligibility; security review required
 schemas/                       Versioned closed application/admission contracts
 tests/fixtures/                 Synthetic examples and hostile YAML inputs
 requirements-dev.txt           Pinned offline validation tools
@@ -234,12 +247,12 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Implemented; real local VM E2E passed, 15/15; production acceptance pending |
 | Stage 08 | GitHub Actions & Automation | Implemented offline; manual VM completion procedure awaiting live review |
-| Stage 09 | Production Integration & Release | Planned |
+| Stage 09 | Production Integration & Release | 09.1 implemented offline; 09.2–09.5 Planned; separate operation approvals required |
 
 Stage 05 selects Python CLI without changing Stage 02–04 contracts. Real
 ProjectRouter registration still requires a confirmed digest. Stage 06 owns
 readiness, rollback, journal and recovery; Stage 07 expands isolated E2E. Full live
-observation, protected production source, configuration delivery and index mapping
+observation, protected-source enforcement, configuration delivery and index mapping
 need review before production execution.
 
 SQLite durability requires reliable local storage/fsync. The journal is not live
@@ -286,7 +299,7 @@ automatically. `make e2e-check` and `make check` remain fully offline.
 **Verified local acceptance (2026-10-21):** session `4963fe050c4567f2`, receipt
 `complete/passed`, `realE2E=performed`, **15/15 real scenarios passed**; the accepted
 implementation also passed **779 offline tests**. Production deployment was not
-performed. Stage 08 adds offline CI; Stage 09 remains Planned. Earlier failed attempts and their
+performed. Stage 08 adds offline CI; Stage 09.1 adds offline contracts/security, while 09.2–09.5 remain Planned. Earlier failed attempts and their
 closure evidence are retained; intentional crash/unknown journals remain
 analysis-only, without replay. See [acceptance and history](docs/local-e2e.md#verified-local-acceptance).
 
