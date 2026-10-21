@@ -11,7 +11,7 @@ from scripts.deployment_journal import Intent, Journal, JournalError, locked_jou
 from scripts.docker_adapter import DockerError
 from scripts.docker_discovery import container_runtime, owned_resource
 from scripts.readiness import ReadinessPolicy, verify_readiness
-from scripts.reconciliation import build_reconciliation_plan, encode
+from scripts.reconciliation import build_reconciliation_plan, canonical, encode
 
 
 def runtime_identity(app, *, test_session=None):
@@ -23,7 +23,10 @@ def runtime_identity(app, *, test_session=None):
     spec = app.spec
     for c in spec["components"]:
         c.pop("image")
-    return digest({"spec": spec, "project": render_compose(app, test_session=test_session).project})
+    # Input canonical ordering may depend on image strings. Removing images must
+    # canonicalize again, or an image-only change can reorder equal-health peers
+    # and incorrectly invalidate the unchanged runtime/LKG identity.
+    return digest({"spec": canonical(spec), "project": render_compose(app, test_session=test_session).project})
 
 
 @dataclass(frozen=True)

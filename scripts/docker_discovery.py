@@ -63,7 +63,7 @@ def image_evidence(reference, document):
                          verified, encode(document.get("Config") or {}))
 
 
-def discover(adapter, references):
+def discover(adapter, references, *, resolve_image=image_evidence):
     """All-resource inventory detects name/alias conflicts beyond project labels.
 
     Any read error invalidates the complete Docker observation, never means absent.
@@ -96,7 +96,7 @@ def discover(adapter, references):
             if time.monotonic() >= deadline:
                 raise DockerError("discovery-deadline")
             try:
-                images.append(image_evidence(reference, adapter.inspect("image", reference)))
+                images.append(resolve_image(reference, adapter.inspect("image", reference)))
             except DockerError:
                 # Availability cannot be established; preflight blocks this exact image.
                 continue
@@ -127,8 +127,16 @@ def container_runtime(resource, artifact, service, image):
     defaults = json.loads(image.defaults_json)
     if config.get("Image") != wanted["image"] or f["imageId"] != image.image_id or not image.verified:
         return False
+    empty_defaults = {"Cmd": [], "Entrypoint": [], "Env": [], "ExposedPorts": {}, "Volumes": {}}
     for key in ("Cmd", "Entrypoint", "Env", "User", "WorkingDir", "Healthcheck", "ExposedPorts", "Volumes"):
-        if config.get(key) != defaults.get(key):
+        actual, expected = config.get(key), defaults.get(key)
+        if key in empty_defaults:
+            empty = empty_defaults[key]
+            if actual is None:
+                actual = empty
+            if expected is None:
+                expected = empty
+        if actual != expected:
             return False
     if (host.get("Privileged") or host.get("PortBindings") or host.get("PublishAllPorts") or
         host.get("Binds") or host.get("CapAdd") or host.get("Devices") or host.get("DeviceRequests") or

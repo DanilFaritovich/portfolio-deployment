@@ -60,3 +60,75 @@ compose-validate:
 export SMOKE_ENDPOINT SMOKE_SESSION SMOKE_IMAGE_A SMOKE_IMAGE_B SMOKE_AUTHORIZE
 local-docker-smoke:
 	@$(PYTHON) -c 'import os,sys; from scripts.local_docker_smoke import main; sys.exit(main(["--endpoint",os.environ.get("SMOKE_ENDPOINT",""),"--session",os.environ.get("SMOKE_SESSION",""),"--image-a",os.environ.get("SMOKE_IMAGE_A",""),"--image-b",os.environ.get("SMOKE_IMAGE_B",""),"--authorize",os.environ.get("SMOKE_AUTHORIZE","")]))'
+
+# Stage 07: e2e bootstraps missing fixtures with separate interactive approvals.
+# e2e-fixtures prepares fixtures alone; CLI --plan/--manifests stay offline.
+# e2e-report is local-only; all configuration variables are optional overrides.
+# e2e-check remains offline. VM/image/run/cleanup opt-ins are separate.
+.PHONY: e2e e2e-fixtures e2e-report
+export E2E_FIXTURE_EXECUTE
+export E2E_STATE_DIR E2E_FIXTURE_DIR E2E_FIXTURE_OWNER E2E_PYTHON_BASE E2E_SOURCE_DATE_EPOCH E2E_RAW_MANIFESTS
+e2e:
+	@$(PYTHON) -m scripts.e2e.cli run
+
+e2e-fixtures:
+	@$(PYTHON) -m scripts.e2e.cli fixtures
+
+e2e-report:
+	@$(PYTHON) -m scripts.e2e.cli report
+
+.PHONY: e2e-check e2e-prerequisites e2e-prepare e2e-status e2e-images e2e-test e2e-diagnose e2e-clean
+export E2E_SESSION E2E_AUTHORIZE E2E_GATEWAY_AUTHORIZE E2E_IMAGES
+e2e-check:
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_local_e2e.py tests/test_e2e_fixtures.py tests/test_e2e_bootstrap.py tests/test_e2e_paths.py tests/test_e2e_control.py tests/test_e2e_transport.py tests/test_e2e_builder_recovery.py tests/test_e2e_prepared_recovery.py tests/test_e2e_failed_run_recovery.py
+
+e2e-prerequisites:
+	@$(PYTHON) -m scripts.e2e.cli prerequisites
+
+e2e-prepare:
+	@$(PYTHON) -m scripts.e2e.cli prepare
+
+e2e-status:
+	@$(PYTHON) -m scripts.e2e.cli status
+
+e2e-images:
+	@$(PYTHON) -m scripts.e2e.cli images
+
+e2e-test:
+	@$(PYTHON) -m scripts.e2e.cli test
+
+e2e-diagnose:
+	@$(PYTHON) -m scripts.e2e.cli diagnose
+
+e2e-clean:
+	@$(PYTHON) -m scripts.e2e.cli clean
+
+# Explicit read-only inventory and narrowly scoped operator closure; never replay.
+.PHONY: e2e-fixture-diagnose e2e-close-unknown e2e-review-failed-builder e2e-close-failed-builder
+export E2E_EVIDENCE
+e2e-fixture-diagnose:
+	@$(PYTHON) -m scripts.e2e.cli fixture-diagnose
+
+e2e-close-unknown:
+	@$(PYTHON) -m scripts.e2e.cli close-unknown
+
+# Incident-specific read-only review while Running, closure only after operator stop.
+.PHONY: e2e-interrupt-prepared e2e-continue-prepared e2e-close-failed-bootstrap e2e-close-failed-run
+export E2E_CONTROLLER_PID
+e2e-interrupt-prepared:
+	@$(PYTHON) -m scripts.e2e.cli interrupt-prepared
+
+e2e-continue-prepared:
+	@$(PYTHON) -m scripts.e2e.cli continue-prepared
+
+e2e-close-failed-bootstrap:
+	@$(PYTHON) -m scripts.e2e.cli close-failed-bootstrap
+
+e2e-close-failed-run:
+	@$(PYTHON) -m scripts.e2e.cli close-failed-run
+
+e2e-review-failed-builder:
+	@$(PYTHON) -m scripts.e2e.cli review-failed-builder
+
+e2e-close-failed-builder:
+	@$(PYTHON) -m scripts.e2e.cli close-failed-builder

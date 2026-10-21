@@ -1,6 +1,6 @@
 # Stage 06 — Readiness, Journal & Recovery
 
-Stage 05 PR #5 is merged into `develop`. Stage 06 extends that executor with an
+Stage 05 PR #5 and Stage 06 PR #6 are merged into `develop`. Stage 06 extends that executor with an
 **offline-tested lifecycle**, not production deployment. No real Docker mutation,
 local smoke, HTTP transport, Caddy reload, SSH/VPS, DNS/TLS or CD was performed.
 Application/admission v1 and Stage 03–05 blockers remain unchanged. Real registry
@@ -240,3 +240,12 @@ Stage 09 needs separately authorized host integration, production operation and
 runtime-configuration contracts, artifact/provenance/retention policy, backup and
 recovery ownership, DNS/TLS acceptance and a first controlled rollout. No stage
 implicitly authorizes another, production apply, merge or release.
+
+## Stage 07 integration
+
+The [disposable VM harness](local-e2e.md) supplies test-only real transports and a
+complete bounded session reader, reusing these hooks and SQLite without creating
+another engine. Production transport/authorization remain unavailable. Test-only
+loopback Caddy activation is external to the base lifecycle, after pinned readiness.
+Crash analysis still cannot replay or automatically complete recovery. Real E2E is
+not-performed; fixture digests must be independently built/published and confirmed.

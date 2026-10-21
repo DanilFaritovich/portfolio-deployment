@@ -3,29 +3,31 @@
 [English version](README.md)
 
 Централизованная платформа Docker/GitOps-деплоя независимо собираемых портфолио-
-приложений на одном Ubuntu VPS. **Текущее состояние: Stage 06 — Readiness, Journal & Recovery (офлайн).**
+приложений на одном Ubuntu VPS. **Текущее состояние: Stage 07 — реальный локальный VM E2E пройден, 15/15 сценариев.**
 Реализованы registry/admission, offline-планирование и retained Caddy previews;
-PR #4 Stage 04 и PR #5 Stage 05 смержены в `develop`. Stage 05 добавляет детерминированный Compose,
+PR #4 Stage 04, PR #5 Stage 05 и PR #6 Stage 06 смержены в `develop`. Stage 05 добавляет детерминированный Compose,
 ограниченный Docker discovery, preflight, lock и адресный executor с offline mocks.
 Stage 06 добавляет bounded readiness, SQLite journal/LKG, ограниченный rollback
-и анализ crash recovery в существующий executor.
+и анализ crash recovery в существующий executor. Stage 07 добавляет отдельную
+disposable Ubuntu VM и test-only readers/probes; локальная приёмка пройдена,
+а будущие запуски по-прежнему требуют отдельных opt-in.
 Production-деплой остаётся **Planned**: Docker не даёт полный registry/gateway
 snapshot Stage 03. Production apply интерфейса нет. Реальный реестр/admission
-allowlist пуст; локальный smoke не запускался.
+allowlist пуст; отдельный локальный smoke Stage 05 не запускался.
 
 ## Назначение и архитектура
 
 Целевая цепочка: CI приложения → immutable-образ в GHCR → утверждённое desired
 state в Git → reconciliation → Docker Compose → проверка готовности → маршрутизация
 Caddy. Реальная production integration и активация gateway — **Planned**; readiness
-и recovery реализованы с offline interfaces и fake transports.
+и recovery имеют offline-tested contracts и VM-only adapters, проверенные реальным E2E Stage 07.
 
 - [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure)
   отвечает за Ubuntu, SSH/пользователей, Docker Engine и безопасность хоста.
 - **Portfolio Deployment** реализует контракт реестра, офлайн-admission и
   планирование по явному snapshot, детерминированный Compose и ограниченный
   execution foundation. Следующие этапы добавят полную runtime-интеграцию,
-  домены/HTTPS и реальные observation/transport adapters. Readiness и постоянная
+  домены/HTTPS и production observation/transport adapters. Readiness и постоянная
   история результатов реализованы офлайн в Stage 06.
 - Прикладные репозитории, например
   [project-router](https://github.com/DanilFaritovich/project-router), отвечают за
@@ -57,7 +59,7 @@ storage changes, неизвестные/чужие ресурсы и недок�
 [Stage 06](docs/readiness-recovery.md) добавляет bounded HTTP/worker readiness,
 приватный SQLite intent/events, atomic application last-known-good, ограниченный
 stateless image rollback, анализ crash recovery и composite observation contracts.
-Реальные probes/readers и авторизация mutations после рестарта отложены.
+Stage 07 добавляет VM-only probes/readers; mutations после crash остаются запрещены.
 
 **Planned:** production rollouts, полное live reconciliation и общий Caddy HTTPS.
 Zero-downtime не обещается.
@@ -185,7 +187,7 @@ SMOKE_AUTHORIZE=disposable-local-docker. `check` никогда его не вы
 Успех Compose — `applied-unverified`; timeout/disconnect — `unknown` с обязательным
 fresh discovery. Readiness и release success остаются неподтверждёнными.
 
-GitHub Actions до Stage 06 включительно не настроен; CI — Planned в Stage 08.
+GitHub Actions до Stage 07 включительно не настроен; CI — Planned в Stage 08.
 Targets `verify`, `ci`, deploy и production apply отсутствуют. Успешные offline
 проверки не доказывают live Docker, HTTPS, reconciliation или rollback.
 
@@ -194,7 +196,7 @@ Targets `verify`, `ci`, deploy и production apply отсутствуют. Ус�
 Начинай с [AGENTS.md](AGENTS.md). Установлен профиль
 **docker-deployment-platform v1** из
 [codex-development-standards](https://github.com/DanilFaritovich/codex-development-standards)
-на `c98740e6cc66fa20da0c81c6f394dd9a2b03013a` (источник — `develop`).
+на `104a8ed8e10a07fbb9a9ac2d7be669cc93913590` (источник — `develop`).
 
 Обязательные локальные skills: `task-development-workflow`, `standards-sync`,
 `code-quality`, `docker`, `github-actions`, `continuous-delivery`, `caddy-gateway`,
@@ -224,8 +226,8 @@ references; читать references нужно только для текуще�
 | Stage 03 | Desired State & Reconciliation Planning | Implemented offline; PR #3 merged |
 | Stage 04 | Caddy Gateway Foundation | Implemented offline; PR #4 merged into develop |
 | Stage 05 | Docker Deployment Engine | Implemented foundation; PR #5 merged; smoke not-performed; production apply blocked |
-| Stage 06 | Readiness, Journal & Recovery | Implemented offline; SQLite/LKG, constrained rollback, analysis-only recovery; real integration pending |
-| Stage 07 | Local E2E & Integration Testing | Planned |
+| Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
+| Stage 07 | Local E2E & Integration Testing | Реализован; реальный локальный VM E2E пройден, 15/15; production acceptance ожидается |
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
 
@@ -242,10 +244,52 @@ crash analysis не повторяет mutations и не снимает неоп
 и authorization contract, доставка конфигурации, artifact retention, backup/recovery
 ownership и live acceptance. См. [ограничения и API Stage 06](docs/readiness-recovery.md).
 
+## Изолированный локальный E2E
+
+`make e2e` выполняет первый и повторные запуски без экспорта переменных окружения.
+Lowercase GHCR owner определяется из проверенного GitHub origin; приватный каталог
+состояния по умолчанию — `~/.local/share/portfolio-deployment/e2e-state/`, fixtures —
+`~/.local/share/portfolio-deployment/e2e-fixtures/`, независимо от checkout и текущей
+директории. Недостающие каталоги безопасно создаются с правами `0700`, приватные
+файлы — `0600`. Права существующих каталогов не меняются; checkout с правами `775`
+не требует изменений. Overrides `E2E_STATE_DIR` и `E2E_FIXTURE_DIR` проходят те же
+проверки владельцев, permissions, symlink и traversal. Непустые legacy-каталоги
+`.e2e-state`/`.e2e-fixtures` блокируют команды до
+[ручной проверки и перехода](docs/local-e2e.md#legacy-state-transition); автоматического
+переноса, удаления или reset нет. Без готового lock команда предлагает подготовить
+шесть образов, разрешает официальный Python 3 source из `e2e/python-base.json`
+в проверенный direct linux/amd64 digest и фиксирует raw manifest/config до сборки.
+Отдельные подтверждения обязательны для создания builder VM, сборок, создания
+publisher VM, публикации GHCR, проверки публичности, создания тестовой VM, immutable
+pulls, Docker mutations и активации loopback Caddy. Credentials остаются только в
+publisher VM. При готовом проверенном lock сборка и публикация пропускаются.
+Нужны Linux amd64, KVM, аутентифицированный Multipass, доступ к сети/packages и
+достаточные ресурсы VM. Docker основной системы не используется; все `E2E_*`
+переменные — необязательные overrides.
+
+`make e2e-fixtures` отдельно готовит fixtures с теми же defaults и подтверждениями.
+CLI `fixtures --plan --base <immutable-reference>` и импорт raw manifests остаются
+офлайн. Unknown outcome сохраняет evidence и блокирует retry; автоматического
+reset или cleanup нет. См. [инструкцию оператора Stage 07](docs/local-e2e.md).
+Все шесть fixture-образов (**6/6**) собраны, опубликованы в GHCR и анонимно проверены по
+immutable digest в fixture-сессии `5b780834b80ffe9e`; последующие E2E-попытки использовали их повторно.
+`make e2e-report` читает приватные локальные receipts сессии; `e2e-diagnose` читает VM.
+CLI: `python -m scripts.e2e.cli`; отдельные prepare/images/test/status/clean остаются
+доступны. Failed/unknown run блокирует новый оркестрированный запуск в том же
+каталоге состояния, сохраняет evidence и не возобновляется и не очищается
+автоматически. `make e2e-check` и `make check` остаются полностью офлайн.
+**Подтверждённая локальная приёмка (2026-10-21):** сессия `4963fe050c4567f2`, receipt
+`complete/passed`, `realE2E=performed`, **15/15 реальных сценариев passed**; принятая
+реализация также прошла **779 offline tests**. Production deployment не выполнялся,
+Stages 08–09 остаются Planned. Предыдущие неудачные попытки и evidence их закрытия
+сохранены; journals намеренных crash/unknown сценариев остаются analysis-only,
+без replay. См. [результаты приёмки и историю](docs/local-e2e.md#verified-local-acceptance).
+
 ## Безопасность, ограничения и лицензирование
 
-Stages 05–06 разрешают только отдельно авторизованный disposable local Docker smoke;
-запрещены VPS/SSH, production Ansible и контейнеры, активация Caddy, изменения DNS/доменов, production-секреты,
+Stage 07 разрешает только отдельно авторизованные E2E в disposable Ubuntu VM,
+включая test-only активацию loopback Caddy;
+запрещены VPS/SSH, production Ansible и контейнеры, production-активация Caddy, изменения DNS/доменов, production-секреты,
 автоматический деплой, изменения других репозиториев, merge и release tags.
 Будущие production-работы требуют отдельного разрешения. PR-проверки не должны
 получать production-секреты. Git хранит ссылки на конфигурацию, без реальных

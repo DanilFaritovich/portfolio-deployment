@@ -3,7 +3,7 @@ version: 1
 source:
   repository: https://github.com/DanilFaritovich/codex-development-standards
   branch: develop
-  ref: c98740e6cc66fa20da0c81c6f394dd9a2b03013a
+  ref: 104a8ed8e10a07fbb9a9ac2d7be669cc93913590
 profile:
   name: docker-deployment-platform
   version: 1

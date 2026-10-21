@@ -9,7 +9,10 @@ preflight, host locking, scoped execution, offline mocks and a separate opt-in
 disposable smoke. It is not production-ready and real Docker smoke was not run.
 Stage 05 PR #5 is merged into `develop`. Stage 06 adds offline readiness, SQLite
 journal/LKG, constrained rollback and crash recovery analysis through the same
-executor. The real registry/admission allowlist remain empty. No VPS integration is verified.
+executor; PR #6 is merged into `develop`. Stage 07 adds a disposable Ubuntu VM
+harness and real test-only readers/probes; all 15 real local VM E2E scenarios
+passed on 2026-10-21. This verifies only the disposable test integration.
+The real registry/admission allowlist remain empty. No VPS integration is verified.
 
 Python CLI, Docker Engine/Compose v2, GHCR, Git and Caddy are selected technologies.
 There is no daemon, database server, Kubernetes or production deployment trigger.
@@ -26,9 +29,9 @@ discovery cannot establish full Stage 03 registry/gateway evidence. See the
 | Desired state | Per-application manifests selecting component digests and references | Deeply immutable normalized model implemented offline |
 | Validator | Bounded YAML, closed schemas, semantic/global checks and separate admission policy | Implemented offline |
 | Planner | Pure desired/observed comparison using explicit local snapshots; reviewable plan only | Implemented offline |
-| Compose engine | Deterministic renderer, bounded Docker discovery, ownership/preflight, lock and scoped executor | Implemented foundation with mocks; disposable smoke opt-in; full live observation/readiness integration pending |
-| Caddy gateway | Canonical offline route/candidate rendering and opt-in local validation | Foundation implemented offline; runtime, hot reload and certificate state Planned |
-| State/result journal | Intent/events, readiness evidence, atomic application LKG and recovery status under host lock | Implemented offline with SQLite; live storage/recovery integration pending |
+| Compose engine | Deterministic renderer, bounded Docker discovery, ownership/preflight, lock and scoped executor | Implemented foundation with mocks; disposable smoke opt-in; full production observation/readiness integration pending |
+| Caddy gateway | Canonical offline route/candidate rendering and opt-in local validation | Foundation implemented offline; Stage 07 adds VM-only runtime/activation; production TLS Planned |
+| State/result journal | Intent/events, readiness evidence, atomic application LKG and recovery status under host lock | Implemented with SQLite; Stage 07 disposable VM integration accepted by 15 real scenarios |
 | [Application repositories, e.g. project-router](https://github.com/DanilFaritovich/project-router) | Source, tests/CI, Docker builds, GHCR publishing and deployment contract | External ownership; integration Planned; deployability not verified |
 
 Portfolio Deployment must not provision SSH/users, install Docker Engine or
@@ -145,7 +148,7 @@ Stage 06 journals operation/component attempts, Git revision, previous/target
 immutable image, configuration/scope hash, fixed outcomes and bounded readiness
 evidence. SQLite does not supply live observations. The composite provider requires
 fresh Docker, gateway, runtime and readiness source evidence without promoting
-snapshot trust. Only offline readers/fakes exist; ordinary live apply remains
+snapshot trust. Stage 07 supplies VM-only readers/probes; ordinary live apply remains
 blocked. See [Stage 06](docs/readiness-recovery.md).
 
 ## Immutable artifact identity — Conservative Stage 05 foundation
@@ -233,7 +236,7 @@ updates need a reviewed strategy for readiness and traffic: in-place Compose
 replacement can interrupt traffic. Zero downtime/blue-green is not guaranteed.
 Preserve healthy unrelated routes and journal failed/partial convergence.
 
-## Rollback and recovery boundaries — Implemented offline; live acceptance pending
+## Rollback and recovery boundaries — Local VM E2E accepted; production acceptance pending
 
 SQLite v1 commits intent before each mutation and stores component transitions,
 readiness evidence and application-wide atomic LKG pointers. Only proven stateless
@@ -278,26 +281,31 @@ journal is neither a backup nor a disaster-recovery system.
 
 **Implemented:** `make fix` and `make check` validate repository text, local links,
 YAML and installed standards without network, Docker or secrets. `make validate` checks the registry, and `make check` additionally
-runs Stage 02–06 pytest suites. `make plan` performs explicit-input offline
+runs Stage 02–07 offline pytest suites. `make plan` performs explicit-input offline
 planning. Dependencies are provisioned separately; clean setup may download PyYAML, jsonschema and pytest. External URLs are not contacted by checks.
 
 **Planned offline CI (Stage 08):** use the same Makefile interface, pinned tools,
 read-only checks and least-privilege permissions. No SSH, production endpoints,
 DNS or production credentials. GitHub-hosted tool/source provisioning is distinct
-from offline test execution. No workflow is installed through Stage 06.
+from offline test execution. No workflow is installed through Stage 07.
 
-**Planned local E2E (Stage 07):** disposable Compose projects, mock upstreams and
-isolated local gateway tests; verify no-op, unsafe input rejection, failed health,
-route reload and preservation of unrelated data/services. Local image provisioning
-is separate from offline unit/fixture CI.
+**Implemented and accepted in a disposable local VM (Stage 07):** separate
+Multipass Ubuntu VM, fixed local daemon identity, admitted immutable test images,
+real private-network HTTP/Engine/Caddy observations, lifecycle-gated test-only
+loopback activation and 15 scenarios. Separate opt-ins cover prepare, images,
+run and cleanup. All 15 real Docker/Caddy scenarios (**15/15**) passed in session
+`4963fe050c4567f2` on 2026-10-21, using source revision
+`35af4761ee80d32e657174e08dd086a12022562d`. See
+[local E2E](docs/local-e2e.md).
 
 **Planned production verification (Stage 09):** separately approved host, access,
 artifact, DNS/TLS, health and recovery checks. CI success alone does not authorize
-production mutations. Never present local results as live acceptance evidence.
+production mutations. Never present local results as production acceptance evidence.
 
 See the preliminary [roadmap](docs/roadmap.md). Stages 01–04 are implemented
 offline; Stage 05 is an engine foundation with an unexecuted local smoke harness.
-Stage 06 is implemented offline; Stages 07–09 remain Planned. Production
+Stage 06 is implemented offline; Stage 07 infrastructure passed real disposable
+VM acceptance; Stages 08–09 remain Planned. Production
 source/trigger, configuration delivery, full live observation integration and
 operator recovery/retention procedures remain open. See
 [development instructions](AGENTS.md) for workflow boundaries.
@@ -320,8 +328,8 @@ No image pulls, builds, ordinary deletions or gateway operations are implemented
 Docker supplies no complete gateway/registry evidence. No production apply CLI
 exists. Optional `previous_observed` supplies old pull references for fresh Docker
 image inspection alongside desired images, without promoting snapshot trust;
-Stage 06 defines the full composite evidence contract, with real readers deferred
-to Stage 07. Deployment preview retains
+Stage 06 defines the full composite evidence contract; Stage 07 supplies test-only
+readers for the bounded disposable VM session. Deployment preview retains
 proposed actions with separate eligibility and blocking reasons.
 Only the separate disposable harness can perform real Docker operations,
 with explicit canonical Unix socket, test namespace, ownership checks, preloaded
@@ -352,8 +360,8 @@ checks. This SQLite transaction checks integrity and record consistency, preserv
 all previous LKG pointers and failed-target history, and allows a subsequent run
 without declaring the failed deployment successful. Partial rollback, unknown
 outcomes, crashes and missing evidence still block; no replay/resume or journal
-clearing is provided. Real composite providers remain absent, so live recovery
-confirmation remains closed.
+clearing is provided. Stage 07 adds a VM-only composite provider; production
+recovery confirmation remains closed.
 
 The SQLite database and sidecars use private owned directories/files, NOFOLLOW
 path walking, exact versioned schema/integrity/record validation, bounded metadata,
@@ -364,3 +372,137 @@ backup, disk-loss recovery and real host acceptance remain operator prerequisite
 A journal is never complete/trusted Docker/Caddy evidence. See the
 [Stage 06 contract](docs/readiness-recovery.md) for APIs, limits, state transitions,
 analysis-only crash recovery and Stage 07–09 prerequisites.
+
+## Stage 07 disposable VM integration boundary
+
+Acceptance evidence is retained outside Git: host receipt
+`~/.local/share/portfolio-deployment/e2e-state-agent.uZQWee44/4963fe050c4567f2.json`
+records `complete/passed`, `mode=real`, `realE2E=performed` and all 15 results.
+The accepted implementation also passed 779 offline tests. Production deployment
+was not performed; this local VM acceptance leaves Stages 08–09 Planned.
+See [acceptance and failed-attempt history](docs/local-e2e.md#verified-local-acceptance).
+The VM retains its report, baseline, gateway snapshots and intentional crash/unknown
+journals; recovery analysis confirms no automatic completion or replay. Failed
+earlier attempts retain independent closure evidence and original journals.
+
+`scripts/e2e/cli.py` is the host entry point. Shared `scripts/e2e/paths.py`
+resolves checkout-independent absolute host defaults:
+`~/.local/share/portfolio-deployment/e2e-state/` and
+`~/.local/share/portfolio-deployment/e2e-fixtures/`. Optional state/fixture overrides
+use the same validation. `Store` creates missing parents through no-follow pinned
+descriptors with `0700` and retains the unchanged journal path validator; private
+files use `0600`. No existing ancestor modes or owners are changed. Writable source
+checkouts therefore need no permission repair. Path failures expose bounded safe
+codes and guidance. Nonempty or unsafe legacy `.e2e-state`/`.e2e-fixtures` in the
+source/invocation directory block unified commands even with overrides, pending
+manual review and relocation; no automatic migration/reset/cleanup exists.
+See [legacy transition](docs/local-e2e.md#legacy-state-transition).
+
+Snap Multipass opens only bounded, verified copies in nonhidden
+`~/PortfolioDeploymentE2E/<session>/<role>-<unique-operation>/` (`0700`/`0600`),
+never private hidden storage or host temporary files. `staging.py` rejects unsafe
+paths/owners and corroborates size/SHA-256 in host copies, Snap confinement and
+guest artifacts. Staging files/transfer receipts are retained; GHCR credentials
+remain exclusively in the publisher. `multipass.py` classifies transport,
+cloud-init and identity failures with bounded allowlisted stderr evidence.
+`control.py` adds a fixed private host-wide operation fence independent of output
+path overrides. Independently reviewed absent-builder unknown preparation can
+receive a separate immutable closure decision. Incident-specific `builder_recovery.py`
+also closes failed preparation for session `b616980ef1c99192`: a read-only Running
+guest identity/continuation review is recorded first, then independent operator
+evidence and a separate manual stop are required. Closure accepts only Stopped,
+rechecks inputs/inventory around confirmation and publishes a no-replace decision.
+Running, missing/deleted or uncertain VMs remain blocked. The original unknown receipt,
+locks, staging and evidence remain; no phase is resumed. Retained source/review
+hashes are checked before new work, and the old directory/session cannot replay.
+Stopped Multipass metadata does not expose guest machine-id: continuity across
+stop explicitly relies on independent operator no-replacement attestation.
+Phase approvals use separate
+default-deny `y/N` prompts; cleanup separately approves the exact resource list.
+
+
+`make e2e` orchestrates the existing
+prepare/images/test lifecycle with a generated session, private pinned image-lock
+snapshot, durable phase intents and a persistent whole-operation flock. Separate
+interactive confirmations authorize VM creation, immutable pulls, Docker mutations
+and Caddy activation. Host receipts pin VM machine/daemon identity; failed or unknown
+sessions block another orchestration in that state directory without replay/reset.
+`prepared_recovery.py` narrowly handles a lost terminal after successful image
+pulls: `make e2e-interrupt-prepared` pins and verifies the idle controller with a
+Linux pidfd and both flock owners, archives its receipt, then separately confirms
+SIGINT through its existing handler. `make e2e-continue-prepared` requires the
+matching stopped receipt, unchanged images/VM identity and pristine guest session
+evidence. Separate run/activation approvals dispatch only the never-started run;
+a new durable intent forbids replay. Original receipts and lock inodes remain;
+only a complete real 15-scenario result closes the fence with retained evidence.
+`e2e-close-failed-bootstrap` separately records an unsuccessful terminal bootstrap
+only after matching host/guest reports, no guest controller or deployment evidence,
+and an empty Caddy configuration. It retains all resources/evidence, permits a new
+VM/session, and never replays the old run. The VM Caddy unit uses `Type=notify`
+so service startup waits for Caddy's readiness signal before the first API read.
+`e2e-close-failed-run` handles known terminal real failures without replay: it
+matches host/guest reports and identity, checks absence of guest operations and
+collects read-only SQLite attempt evidence under flock. Separate approvals stop
+only the pinned disposable VM and record abandonment after Stopped metadata is
+corroborated. Incomplete journals and disks remain unresolved evidence; immutable
+closure decisions allow a new isolated session and retain checks on host evidence.
+`e2e-report` reads local receipts, not live state. Missing fixtures are offered by
+`make e2e`; `e2e-fixtures` prepares them separately with the same defaults and
+confirmations. Verified GitHub origin supplies a lowercase owner. The reviewed
+official Python source in `e2e/python-base.json` is resolved anonymously to one
+direct linux/amd64 manifest; raw manifest/config digests, sizes, platform and
+Python 3 metadata are checked and privately pinned before building. No mutable
+tag is used after pinning. Explicit CLI `--plan --base` and raw-manifest import
+remain offline. Separately confirmed execution adds disposable Ubuntu builder
+and publisher VMs, with independent preparation/build/publication/public-verification
+confirmations. Buildah runs daemonless in the builder; Skopeo preserves exact
+exported direct Docker schema-2 manifests (including worker healthcheck) in GHCR.
+Only the publisher receives its temporary publication credential via an operator
+login inside that VM, attached directly to the `make e2e` terminal without
+controller capture of authentication input/output. Anonymous exact manifest/config/platform verification gates
+the fsynced atomic ready lock. Whole-operation flock, durable phase/role intents
+and retained archives/VM evidence prevent retry/replay after uncertainty. No host
+or E2E daemon participates in fixture creation. `make e2e` defaults to that ready
+lock without rebuilding. Offline import alone does not prove registry availability
+or producer provenance. Real fixture session `5b780834b80ffe9e` completed build,
+publication and anonymous verification of all six digests; its retained
+`e2e-fixtures-agent.FWWSgbBJ/execution.json` and `artifacts/lock.json` pin them.
+
+`scripts/e2e/vm.py` provisions only a new named Ubuntu 24.04 Multipass VM, transfers
+allowlisted source without host mounts/credentials and records its source revision.
+There is no host Docker fallback. Guest root checks session opt-in, private VM
+marker, hostname/machine-id, virtualization, Ubuntu and pinned local Engine identity
+before commands. The default public Caddy package unit is masked; the test unit
+binds HTTP/admin exclusively to VM loopback. Applications publish no ports.
+
+The isolated image contract hashes raw direct-manifest bytes and corroborates
+Engine ID, RepoDigests and platform. Classic Engine config IDs must match the
+locked manifest's config digest; Docker 29 containerd manifest IDs instead require
+the exact locked descriptor digest, media type and raw-byte size. It neither substitutes
+image IDs for manifest digests nor relaxes production admission; runtime refs and
+OCI indexes remain blocked. Images are built/published separately, pulled only by
+the explicit preparation command, and must be preloaded before execution.
+
+The composite reader re-admits the separate fixture registry, checks complete
+Engine inventory and effective runtime, independently reads active Caddy and probes
+private HTTP/worker health, then closes with another inventory. Source trust is
+scoped to that dedicated VM session; SQLite is not an observation source. Sampling
+is not an atomic cross-system transaction or protection against a malicious root.
+
+Stage 05 `execute` and Stage 06 lifecycle remain the only deployment engine. A
+test-only lifecycle gateway hook rechecks pinned readiness, preserves other routes,
+validates the full loopback JSON candidate, snapshots the prior config and issues
+one explicit authorized Caddy load under the same fixed host lock. Unknown outcomes
+stop acceptance; crash recovery stays analysis-only with no replay or journal reset.
+The runtime identity re-canonicalizes after excluding images to preserve image-only
+rollback eligibility across image-dependent input ordering. Old hashes are not
+migrated or reinterpreted.
+
+Fifteen real scenario definitions cover initial deployment, readiness/activation,
+backend update, no-op, failed readiness/LKG, stateless rollback, persistent marker
+preservation, invalid candidate, partial/unknown outcomes, SIGKILL windows, recovery,
+foreign conflicts, host lock and unrelated resources. Offline tests use synthetic
+transports and temporary SQLite and never claim real E2E acceptance. Cleanup is
+manual opt-in, exact-owned containers/empty networks only; volumes, journal,
+snapshots, unrelated resources and VM are retained. See [Stage 07](docs/local-e2e.md)
+for commands, prerequisites, report semantics and remaining evidence limits.

@@ -17,18 +17,18 @@ AGENTS.md
 -> read only useful ranges
 ```
 
-Search before reading large files. Prefer targeted discovery such as:
+Search before reading large files. Prefer `rg --files -g '<glob>'` to locate files,
+`rg -n 'RelevantClass|relevant_setting' affected/path` to locate relevant lines,
+then `sed -n 'start,endp' file` for bounded context. Prefer `tail -n` and targeted
+filters for errors over full logs. Choose the smallest useful output.
 
-```text
-rg -n "RelevantClass|relevant_setting|relevant_endpoint" affected/path
-```
+Do not use `rg -n "^"`, mass `cat`, broad `sed -n '1,$p'`, or equivalents to dump
+complete large files into primary-model context. `cat` is not banned: reading
+small, entirely relevant files (including `AGENTS.md`) is fine.
 
-Do not use `rg -n "^"`, mass `cat`, or equivalent commands merely to dump complete files into context.
-
-Reading a complete file is fine when it is small and its whole contents are relevant. Before
-reading multiple complete files or one large file, prefer symbol/path search plus useful
-ranges; when `codex-free-worker-mcp` is available and the inspection is broad/noisy,
-consider `inspect_task` instead of loading the raw material into primary-model context.
+Before opening multiple files or one large file, search symbols/paths and inspect only
+relevant ranges. If broad/noisy inspection is necessary and `inspect_task` is
+available, delegate it instead of loading raw output into primary-model context.
 
 For large files, start with the relevant range and expand only when dependencies require it.
 
@@ -106,80 +106,59 @@ If compact output is insufficient after a failure, rerun only the failing comman
 
 Do not request verbose output proactively.
 
-## Optional delegated execution workers
+## MCP execution-worker routing
 
-When an optional execution-worker tool is available, use it when delegation is likely to
-save substantial primary-model context while keeping the task bounded.
+The worker is an optional *runtime capability*, not a required project dependency.
+At the beginning of a nontrivial task check the tools already advertised to the
+session for `free_worker.inspect_task` and `free_worker.fix_task` (possibly
+namespaced). Do not repeatedly probe MCP availability or start a worker only
+to verify its presence. When the tools are available, **routing the following
+eligible bounded work to the worker is required**, not merely a suggestion:
 
-### codex-free-worker-mcp routing
+- `inspect_task`: noisy tests/build/CI/Docker logs, repeated failure inspection,
+  broad multi-file searches, large diffs, and other read-only exploration where
+  a concise diagnosis replaces significant raw primary-model output.
+- `fix_task`: deterministic formatting/lint fixes, mechanical type/test/build
+  failures, and repeated `run -> diagnose -> fix -> rerun` cycles with an
+  unambiguous expected behavior and a bounded scope.
 
-When `codex-free-worker-mcp` is advertised as available, actively route suitable work to
-its tools instead of treating the worker as a vague optional fallback:
+Delegate a *complete bounded diagnostic or mechanical loop*, including appropriate
+scoped checks, rather than one trivial command at a time. Ask the worker to return
+a compact actionable summary (status, checks, changed files, path:line, blockers,
+whether a primary-model decision is needed), not raw logs. Supply only the
+relevant repository path and task; never forward unrelated materials or secrets.
+Review compact status/diff after any `fix_task`, and independently accept its
+behavior and final validation where needed. Do not rerun already-passing worker
+checks when nothing relevant changed.
 
-- use `inspect_task` for read-only bounded inspection whose raw output would otherwise be
-  large/noisy, including broad repository discovery, large test/build/CI failures, Docker
-  or tool logs, and multi-file investigation that can be returned as a compact actionable
-  summary;
-- use `fix_task` for bounded mechanical corrections where intended behavior is already
-  unambiguous, especially repeated `run -> diagnose -> fix -> rerun` loops such as
-  formatting/lint cleanup, straightforward test/build breakage, or repetitive local
-  refactors;
-- prefer delegating the whole bounded loop rather than calling the worker for one tiny
-  command at a time;
-- keep architecture, security/access decisions, secrets, persistence/migration strategy,
-  public contracts, production/live mutations, final acceptance review, and Git delivery
-  on the primary model.
+**Direct execution is correct** for tiny deterministic low-output commands
+(e.g. `git status --short`, a single `rg -n`, small `sed` range), when worker
+startup/context costs exceed the task, or when the task requires primary-model
+judgment. Do not call the worker just to satisfy a quota. When a task qualifies
+for delegation but you execute it directly, give a concrete short reason.
 
-Before dumping several complete files, a large diff, or a noisy command result into the
-primary context, ask whether targeted search/range reads are enough; if not, and
-`inspect_task` is available and safe for the scope, prefer it.
+**Do not delegate** architecture, security/access/secret decisions, persistence or
+migration and unknown-state recovery, concurrency and transaction design, public
+contracts, production/live VM/Docker/deployment mutations, credential handling,
+final acceptance, or Git staging/commit/push/PR/merge. These are owned by the
+primary agent. A worker may inspect *sanitized* logs from these areas when
+read-only and bounded; the primary agent decides what to do. Never send tokens,
+private keys, authentication files, or sensitive host journals to the worker.
 
-Do not send production credentials, private keys, secret material, or unrelated repository
-content to the worker. After `fix_task`, the primary model must inspect compact working-tree
-status/diff metadata and perform the final acceptance/validation appropriate to the task.
+If the MCP is missing, times out, rejects the task, or has unsafe permissions,
+record a brief reason and continue directly with scoped commands. Do not
+automatically install, configure, restart, or retry the MCP as a side effect;
+request separate approval for troubleshooting it. Respect the worker's own tool
+and permission contract. Its instruction-only read-only mode is not an OS sandbox.
 
-If `codex-free-worker-mcp` is unavailable, fails to initialize, rejects the task, or cannot
-safely perform it, continue directly. Do not install, configure, or repair the MCP unless
-the user explicitly asked for that.
+## Delegated validation budget
 
-Good delegation targets include:
-
-- failing test, build, Docker/Compose, or CI workflows with large/noisy output;
-- repeated mechanical `run -> diagnose -> fix -> rerun` loops;
-- broad routine repository searches whose useful result is a compact summary;
-- GitHub/CI inspection where raw logs or many remote records would otherwise enter the
-  primary-model context;
-- repetitive local refactors where intended behavior is already unambiguous.
-
-Prefer delegating the whole bounded execution loop rather than one tiny shell command at
-a time.
-
-Run small deterministic commands with compact output directly when worker overhead would
-be larger than the result.
-
-Keep these responsibilities on the primary model:
-
-- architecture and module-boundary decisions;
-- security decisions and secret handling;
-- persistence and migration strategy;
-- transaction/concurrency design;
-- deployment design and production mutation;
-- public contracts and ambiguous behavior;
-- final diff/acceptance review;
-- Git staging, commits, branch/ref mutation, push, PR delivery, and merge.
-
-Follow the worker's own tool/server instructions and permission boundary. Do not send
-production credentials, secrets, or unrelated repository data merely to enable
-delegation.
-
-A delegated inspect operation should return a compact actionable result rather than raw
-logs. After a delegated fix operation, the primary model must inspect the resulting
-working-tree status/diff before accepting or delivering the changes.
-
-If the optional worker is unavailable, fails to initialize, or cannot safely perform the
-task, continue directly with the normal workflow. Its absence is not a project failure
-and must not trigger installation or configuration changes unless the user explicitly
-requested them.
+Run safe autofixes before read-only validation. During iteration run only affected
+tests/checks; let `fix_task` handle mechanical correction loops when eligible.
+Run the project's aggregate `make check` once after stabilization, unless a
+subsequent relevant change invalidates its result. If the worker already ran an
+identical successful validation on unchanged sources, do not duplicate it.
+Keep genuine live acceptance separate from offline validation.
 
 ## Agent narration
 

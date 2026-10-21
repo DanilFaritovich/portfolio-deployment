@@ -19,3 +19,7 @@ coverage/
 *.sqlite3
 *.sqlite-*
 *.sqlite3-*
+
+# Private Stage 07 host receipts, pinned image artifacts and fixture plans
+.e2e-state/
+.e2e-fixtures/

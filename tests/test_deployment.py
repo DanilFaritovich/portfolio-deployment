@@ -440,18 +440,38 @@ def test_public_mock_adapter_is_offline(app, tmp_path):
     assert [call[1] for call in adapter.calls] == ["backend", "worker"]
 
 
-def test_official_syntax_validation_uses_no_daemon(app, monkeypatch):
+@pytest.mark.parametrize("version", [b"2.40.0", b"v2.40.3", b"2.40.3+ds1-0ubuntu1~24.04.1"])
+def test_official_syntax_validation_uses_no_daemon(app, monkeypatch, version):
     calls = []
     monkeypatch.setattr(docker_adapter.shutil, "which", lambda _: "/usr/bin/docker")
     def run(argv, **kwargs):
         calls.append(argv)
-        return b"2.40.0" if "version" in argv else b""
+        return version if "version" in argv else b""
     monkeypatch.setattr(docker_adapter, "run_bounded", run)
     assert docker_adapter.official_validate(compose.render_compose(app))["status"] == "passed"
     assert calls[-1][-2:] == ["config", "-q"]
     assert "unix:///nonexistent/pd-no-daemon.sock" in calls[-1]
     monkeypatch.setattr(docker_adapter, "run_bounded", lambda *a, **k: b"")
     assert docker_adapter.official_validate(compose.render_compose(app))["status"] == "not-performed"
+
+
+@pytest.mark.parametrize("version,accepted", [(b"2.40.3+ds1-0ubuntu1~24.04.1", True),
+                                               (b"v2.40.3", True), (b"1.29.2", False),
+                                               (b"3.0.0", False), (b"2.40.3\nuntrusted", False)])
+def test_real_adapter_compose_version_accepts_ubuntu_and_requires_v2(monkeypatch, version, accepted):
+    adapter = object.__new__(docker_adapter.LocalDockerAdapter)
+    calls = []
+    def run(args):
+        calls.append(args)
+        return version if args == ["compose", "version", "--short"] else b'{"Os":"linux","Arch":"amd64"}'
+    monkeypatch.setattr(adapter, "_run", run)
+    if accepted:
+        adapter.prerequisites()
+        assert len(calls) == 2
+    else:
+        with pytest.raises(DockerError, match="compose-v2-required"):
+            adapter.prerequisites()
+        assert len(calls) == 1
 
 
 @pytest.mark.parametrize("mutation", ["duplicate", "network-membership", "mount", "image-id", "command", "environment", "ports", "memory"])
@@ -481,6 +501,18 @@ def test_actual_runtime_overrides_block_noop(app, tmp_path, mutation):
     results, adapter = apply(app, tmp_path, observed=observation(desired(app)), docker=replace(state, resources=tuple(records)))
     assert {r.status for r in results} == {"blocked"} and not adapter.calls
     assert "never-print" not in encode([r.document for r in results])
+
+
+def test_actual_runtime_accepts_typed_empty_image_defaults(app, tmp_path):
+    state = docker_state(app, True)
+    empty_defaults = {"Cmd": [], "Entrypoint": [], "Env": [], "ExposedPorts": {}, "Volumes": {}}
+    artifact = compose.render_compose(app, test_session=SESSION)
+    images = {item.reference: replace(item, defaults_json=encode(empty_defaults)) for item in state.images}
+    for item in state.resources:
+        if item.kind != "container":
+            continue
+        service = item.facts["labels"]["com.docker.compose.service"]
+        assert docker_discovery.container_runtime(item, artifact, service, images[artifact.model["services"][service]["image"]])
 
 
 def test_local_provider_never_promotes_docker_to_full_snapshot(root, app, monkeypatch):

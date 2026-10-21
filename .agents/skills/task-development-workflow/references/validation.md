@@ -107,10 +107,11 @@ Do not trade correctness for fewer checks; remove redundant coverage, not indepe
 
 ## Failure handling
 
-When an optional execution worker is available and a failure is likely to produce large
-logs or a repeated mechanical diagnose/fix/rerun loop, the whole bounded loop may be
-delegated according to the context-efficiency reference. Keep behavioral/design decisions
-and final acceptance on the primary model.
+When an MCP execution worker is available, route eligible noisy failure diagnosis
+to `inspect_task` and unambiguous mechanical diagnose/fix/rerun loops to `fix_task`
+as required by the core workflow and context-efficiency reference. Keep design,
+security, live operations, and final acceptance with the primary model. Do not
+duplicate successful unchanged worker checks.
 
 When a broad check fails:
 
