@@ -17,6 +17,29 @@ RECEIPT_SHA256 = "55ee11e0476d3026839f2decb989238e57c1fe21a54191b27cbf6b18d01f77
 ATTESTATIONS = {"controllersStopped", "receiptsReviewed", "noUnfinishedMultipassOperations",
                 "noBuildOrPublication", "vmIdentityIndependentlyChecked", "noVmReplacementSinceReview",
                 "evidencePreserved", "vmStoppedByOperatorAfterReview", "cloudInitSchemaFailureReviewed"}
+INCIDENT_EVIDENCE_FILES = {"SHA256SUMS", "builder-cloud-init.yaml", "cloud-init-status.txt", "execution.json",
+                           "hostname.txt", "machine-id.txt", "multipass-info.json", "multipass-list.json", "vm-marker.json"}
+
+
+def retained_incident_evidence(store):
+    # Earlier operator diagnostics already exist here. Retain and hash only this
+    # exact flat evidence bundle, without adopting any of its claims as authority.
+    if "incident-evidence" not in os.listdir(store.fd):
+        return {}
+    fd = os.open("incident-evidence", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=store.fd)
+    try:
+        info = os.fstat(fd)
+        require(info.st_uid == os.geteuid() and not info.st_mode & 0o077, "unsafe-e2e-host-state")
+        require(set(os.listdir(fd)) == INCIDENT_EVIDENCE_FILES, "e2e-closure-unfinished-artifacts")
+        hashes = {}
+        for name in sorted(INCIDENT_EVIDENCE_FILES):
+            with source(store.path / "incident-evidence" / name, private=True) as stream:
+                raw = stream.read(65537)
+                require(len(raw) <= 65536, "e2e-builder-closure-input-too-large")
+                hashes["incident-evidence/" + name] = sha256(raw).hexdigest()
+        return hashes
+    finally:
+        os.close(fd)
 
 
 def incident_path():
@@ -34,14 +57,15 @@ def inputs(store, session):
             state.get("builder") == f"pd-fixture-builder-{session}" and
             state.get("publisher") == f"pd-fixture-publisher-{session}", "e2e-builder-closure-phase-invalid")
     # Bound the entire original directory, refuse links/unknown files and pin all
-    # bytes. Operator evidence belongs in a separate directory, never here.
+    # bytes. New operator evidence belongs in a separate directory. The exact
+    # pre-existing incident-evidence bundle remains in place as retained input.
     allowed = {"controller.lock", "execution.json", "plan.json", "repositories.json", "python-base.json",
-               "fixture_guest.py", "builder-cloud-init.yaml", "context"}
+               "fixture_guest.py", "builder-cloud-init.yaml", "context", "incident-evidence"}
     names = set(os.listdir(store.fd))
     require(names <= allowed and {"execution.json", "builder-cloud-init.yaml", "context"} <= names,
             "e2e-closure-unfinished-artifacts")
-    hashes = {}
-    for name in sorted(names - {"controller.lock", "context"}):
+    hashes = retained_incident_evidence(store)
+    for name in sorted(names - {"controller.lock", "context", "incident-evidence"}):
         if name.endswith(".json"):
             store.read(name)
         with source(store.path / name, private=True) as stream:

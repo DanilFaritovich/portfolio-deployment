@@ -649,6 +649,16 @@ its output; do not paste the whole procedure as an unattended script.
    pending receipts or build/publication artifacts block recovery. Do not remove
    unexpected evidence to pass checks; investigate instead.
 
+   The original directory may retain its pre-existing flat `incident-evidence/`
+   bundle: exactly `SHA256SUMS`, `builder-cloud-init.yaml`, `cloud-init-status.txt`,
+   `execution.json`, `hostname.txt`, `machine-id.txt`, `multipass-info.json`,
+   `multipass-list.json`, `vm-marker.json`. Each file must be private, regular,
+   singly linked and at most 64 KiB. All bytes are hashed as retained inputs,
+   without treating copied diagnostic claims as authoritative. Changes during
+   confirmation or after closure block work. No nested/unknown files, symlinks,
+   pending receipts or build archives are allowed. Keep this bundle in place;
+   create new operator proof/log files only in the separate evidence directory.
+
    The fixed host lock and original directory lock are held throughout review.
    The immutable `e2e-control/builder-review-b616980ef1c99192.json` records identity,
    input hashes, inventory hash, image metadata, timestamp and UID. Collection is

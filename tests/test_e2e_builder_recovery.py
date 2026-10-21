@@ -88,6 +88,66 @@ def reviewed(incident, tmp_path):
     return evidence
 
 
+def add_incident_evidence(path):
+    folder = path / "incident-evidence"
+    folder.mkdir(mode=0o700)
+    for name in recovery.INCIDENT_EVIDENCE_FILES:
+        target = folder / name
+        target.write_text("retained synthetic diagnostic evidence\n")
+        target.chmod(0o600)
+    return folder
+
+
+def test_existing_incident_evidence_is_preserved_and_bound_to_closure(incident, tmp_path):
+    path, _ = incident
+    folder = add_incident_evidence(path)
+    before = {p.name: (p.read_bytes(), p.stat().st_ino) for p in folder.iterdir()}
+    proof = reviewed(incident, tmp_path)
+    Machine.state = "Stopped"
+    result = recovery.close(path, recovery.SESSION, proof, factory=Machine, consent=lambda *a: None)
+    assert {p.name: (p.read_bytes(), p.stat().st_ino) for p in folder.iterdir()} == before
+    assert {"incident-evidence/" + name for name in before} <= result["decision"]["inputs"].keys()
+    (folder / "cloud-init-status.txt").write_text("changed")
+    with pytest.raises(DockerError, match="evidence-changed"):
+        control.preflight()
+
+
+@pytest.mark.parametrize("change", ["unknown", "pending", "archive", "missing", "symlink", "nested", "large", "public"])
+def test_incident_evidence_uncertainty_blocks_before_vm_access(incident, change):
+    path, _ = incident
+    folder = add_incident_evidence(path)
+    if change in ("unknown", "pending", "archive"):
+        name = {"unknown": "extra.txt", "pending": "execution.json.pending", "archive": "images.tar"}[change]
+        (folder / name).touch(mode=0o600)
+    elif change == "missing":
+        (folder / "hostname.txt").unlink()
+    elif change == "symlink":
+        (folder / "hostname.txt").unlink()
+        (folder / "hostname.txt").symlink_to(path / "builder-cloud-init.yaml")
+    elif change == "nested":
+        (folder / "nested").mkdir(mode=0o700)
+    elif change == "large":
+        (folder / "cloud-init-status.txt").write_bytes(b"x" * 65537)
+    elif change == "public":
+        (folder / "cloud-init-status.txt").chmod(0o644)
+    with pytest.raises((DockerError, OSError)):
+        recovery.collect(path, recovery.SESSION, factory=Machine)
+    assert Machine.calls == []
+    assert_blocked(path)
+
+
+def test_incident_evidence_changes_during_confirmation_block_closure(incident, tmp_path):
+    path, _ = incident
+    folder = add_incident_evidence(path)
+    proof = reviewed(incident, tmp_path)
+    Machine.state = "Stopped"
+    def change(*args):
+        (folder / "vm-marker.json").write_text("changed")
+    with pytest.raises(DockerError, match="evidence-changed"):
+        recovery.close(path, recovery.SESSION, proof, factory=Machine, consent=change)
+    assert_blocked(path)
+
+
 def assert_blocked(path):
     with Store(control.root()).locked() as journal:
         assert journal.read("closed-" + recovery.SESSION + ".json") is None
