@@ -10,7 +10,8 @@ disposable smoke. It is not production-ready and real Docker smoke was not run.
 Stage 05 PR #5 is merged into `develop`. Stage 06 adds offline readiness, SQLite
 journal/LKG, constrained rollback and crash recovery analysis through the same
 executor; PR #6 is merged into `develop`. Stage 07 adds a disposable Ubuntu VM
-harness and real test-only readers/probes; real E2E remains not-performed.
+harness and real test-only readers/probes; all 15 real local VM E2E scenarios
+passed on 2026-10-21. This verifies only the disposable test integration.
 The real registry/admission allowlist remain empty. No VPS integration is verified.
 
 Python CLI, Docker Engine/Compose v2, GHCR, Git and Caddy are selected technologies.
@@ -30,7 +31,7 @@ discovery cannot establish full Stage 03 registry/gateway evidence. See the
 | Planner | Pure desired/observed comparison using explicit local snapshots; reviewable plan only | Implemented offline |
 | Compose engine | Deterministic renderer, bounded Docker discovery, ownership/preflight, lock and scoped executor | Implemented foundation with mocks; disposable smoke opt-in; full live observation/readiness integration pending |
 | Caddy gateway | Canonical offline route/candidate rendering and opt-in local validation | Foundation implemented offline; Stage 07 adds VM-only runtime/activation; production TLS Planned |
-| State/result journal | Intent/events, readiness evidence, atomic application LKG and recovery status under host lock | Implemented offline with SQLite; VM integration implemented in Stage 07; real acceptance not-performed |
+| State/result journal | Intent/events, readiness evidence, atomic application LKG and recovery status under host lock | Implemented with SQLite; Stage 07 disposable VM integration accepted by 15 real scenarios |
 | [Application repositories, e.g. project-router](https://github.com/DanilFaritovich/project-router) | Source, tests/CI, Docker builds, GHCR publishing and deployment contract | External ownership; integration Planned; deployability not verified |
 
 Portfolio Deployment must not provision SSH/users, install Docker Engine or
@@ -288,21 +289,23 @@ read-only checks and least-privilege permissions. No SSH, production endpoints,
 DNS or production credentials. GitHub-hosted tool/source provisioning is distinct
 from offline test execution. No workflow is installed through Stage 07.
 
-**Implemented infrastructure, real E2E not-performed (Stage 07):** separate
+**Implemented and accepted in a disposable local VM (Stage 07):** separate
 Multipass Ubuntu VM, fixed local daemon identity, admitted immutable test images,
 real private-network HTTP/Engine/Caddy observations, lifecycle-gated test-only
 loopback activation and 15 scenarios. Separate opt-ins cover prepare, images,
-run and cleanup. No VM or real Docker/Caddy was run during implementation. See
+run and cleanup. All 15 real Docker/Caddy scenarios passed in session
+`4963fe050c4567f2` on 2026-10-21, using source revision
+`35af4761ee80d32e657174e08dd086a12022562d`. See
 [local E2E](docs/local-e2e.md).
 
 **Planned production verification (Stage 09):** separately approved host, access,
 artifact, DNS/TLS, health and recovery checks. CI success alone does not authorize
-production mutations. Never present local results as live acceptance evidence.
+production mutations. Never present local results as production acceptance evidence.
 
 See the preliminary [roadmap](docs/roadmap.md). Stages 01–04 are implemented
 offline; Stage 05 is an engine foundation with an unexecuted local smoke harness.
-Stage 06 is implemented offline; Stage 07 infrastructure is implemented with live
-acceptance not-performed; Stages 08–09 remain Planned. Production
+Stage 06 is implemented offline; Stage 07 infrastructure passed real disposable
+VM acceptance; Stages 08–09 remain Planned. Production
 source/trigger, configuration delivery, full live observation integration and
 operator recovery/retention procedures remain open. See
 [development instructions](AGENTS.md) for workflow boundaries.
@@ -371,6 +374,13 @@ A journal is never complete/trusted Docker/Caddy evidence. See the
 analysis-only crash recovery and Stage 07–09 prerequisites.
 
 ## Stage 07 disposable VM integration boundary
+
+Acceptance evidence is retained outside Git: host receipt
+`~/.local/share/portfolio-deployment/e2e-state-agent.uZQWee44/4963fe050c4567f2.json`
+records `complete/passed`, `mode=real`, `realE2E=performed` and all 15 results.
+The VM retains its report, baseline, gateway snapshots and intentional crash/unknown
+journals; recovery analysis confirms no automatic completion or replay. Failed
+earlier attempts retain independent closure evidence and original journals.
 
 `scripts/e2e/cli.py` is the host entry point. Shared `scripts/e2e/paths.py`
 resolves checkout-independent absolute host defaults:
@@ -451,7 +461,9 @@ the fsynced atomic ready lock. Whole-operation flock, durable phase/role intents
 and retained archives/VM evidence prevent retry/replay after uncertainty. No host
 or E2E daemon participates in fixture creation. `make e2e` defaults to that ready
 lock without rebuilding. Offline import alone does not prove registry availability
-or producer provenance. Real fixture operations remain not-performed.
+or producer provenance. Real fixture session `5b780834b80ffe9e` completed build,
+publication and anonymous verification of all six digests; its retained
+`e2e-fixtures-agent.FWWSgbBJ/execution.json` and `artifacts/lock.json` pin them.
 
 `scripts/e2e/vm.py` provisions only a new named Ubuntu 24.04 Multipass VM, transfers
 allowlisted source without host mounts/credentials and records its source revision.
