@@ -44,6 +44,8 @@ def no_live(monkeypatch, tmp_path):
     monkeypatch.setattr(socket, "socket", forbidden)
     monkeypatch.setattr(runner.os, "fork", forbidden)
     monkeypatch.setattr(staging, "snap_probe", lambda path, expected: None)
+    from scripts.e2e import cloud_config
+    monkeypatch.setattr(cloud_config, "run_bounded", lambda *a, **kw: b"valid")
 
 
 @pytest.fixture

@@ -6,9 +6,8 @@ from pathlib import Path
 import secrets
 import shutil
 
-import yaml
-
 from scripts.docker_adapter import DockerError
+from scripts.e2e.cloud_config import render, validate_file
 from scripts.e2e.fixture_bundle import prepare, source_bytes, import_manifests
 from scripts.e2e.fixture_guest import digest_file, unpack
 from scripts.e2e.host_state import Store
@@ -61,20 +60,23 @@ class FixtureVM(VM):
         destination = GUEST_ROOT + ("/context/" if name in {"Dockerfile", "app.py"} else "/") + name
         self.guest("install", "-m", "600", f"/tmp/pd-fixture-{name}", destination)
 
-    def prepare_fixture(self, directory):
-        existing = self.inventory()
-        require(not any(item["name"] == self.name for item in existing["list"]), "fixture-vm-exists-no-adoption")
+    def cloud_init(self):
         marker = ("import pathlib,json,os; os.umask(0o077); "
                   f"pathlib.Path('/etc/pd-fixture.json').write_text(json.dumps(dict(session='{self.session}',kind='{self.kind}',"
                   "machine=pathlib.Path('/etc/machine-id').read_text().strip())))")
-        cloud = {"hostname": self.name, "manage_etc_hosts": True,
+        return {"hostname": self.name, "manage_etc_hosts": True,
                  "packages": ["buildah", "skopeo"] if self.kind == "builder" else ["skopeo"],
                  "runcmd": [["mkdir", "-p", GUEST_ROOT + "/context"],
-                            ["chmod", "700", GUEST_ROOT], ["python3", "-c", marker]]}
+                            ["chmod", "u=rwx,go=", GUEST_ROOT], ["python3", "-c", marker]]}
+
+    def prepare_fixture(self, directory):
+        existing = self.inventory()
+        require(not any(item["name"] == self.name for item in existing["list"]), "fixture-vm-exists-no-adoption")
         path = directory / (self.kind + "-cloud-init.yaml")
         with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "w") as out:
-            out.write("#cloud-config\n" + yaml.safe_dump(cloud))
+            out.write(render(self.cloud_init()))
         path.chmod(0o600)
+        validate_file(path)
         staged, _ = self.staging().copy_to(path)
         self.command("launch", "24.04", "--name", self.name, "--cpus", "2", "--memory", "4G", "--disk", "24G",
                      "--cloud-init", str(staged), timeout=900)

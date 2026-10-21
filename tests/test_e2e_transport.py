@@ -5,11 +5,106 @@ from pathlib import Path
 import sys
 
 import pytest
+import yaml
 
 from scripts.docker_adapter import DockerError
 from scripts.e2e import multipass, staging, vm, fixture_execution
+from scripts.e2e import cloud_config
 
 SESSION = "a" * 16
+
+
+@pytest.mark.parametrize("role", ["e2e", "builder", "publisher"])
+def test_generated_cloud_config_preserves_string_arguments(role):
+    config = vm.cloud_init(SESSION) if role == "e2e" else fixture_execution.FixtureVM(SESSION, role).cloud_init()
+    serialized = cloud_config.render(config)
+    loaded = yaml.safe_load(serialized)
+    assert serialized.startswith("#cloud-config\n") and loaded == config
+    assert all(type(arg) is str for command in loaded["runcmd"] for arg in command)
+    assert all(type(item["permissions"]) is str for item in loaded.get("write_files", []) if "permissions" in item)
+    if role != "e2e":
+        assert loaded["runcmd"][1] == ["chmod", "u=rwx,go=", fixture_execution.GUEST_ROOT]
+
+
+def test_symbolic_chmod_leaves_exact_private_mode(tmp_path):
+    # Only chmod a new test directory; never execute any generated VM command.
+    target = tmp_path / "mode"
+    target.mkdir(mode=0o777)
+    target.chmod(0o777)
+    multipass.run(["/usr/bin/chmod", "u=rwx,go=", str(target)])
+    assert target.stat().st_mode & 0o777 == 0o700
+
+
+@pytest.mark.parametrize("argument", [700, True, None, {"mode": "700"}])
+def test_cloud_config_rejects_yaml_nonstring_arguments(tmp_path, monkeypatch, argument):
+    path = tmp_path / "cloud-init.yaml"
+    path.write_text("#cloud-config\n" + yaml.safe_dump({"runcmd": [["chmod", argument, "/test"]]}))
+    monkeypatch.setattr(cloud_config, "run_bounded", lambda *a, **kw: pytest.fail("schema subprocess before type check"))
+    with pytest.raises(DockerError, match="arguments-must-be-strings"):
+        cloud_config.validate_file(path)
+
+
+@pytest.mark.parametrize("installed", [False, True])
+def test_cloud_config_local_schema_only(tmp_path, monkeypatch, installed):
+    path = tmp_path / "cloud-init.yaml"
+    path.write_text(cloud_config.render(vm.cloud_init(SESSION)))
+    monkeypatch.setattr(cloud_config.shutil, "which", lambda _: "/usr/bin/cloud-init" if installed else None)
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        assert kwargs == {"timeout": 30}
+    monkeypatch.setattr(cloud_config, "run_bounded", run)
+    cloud_config.validate_file(path)
+    assert calls == ([["/usr/bin/cloud-init", "schema", "--config-file", str(path)]] if installed else [])
+
+
+@pytest.mark.parametrize("role", ["e2e", "builder", "publisher"])
+def test_schema_failure_blocks_before_staging_or_launch(tmp_path, monkeypatch, role):
+    monkeypatch.setattr(cloud_config.shutil, "which", lambda _: "/usr/bin/cloud-init")
+    def fail(*a, **kw):
+        raise DockerError("injected-schema-failure")
+    monkeypatch.setattr(cloud_config, "run_bounded", fail)
+    monkeypatch.setattr(vm, "resolve", lambda _: tmp_path)
+    machine = vm.VM(SESSION) if role == "e2e" else fixture_execution.FixtureVM(SESSION, role)
+    monkeypatch.setattr(machine, "inventory", lambda: {"list": []})
+    monkeypatch.setattr(machine, "staging", lambda: pytest.fail("staging after schema failure"))
+    monkeypatch.setattr(machine, "command", lambda *a, **kw: pytest.fail("launch after schema failure"))
+    with pytest.raises(DockerError, match="offline-schema-validation-failed"):
+        if role == "e2e":
+            machine.prepare(f"prepare:{SESSION}")
+        else:
+            machine.prepare_fixture(tmp_path)
+
+
+@pytest.mark.parametrize("role", ["e2e", "builder", "publisher"])
+def test_degraded_cloud_init_never_transfers_or_retries(tmp_path, monkeypatch, role):
+    monkeypatch.setattr(vm, "resolve", lambda _: tmp_path)
+    monkeypatch.setattr(vm, "validate_file", lambda _: None)
+    monkeypatch.setattr(fixture_execution, "validate_file", lambda _: None)
+    machine = vm.VM(SESSION) if role == "e2e" else fixture_execution.FixtureVM(SESSION, role)
+    monkeypatch.setattr(machine, "inventory", lambda: {"list": []})
+    class Stage:
+        def copy_to(self, path):
+            return path, {}
+    monkeypatch.setattr(machine, "staging", lambda: Stage())
+    calls = []
+    def command(*args, **kwargs):
+        calls.append(args[0])
+        if args[0] == "info":
+            return json.dumps({"info": {machine.name: {"state": "Running", "mounts": {}}}}).encode()
+        if args[0] == "exec":
+            assert "status" in args and "--wait" in args
+            # cloud-init status returns exit 2 for degraded done; transport rejects it.
+            raise multipass.MultipassError("exec", "failed", True, b"cloud-init degraded done")
+        assert args[0] == "launch"
+        return b""
+    monkeypatch.setattr(machine, "command", command)
+    with pytest.raises(multipass.MultipassError, match="multipass-cloud-init-failed"):
+        if role == "e2e":
+            machine.prepare(f"prepare:{SESSION}")
+        else:
+            machine.prepare_fixture(tmp_path)
+    assert calls == ["launch", "info", "exec"]
 
 
 def test_bounded_runner_retains_only_safe_stderr():

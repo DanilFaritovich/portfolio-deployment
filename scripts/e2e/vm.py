@@ -9,9 +9,8 @@ import shutil
 import sys
 import tarfile
 
-import yaml
-
 from scripts.docker_adapter import DockerError, run_bounded
+from scripts.e2e.cloud_config import render, validate_file
 from scripts.e2e.safety import require, session_id
 from scripts.e2e.multipass import MultipassError, run as multipass_run, evidence
 from scripts.e2e.staging import Staging
@@ -180,8 +179,9 @@ class VM:
         with directory(private):
             cloud = private / "cloud-init.yaml"
             with os.fdopen(os.open(cloud, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "w") as stream:
-                stream.write("#cloud-config\n" + yaml.safe_dump(cloud_init(self.session)))
+                stream.write(render(cloud_init(self.session)))
             cloud.chmod(0o600)
+            validate_file(cloud)
             staged, _ = self.staging().copy_to(cloud)
             # Finite commands may exceed a minute; this CLI is for later operator use.
             self.command("launch", "24.04", "--name", self.name, "--cpus", "2", "--memory", "4G",

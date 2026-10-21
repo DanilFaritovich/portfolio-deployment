@@ -11,6 +11,7 @@ import pytest
 
 from scripts.docker_adapter import DockerError
 from scripts.e2e import cli, fixture_bundle, fixture_execution as execution, fixture_guest as guest
+from scripts.e2e import cloud_config
 from scripts.e2e.host_state import Store
 from scripts.e2e.images import Images, ROLES
 
@@ -31,6 +32,7 @@ def offline(monkeypatch, tmp_path):
     monkeypatch.setattr(socket, "socket", forbidden)
     from scripts.e2e import staging
     monkeypatch.setattr(staging, "snap_probe", lambda path, expected: None)
+    monkeypatch.setattr(cloud_config, "run_bounded", lambda *a, **kw: b"valid")
 
 
 def artifact(role):

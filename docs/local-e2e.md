@@ -566,6 +566,77 @@ guest logs are discarded, including unrecognized diagnostic text.
 
 ## Closing an unknown builder preparation
 
+### Existing builder: session `b616980ef1c99192`
+
+Operator-reported evidence: Ubuntu 24.04 / cloud-init 26.1 finished `degraded done`;
+system schema validation reported `E1: 700 is not of type 'string'` in `runcmd`.
+Buildah/Skopeo and `/etc/pd-fixture.json` exist, and builder
+`pd-fixture-builder-b616980ef1c99192` is running. The original receipt is `unknown`.
+These are operator observations, not a successful fixture build or E2E acceptance.
+
+The current source used Python string `"700"`, which PyYAML serializes as `'700'`;
+an unquoted YAML `700` loads as an integer and violates the
+[runcmd string-argument schema](https://docs.cloud-init.io/en/26.1/reference/modules.html#runcmd).
+The exact conversion point in this incident is unverified: compare retained
+private YAML, Snap staging YAML and guest user-data before attributing it to a
+serializer or Multipass. New builder/publisher configs use `u=rwx,go=` (0700).
+Both generators check argument types after YAML serialization. Before staging or
+launch, they also run `cloud-init schema --config-file` if the local binary is
+installed; failure blocks launch. No binary is downloaded. Without it, only the
+argument-type check runs; this is not full schema validation. A host schema pass
+does not prove the guest's merged configuration or boot success. Nonzero guest
+`cloud-init status --wait`, including degraded exit 2, still aborts preparation.
+
+Safe incident handoff/closure procedure for this specific session (operator-only;
+no commands below were run during this fix):
+
+1. Stop all host E2E/fixture controllers and independently verify that no launch,
+   transfer, exec or cloud-init operation is still running. Do not rerun `make e2e`,
+   preparation, `cloud-init init/clean`, or guest `runcmd`. Do not edit the original
+   YAML, marker, receipts, `.pending` files, fixed fence or lock inodes. Do not use
+   a new directory to bypass the global fence.
+2. Preserve the original private fixture directory and
+   `~/PortfolioDeploymentE2E/b616980ef1c99192/` staging tree in place. Create a
+   separate private evidence directory (0700; files 0600). Copy the receipt,
+   generated cloud-init, plan, transfer receipts and staged YAML without changing
+   the originals; record SHA-256, paths, ownership/modes and collection time.
+   Keep raw evidence private and out of Git/PR logs.
+3. After separately authorizing read-only VM diagnosis, save output and exit
+   status of each command below in that evidence directory. Use the original
+   `E2E_FIXTURE_DIR` override on the make command if one was used:
+
+   ```sh
+   make e2e-fixture-diagnose PYTHON=.venv/bin/python E2E_SESSION=b616980ef1c99192
+   multipass list --format json
+   multipass info pd-fixture-builder-b616980ef1c99192 --format json
+   multipass exec pd-fixture-builder-b616980ef1c99192 -- sudo cloud-init status --long
+   multipass exec pd-fixture-builder-b616980ef1c99192 -- sudo cloud-init schema --system --annotate
+   ```
+
+   Exit 2 from status is evidence of degradation, never permission to continue.
+   Read-only collection should also preserve `/var/log/cloud-init.log`,
+   `/var/log/cloud-init-output.log`, `/var/lib/cloud/instance/user-data.txt`,
+   `/var/lib/cloud/instance/cloud-config.txt`, `/var/lib/cloud/instance/runcmd`,
+   `/etc/pd-fixture.json`, hostname and machine-id. Corroborate identity using the
+   marker/session/kind, machine-id, hostname and inventory; a name alone does not
+   authorize adoption or deletion. Hash the collected evidence and record the
+   original receipt's canonical `receiptSha256` from diagnosis.
+4. Record an operator incident decision outside the controller receipts: builder
+   preparation failed validation, VM retained for diagnosis, no build/publication
+   authorized, no replay. This completes evidence handoff, **not** controller
+   session closure. Keep the session `unknown` and the global execution fence.
+   Do not invoke `e2e-close-unknown`: its absent-builder decision would be false
+   for this incident. Stopping or deleting the VM would not establish that no VM
+   was created, either.
+5. Controller closure remains blocked while this VM exists. A separately scoped,
+   reviewed recovery change is required to record an evidence-bound terminal
+   decision for an existing failed builder, retaining the original unknown
+   receipt and preventing replay. Any later VM stop/disposal and any fresh
+   session require separate explicit authorization; this procedure authorizes
+   neither. Do not remove the VM merely to satisfy the absent-builder check.
+
+### Absent builder only: earlier session `4d51ffc5eb90ba5a`
+
 Session `4d51ffc5eb90ba5a` must remain in its original directory, with its original
 `execution.json`, cloud-init and lock. The following is an operator procedure;
 none of these live/read-only Multipass commands was run as part of this fix.

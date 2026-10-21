@@ -162,3 +162,22 @@ def test_close_decline_or_inventory_change_never_records_decision(tmp_path):
         control.close_unknown(path, SESSION, evidence, factory=Inventory, consent=changed)
     with Store(control.root()).locked() as store:
         assert store.read("closed-" + SESSION + ".json") is None
+
+
+@pytest.mark.parametrize("vm_state", ["Running", "Stopped", "Deleted"])
+def test_cloud_init_incident_existing_builder_preserves_unknown_and_fence(tmp_path, monkeypatch, vm_state):
+    monkeypatch.setitem(globals(), "SESSION", "b616980ef1c99192")
+    path, state, evidence = setup_unknown(tmp_path)
+    original = (path / "execution.json").read_bytes()
+    lock_inode = (path / "controller.lock").stat().st_ino
+    Inventory.records = [{"name": state["builder"], "state": vm_state}]
+    with pytest.raises(DockerError, match="vm-still-present"):
+        control.close_unknown(path, SESSION, evidence, factory=Inventory,
+                              consent=lambda *a: pytest.fail("closure confirmation for existing VM"))
+    assert (path / "execution.json").read_bytes() == original
+    assert (path / "controller.lock").stat().st_ino == lock_inode
+    with Store(control.root()).locked() as store:
+        assert store.read("closed-" + SESSION + ".json") is None
+    with pytest.raises(DockerError, match="global-unfinished"):
+        with control.guard(tmp_path / "new-output", "fixtures"):
+            pytest.fail("existing builder bypassed global fence")
