@@ -18,6 +18,14 @@ check:
 	@$(PYTHON) scripts/validate_registry.py
 	@$(PYTHON) -m pytest -q -p no:cacheprovider
 
+# Pinned actionlint is provisioned separately, never downloaded by checks.
+# Disable optional external linters so results do not depend on runner tools.
+.PHONY: workflow-check
+ACTIONLINT ?= actionlint
+workflow-check:
+	@command -v "$(ACTIONLINT)" >/dev/null || { echo "Install actionlint 1.7.7; see docs/stage-08-automation.md" >&2; exit 1; }
+	@$(ACTIONLINT) -shellcheck= -pyflakes= .github/workflows/*.yml
+
 # Explicit local fixture inputs; no observed-state default or live discovery.
 .PHONY: plan
 export OBSERVED GIT_REVISION
