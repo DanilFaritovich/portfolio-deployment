@@ -80,7 +80,7 @@ e2e-report:
 .PHONY: e2e-check e2e-prerequisites e2e-prepare e2e-status e2e-images e2e-test e2e-diagnose e2e-clean
 export E2E_SESSION E2E_AUTHORIZE E2E_GATEWAY_AUTHORIZE E2E_IMAGES
 e2e-check:
-	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_local_e2e.py tests/test_e2e_fixtures.py tests/test_e2e_bootstrap.py tests/test_e2e_paths.py
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_local_e2e.py tests/test_e2e_fixtures.py tests/test_e2e_bootstrap.py tests/test_e2e_paths.py tests/test_e2e_control.py tests/test_e2e_transport.py
 
 e2e-prerequisites:
 	@$(PYTHON) -m scripts.e2e.cli prerequisites
@@ -102,3 +102,12 @@ e2e-diagnose:
 
 e2e-clean:
 	@$(PYTHON) -m scripts.e2e.cli clean
+
+# Explicit read-only inventory and narrowly scoped operator closure; never replay.
+.PHONY: e2e-fixture-diagnose e2e-close-unknown
+export E2E_EVIDENCE
+e2e-fixture-diagnose:
+	@$(PYTHON) -m scripts.e2e.cli fixture-diagnose
+
+e2e-close-unknown:
+	@$(PYTHON) -m scripts.e2e.cli close-unknown

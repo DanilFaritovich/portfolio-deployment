@@ -20,13 +20,17 @@ PHASES = ["builder-prepare", "build", "publisher-prepare", "publish", "verify-pu
 
 @pytest.fixture(autouse=True)
 def offline(monkeypatch, tmp_path):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    isolated_home = tmp_path / "host-home"
+    isolated_home.mkdir(mode=0o700)
+    monkeypatch.setenv("HOME", str(isolated_home))
     monkeypatch.setattr(cli.paths, "ROOT", tmp_path / "checkout")
     monkeypatch.chdir(tmp_path)
     def forbidden(*a, **kw):
         pytest.fail("real processes/network forbidden")
     monkeypatch.setattr(subprocess, "Popen", forbidden)
     monkeypatch.setattr(socket, "socket", forbidden)
+    from scripts.e2e import staging
+    monkeypatch.setattr(staging, "snap_probe", lambda path, expected: None)
 
 
 def artifact(role):
@@ -137,7 +141,7 @@ def test_failure_preserves_state_and_blocks_retry(tmp_path, phase, failure):
     assert result["status"] == ("blocked" if failure == "decline" else "unknown")
     assert not (directory / "artifacts").exists()
     before = {p.name: p.read_bytes() for p in directory.iterdir() if p.is_file()}
-    with pytest.raises(DockerError, match="unfinished-no-retry"):
+    with pytest.raises(DockerError, match="global-unfinished-review|unfinished-no-retry"):
         execution.execute(directory, "fixtures", BASE, factory=lambda *a: pytest.fail("retry"))
     assert before == {p.name: p.read_bytes() for p in directory.iterdir() if p.is_file()}
     assert b"private registry response" not in (directory / "execution.json").read_bytes()
@@ -328,10 +332,14 @@ def test_publisher_preserves_digests_and_removes_only_ephemeral_auth(tmp_path, m
     assert b"private-sentinel" not in b"".join(path.read_bytes() for path in tmp_path.glob("*.json"))
 
 
-def test_fixture_vm_prepare_transport_has_no_daemon_mount_or_credentials(tmp_path):
+def test_fixture_vm_prepare_transport_has_no_daemon_mount_or_credentials(tmp_path, monkeypatch):
+    # Stage sources under the isolated HOME because /tmp itself is shared.
+    tmp_path = Path.home() / "fixture-source"
+    tmp_path.mkdir(mode=0o700)
     fixture_bundle.prepare(tmp_path / "bundle", "fixtures", BASE)
     directory = tmp_path / "bundle"
     (directory / "fixture_guest.py").write_bytes(b"synthetic payload")
+    (directory / "fixture_guest.py").chmod(0o600)
     for kind in ("builder", "publisher"):
         machine = execution.FixtureVM("a" * 16, kind)
         calls = []
@@ -346,6 +354,8 @@ def test_fixture_vm_prepare_transport_has_no_daemon_mount_or_credentials(tmp_pat
             return b""
         machine.command = command
         assert machine.prepare_fixture(directory) == "machine-id"
+        (directory / "fixture_guest.py").chmod(0o600)
+        assert (directory / "fixture_guest.py").stat().st_mode & 0o777 == 0o600
         cloud = (directory / (kind + "-cloud-init.yaml")).read_text()
         assert "docker" not in cloud.lower() and "mounts" not in cloud and "auth" not in cloud.lower()
         assert "skopeo" in cloud and ("buildah" in cloud) == (kind == "builder")
@@ -383,6 +393,9 @@ def test_fixture_controller_lock_tamper_and_crash_intent(tmp_path):
     result = execution.execute(directory, "fixtures", BASE, factory=FakeVM, consent=consent)
     assert result["status"] == "blocked" and result["reason"] == "fixture-source-changed"
     assert not (directory / "images.tar").exists()
+
+
+def test_fixture_crash_intent_blocks_replay(tmp_path):
     directory = tmp_path / "crash"
     class Crash(FakeVM):
         def build(self, directory):
@@ -392,7 +405,7 @@ def test_fixture_controller_lock_tamper_and_crash_intent(tmp_path):
     with Store(directory).locked() as store:
         state = store.read("execution.json")
     assert state["phase"] == "build" and state["status"] == "unknown"
-    with pytest.raises(DockerError, match="unfinished-no-retry"):
+    with pytest.raises(DockerError, match="global-unfinished-review|unfinished-no-retry"):
         execution.execute(directory, "fixtures", BASE, factory=lambda *a: pytest.fail("crash replay"))
 
 
@@ -402,14 +415,15 @@ def test_candidate_validation_precedes_publisher_and_final_lock_failure_keeps_ev
         def build(self, directory):
             result = super().build(directory)
             return result
-    original_create = execution.create
     monkeypatch.setattr(execution, "create", lambda *a: (_ for _ in ()).throw(ValueError("invalid candidate")))
     FakeVM.instances = []
     result = execution.execute(directory, "fixtures", BASE, factory=Invalid, consent=lambda *a: None)
     assert result["status"] == "unknown"
     assert FakeVM.instances[-1].kind == "publisher" and FakeVM.instances[-1].calls == []
     assert (directory / "raw/v1.json").exists() and (directory / "images.tar").exists()
-    monkeypatch.setattr(execution, "create", original_create)
+
+
+def test_final_lock_failure_keeps_evidence(tmp_path, monkeypatch):
     directory = tmp_path / "lock-failure"
     monkeypatch.setattr(execution, "import_manifests", lambda *a: (_ for _ in ()).throw(OSError("disk failure")))
     result = execution.execute(directory, "fixtures", BASE, factory=FakeVM, consent=lambda *a: None)

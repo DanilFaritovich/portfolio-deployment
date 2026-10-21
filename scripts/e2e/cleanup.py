@@ -28,11 +28,16 @@ def cleanup_plan(observation, artifacts, session, baseline):
     return tuple(r for r in targets if r.kind != "volume") + tuple(proxies)
 
 
-def clean(scope, adapter, baseline, revision):
+def clean(scope, adapter, baseline, revision, *, preview=False, approved=None):
     desired = build_desired_state(scope.directory / "registry", revision)
     artifacts = [render_compose(a, test_session=scope.session) for a in desired.applications]
     with host_lock():
         targets = cleanup_plan(discover(adapter, ()), artifacts, scope.session, baseline)
+        listing = [{"kind": r.kind, "id": r.identifier, "name": r.name} for r in targets]
+        listing.sort(key=lambda r: (r["kind"], r["id"]))
+        if preview:
+            return {"status": "passed", "targets": listing}
+        require(approved == listing, "e2e-cleanup-list-not-approved-or-changed")
         for kind in ("container", "network"):
             for target in targets:
                 if target.kind != kind:

@@ -385,6 +385,20 @@ source/invocation directory block unified commands even with overrides, pending
 manual review and relocation; no automatic migration/reset/cleanup exists.
 See [legacy transition](docs/local-e2e.md#legacy-state-transition).
 
+Snap Multipass opens only bounded, verified copies in nonhidden
+`~/PortfolioDeploymentE2E/<session>/<role>-<unique-operation>/` (`0700`/`0600`),
+never private hidden storage or host temporary files. `staging.py` rejects unsafe
+paths/owners and corroborates size/SHA-256 in host copies, Snap confinement and
+guest artifacts. Staging files/transfer receipts are retained; GHCR credentials
+remain exclusively in the publisher. `multipass.py` classifies transport,
+cloud-init and identity failures with bounded allowlisted stderr evidence.
+`control.py` adds a fixed private host-wide operation fence independent of output
+path overrides. Only independently reviewed absent-builder unknown preparation
+can receive a separate immutable closure decision; the original unknown receipt,
+locks and artifacts remain, and no phase is resumed. Phase approvals use separate
+default-deny `y/N` prompts; cleanup separately approves the exact resource list.
+
+
 `make e2e` orchestrates the existing
 prepare/images/test lifecycle with a generated session, private pinned image-lock
 snapshot, durable phase intents and a persistent whole-operation flock. Separate

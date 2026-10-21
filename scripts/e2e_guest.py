@@ -21,10 +21,11 @@ from scripts.e2e.runner import Runner
 def main(argv=None):
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("run", "images", "clean", "diagnose"))
+    parser.add_argument("action", choices=("run", "images", "clean", "clean-plan", "diagnose"))
     parser.add_argument("--session", required=True)
     parser.add_argument("--authorize", required=True)
     parser.add_argument("--gateway-authorize", default="")
+    parser.add_argument("--cleanup-approved", default="")
     args = parser.parse_args(argv)
     attempted = False
     try:
@@ -45,9 +46,10 @@ def main(argv=None):
             result = {"status": "passed", "vm": "identity-verified", "daemon": "identity-verified",
                       "report": private_json(scope.directory / "report.json") if (scope.directory / "report.json").exists() else
                                 {"realE2E": "not-performed"}}
-        elif args.action == "clean":
+        elif args.action in ("clean", "clean-plan"):
             baseline = {tuple(r) for r in private_json(scope.directory / "baseline.json")}
-            result = clean(scope, adapter, baseline, git_revision)
+            result = clean(scope, adapter, baseline, git_revision, preview=args.action == "clean-plan",
+                           approved=json.loads(args.cleanup_approved) if args.cleanup_approved else None)
         else:
             images = Images(Path(__file__).resolve().parents[1] / "images/lock.json")
             if args.action == "images":

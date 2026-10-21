@@ -6,7 +6,9 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import socket
+import stat
 import subprocess
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -17,7 +19,7 @@ from scripts.deployment import execute
 from scripts.deployment_journal import Journal, JournalError, locked_journal
 from scripts.docker_adapter import DockerError
 from scripts.docker_discovery import discover
-from scripts.e2e import safety, transports, gateway, vm, observations, runner, cleanup, orchestration, fixture_bundle, cli
+from scripts.e2e import safety, transports, gateway, vm, observations, runner, cleanup, orchestration, fixture_bundle, cli, staging, multipass
 from scripts.e2e.host_state import Store
 from scripts.e2e.fixtures import create_registry, change_image
 from scripts.e2e.images import Images, ROLES
@@ -31,7 +33,9 @@ BASE = "docker.io/library/python@sha256:" + "1" * 64
 
 @pytest.fixture(autouse=True)
 def no_live(monkeypatch, tmp_path):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    isolated_home = Path(tmp_path) / "host-home"
+    isolated_home.mkdir(mode=0o700)
+    monkeypatch.setenv("HOME", str(isolated_home))
     monkeypatch.setattr(cli.paths, "ROOT", tmp_path / "checkout")
     monkeypatch.chdir(tmp_path)
     def forbidden(*args, **kwargs):
@@ -39,6 +43,7 @@ def no_live(monkeypatch, tmp_path):
     monkeypatch.setattr(subprocess, "Popen", forbidden)
     monkeypatch.setattr(socket, "socket", forbidden)
     monkeypatch.setattr(runner.os, "fork", forbidden)
+    monkeypatch.setattr(staging, "snap_probe", lambda path, expected: None)
 
 
 @pytest.fixture
@@ -481,6 +486,16 @@ def test_runtime_identity_ignores_image_driven_component_order(registry, images)
 
 
 def test_vm_prepare_full_offline_orchestration(monkeypatch):
+    # Stage sources beneath a private ancestor: pytest's /tmp parent is shared.
+    private_root = Path.home() / "checkout"
+    private_root.mkdir(mode=0o700)
+    (private_root / "scripts").mkdir(mode=0o700)
+    (private_root / "schemas").mkdir(mode=0o700)
+    (private_root / "requirements-dev.txt").write_text("")
+    monkeypatch.setattr(vm, "ROOT", private_root)
+    state_root = private_root / "state"
+    state_root.mkdir(mode=0o700)
+    monkeypatch.setattr(vm, "resolve", lambda _: state_root)
     calls = []
     def call(argv, **kwargs):
         calls.append(argv)
@@ -499,8 +514,15 @@ def test_vm_prepare_full_offline_orchestration(monkeypatch):
     assert all(c[1] not in ("mount", "delete", "purge", "stop") for c in calls)
 
 
-def test_vm_unknown_outcome_does_not_retry_launch():
+def test_vm_unknown_outcome_does_not_retry_launch(monkeypatch):
     calls = []
+    from scripts.e2e import staging
+    staging_root = Path.home() / "source"
+    staging_root.mkdir(mode=0o700)
+    cloud = staging_root / "cloud-init.yaml"
+    cloud.write_text("fixture")
+    monkeypatch.setattr(vm, "resolve", lambda _: staging_root)
+    monkeypatch.setattr(staging, "snap_probe", lambda *_: None)
     def call(argv, **kwargs):
         calls.append(argv)
         if argv[1] == "list":
@@ -607,7 +629,8 @@ def test_cleanup_removes_network_by_immutable_id(tmp_path, monkeypatch):
     calls = []
     adapter = SimpleNamespace(_run=lambda args, **kw: calls.append(args))
     scope = SimpleNamespace(session=SESSION, directory=tmp_path)
-    cleanup.clean(scope, adapter, set(), SHA)
+    preview = cleanup.clean(scope, adapter, set(), SHA, preview=True)
+    cleanup.clean(scope, adapter, set(), SHA, approved=preview["targets"])
     assert calls == [["network", "rm", "immutable-network-id"]]
 
 
@@ -741,12 +764,101 @@ def test_host_confirmation_requires_tty_and_exact_token(monkeypatch):
     with pytest.raises(DockerError, match="interactive"):
         orchestration.confirm("Create VM", f"prepare:{SESSION}")
     monkeypatch.setattr(orchestration.sys.stdin, "isatty", lambda: True)
-    for answer in ("", "yes", "prepare:other"):
-        monkeypatch.setattr("builtins.input", lambda _: answer)
+    for answer in ("", "n", "prepare:other", "yes-to-all"):
+        monkeypatch.setattr("builtins.input", lambda prompt: answer)
         with pytest.raises(DockerError, match="declined"):
             orchestration.confirm("Create VM", f"prepare:{SESSION}")
-    monkeypatch.setattr("builtins.input", lambda _: f"prepare:{SESSION}")
+    monkeypatch.setattr("builtins.input", lambda _: " YeS ")
     orchestration.confirm("Create VM", f"prepare:{SESSION}")
+
+
+def test_host_confirmation_prints_operation_and_eof_declines(monkeypatch, capsys):
+    monkeypatch.setattr(orchestration.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: (_ for _ in ()).throw(EOFError()))
+    with pytest.raises(DockerError, match="declined"):
+        orchestration.confirm("Create a disposable VM", f"prepare:{SESSION}")
+    output = capsys.readouterr().out
+    assert f"Operation: prepare:{SESSION}" in output
+    assert "Create a disposable VM" in output
+
+
+def test_multipass_safe_stderr_keeps_fragments_and_drops_sentinels():
+    secret = b"secret-token-sentinel"
+    value = multipass.safe_stderr(b"Permission denied: " + secret + b"; connection refused")
+    assert "permission denied" in value and "connection refused" in value
+    assert secret.decode() not in value
+
+
+@pytest.mark.parametrize("operation", ["launch", "exec", "identity", "cloud-init", "list", "transfer"])
+def test_multipass_classifies_injected_failures(operation):
+    error = multipass.MultipassError(operation, "failed", True, b"permission denied secret-sentinel")
+    assert error.unknown and error.code == f"multipass-{operation}-failed"
+    assert multipass.evidence(error) == {"diagnostic": {"operation": operation, "stderr": "permission denied"}}
+
+
+def test_staging_roundtrip_roles_and_retains_failed_evidence(tmp_path, monkeypatch):
+    monkeypatch.setattr(staging, "snap_probe", lambda path, expected: None)
+    source_root = Path.home() / "source"
+    source_root.mkdir(mode=0o700)
+    payload = source_root / "plan.json"
+    payload.write_bytes(b"offline plan")
+    payload.chmod(0o600)
+    for role in ("e2e", "builder", "publisher"):
+        exchange = staging.Staging(SESSION, role)
+        staged, expected = exchange.copy_to(payload)
+        assert staged.read_bytes() == payload.read_bytes()
+        assert staged.stat().st_mode & 0o777 == 0o600
+        assert expected["sha256"] == sha256(payload.read_bytes()).hexdigest()
+    archive = b"synthetic archive"
+    digest = sha256(archive).hexdigest()
+    destination = source_root / "images.tar"
+    def transfer(*args, **kwargs):
+        Path(args[2]).write_bytes(archive)
+    received = staging.Staging(SESSION, "builder").receive(transfer, "vm:/archive", destination, digest)
+    assert destination.read_bytes() == archive and destination.stat().st_mode & 0o777 == 0o600
+    assert received["sha256"] == digest
+
+    denied = staging.Staging(SESSION, "publisher", probe=lambda *_: (_ for _ in ()).throw(
+        multipass.MultipassError("staging-access", "denied")))
+    with pytest.raises(multipass.MultipassError):
+        denied.copy_to(payload)
+    retained = [p for p in (Path.home() / "PortfolioDeploymentE2E" / SESSION).glob("publisher-*/plan.json")
+                if p.read_bytes() == payload.read_bytes()]
+    assert retained and all(p.read_bytes() == payload.read_bytes() for p in retained)
+
+
+@pytest.mark.parametrize("mode,uid,nlink", [(0o666, None, 1), (0o600, 99999, 1), (0o600, None, 2)])
+def test_staging_private_file_metadata_rejected(mode, uid, nlink):
+    info = SimpleNamespace(st_mode=stat.S_IFREG | mode, st_uid=os.geteuid() if uid is None else uid,
+                           st_nlink=nlink, st_size=1)
+    with pytest.raises(DockerError, match="unsafe-file"):
+        staging.check_file(info, private=True)
+
+
+def test_staging_rejects_symlink_and_traversal(tmp_path):
+    target = tmp_path / "target"
+    target.write_text("safe")
+    target.chmod(0o600)
+    link = tmp_path / "link.json"
+    link.symlink_to(target)
+    with pytest.raises((DockerError, OSError)):
+        with staging.source(link):
+            pytest.fail("symlink accepted")
+    with pytest.raises(DockerError, match="staging-traversal"):
+        with staging.source(tmp_path / ".." / "escape.json"):
+            pytest.fail("traversal accepted")
+
+
+def test_staging_rejects_group_writable_parent(tmp_path):
+    parent = Path.home() / "shared"
+    parent.mkdir()
+    parent.chmod(0o770)
+    payload = parent / "plan.json"
+    payload.write_text("safe")
+    payload.chmod(0o600)
+    with pytest.raises(DockerError, match="unsafe-source-parent"):
+        with staging.source(payload):
+            pytest.fail("group writable parent accepted")
 
 
 def test_host_state_rejects_symlink_pending_and_corrupt_receipt(tmp_path):
@@ -878,3 +990,31 @@ def test_bootstrap_never_normalizes_private_raw_manifest_artifacts(tmp_path, mon
     owned = tmp_path / "owned.py"
     owned.write_text("pass\n")
     assert list(check_bootstrap.files()) == [owned]
+
+
+def test_vm_image_locks_and_all_manifests_use_verified_staging(images, tmp_path, monkeypatch):
+    # The contract permits producer-selected manifest and lock basenames.
+    doc = json.loads((tmp_path / "lock.json").read_text())
+    for role, record in doc["images"].items():
+        old = tmp_path / record["manifest"]
+        record["manifest"] = "custom-" + role + ".json"
+        old.rename(tmp_path / record["manifest"])
+        (tmp_path / record["manifest"]).chmod(0o600)
+    lock = tmp_path / "custom-lock.json"
+    lock.write_text(json.dumps(doc))
+    lock.chmod(0o600)
+    calls = []
+    machine = vm.VM(SESSION)
+    machine.guest = lambda *args, **kw: calls.append(("guest", args)) or b""
+    def command(*args, **kwargs):
+        assert args[0] == "transfer"
+        path = Path(args[1])
+        assert path.is_relative_to(Path.home() / "PortfolioDeploymentE2E" / SESSION)
+        assert path.name in ("lock.json", "manifest.json")
+        calls.append(("transfer", args))
+    machine.command = command
+    machine.transfer_images(lock)
+    transfers = [args for kind, args in calls if kind == "transfer"]
+    assert len(transfers) == 7
+    assert {args[2].split("/tmp/pd-e2e-")[1] for args in transfers} == {
+        "lock.json", *(record["manifest"] for record in doc["images"].values())}

@@ -172,8 +172,10 @@ and registry network access, at least 64 GiB free host disk for fixture work, an
 capacity for two 2 CPU / 4 GiB / 24 GiB VMs. The later test VM needs additional
 capacity; its own preflight requires 20 GiB free host disk. No host Docker daemon
 or E2E VM is used for fixture creation. The command prints a unique session,
-both VM names and the private `execution.json` path. Exact tokens are separate
-approvals, with blank/EOF/non-TTY/wrong input denied:
+both VM names and the private `execution.json` path. Each phase prints its session,
+VM, action and consequences, then asks `Continue? [y/N]:`. Only `y`/`yes`
+(case insensitive, whitespace trimmed) approve that phase; blank/EOF/non-TTY and
+other answers deny it. The following operation identifiers are labels, not text to type:
 
 1. `builder-prepare:<session>` creates a NEW `pd-fixture-builder-<session>` Ubuntu
    24.04 VM and installs Buildah/Skopeo. Only the pinned plan, minimal source
@@ -200,13 +202,14 @@ approvals, with blank/EOF/non-TTY/wrong input denied:
    and required SSO authorization; avoid broad repository/admin scopes. Follow
    [GHCR authentication requirements](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
    Never put a token in host environment variables, CLI arguments, build arguments,
-   plans, reports or Git. Confirm `publish:<session>` in the original terminal
-   only after login. Skopeo copies each selected manifest with
+   plans, reports, staging or Git. Answer `y` for `publish:<session>` in the original
+   terminal only after login and reviewing all six printed target repositories. Skopeo copies each selected manifest with
    [`--preserve-digests`](https://github.com/containers/skopeo/blob/main/docs/skopeo-copy.1.md),
    uses a unique `fixture-<session>` tag, then verifies the remote raw bytes by
    immutable digest. A conversion, changed byte or failed command stops the attempt.
 5. After all pushes, make all six `pd-e2e-{v1,v2,bad,worker,data1,data2}` packages
-   **public** in GitHub package settings. Then confirm `verify-public:<session>`.
+   **public** in GitHub package settings. Then answer the separate `y/N` prompt
+   for `verify-public:<session>`.
    A fresh empty auth file is used to fetch every manifest/config anonymously,
    verify exact bytes/config digest and linux/amd64. Only after all six pass is
    `artifacts/lock.json` atomically exposed with the unmodified raw manifests.
@@ -332,14 +335,15 @@ exact evidence is preserved. Path failures return specific `e2e-path-*` codes an
 safe guidance instead of the generic prerequisite error; no private path values,
 file contents or tokens are printed by path diagnostics.
 The session, VM name, receipt path and exact diagnosis command are printed
-before VM work. Four prompts require the exact printed tokens, with default deny:
+before VM work. Four separate `Continue? [y/N]:` prompts default to deny:
 
 1. `prepare:<session>` — new 2 CPU / 4 GiB / 16 GiB Ubuntu VM and downloads.
 2. `images:<session>` — six immutable public pulls into that VM's daemon.
 3. `run:<session>` — real Docker scenario mutations using preloaded images.
 4. `activate:<session>` — readiness-gated loopback Caddy activation for that run.
 
-Non-TTY, EOF, blank input, `yes` or a wrong token cannot authorize a phase. Existing
+Only `y` or `yes` (case insensitive, whitespace trimmed) authorize the displayed
+phase. Non-TTY, EOF, blank input, `n`, operation tokens and `yes to all` deny it. Existing
 environment tokens for individual commands do not bypass these prompts. Declining
 after VM creation retains the VM and blocks another orchestration in this state
 directory. No phase runs twice; there is no automatic resume or fallback. A fully
@@ -349,7 +353,10 @@ Host state uses mode-0700 directories, mode-0600 bounded receipts, atomic fsynce
 writes and a persistent nonblocking `controller.lock` for the whole operation.
 Do not unlink it. A phase intent is saved **before** a mutating call; timeout,
 SIGKILL or uncertain response leaves an unfinished/unknown receipt and blocks a
-new run in that directory. The pinned VM session/machine/daemon identity is checked
+new run, including one selecting a different output directory. A fixed private
+`~/.local/share/portfolio-deployment/e2e-control/controller.lock` also serializes
+unified fixture/E2E operations and tracks their receipt directory. The default
+fixture and E2E receipts are inspected even when overrides select new paths. The pinned VM session/machine/daemon identity is checked
 again after each confirmation. No locks, resources or journal are reset after
 failure. The guest's existing host flock still protects its engine operations.
 
@@ -454,7 +461,10 @@ raw environment, HTTP bodies, health logs and secrets are never printed.
 Cleanup is a separate opt-in, never a finally/exit trap. It requires a complete
 fresh inventory, baseline and known admitted artifacts, exact names/labels/project
 identity, no preexisting target IDs or foreign network attachments, then rechecks
-each resource before stop/removal. It does not use prune/down, unlink the fixed
+each resource before stop/removal. The host first obtains a read-only exact
+kind/name/ID list and asks a separate `y/N` confirmation. Guest cleanup compares
+the newly observed full list against that approval under lock; a changed list
+blocks removal. It does not use prune/down, unlink the fixed
 lock, delete volumes/data, reset journals, remove images, delete the VM or stop an
 unknown Caddy. Caddy stays loopback-only with its diagnostic configuration; all
 snapshots and volumes remain. The unrelated fixture is intentionally preserved.
@@ -516,3 +526,98 @@ Manual procedure (operator only):
    block execution. Verify any ready fixture lock before `make e2e`; every real
    operation still requires its separate confirmation. No command resumes or resets
    a previous session automatically.
+
+
+## Snap Multipass file exchange
+
+Private state remains below `~/.local/share/portfolio-deployment/`. The Snap client
+opens only verified staging copies in the nonhidden
+`~/PortfolioDeploymentE2E/<session>/<role>-<unique-operation>/` tree. Every staging
+directory is private `0700`, every file `0600`; no symlinks, traversal, foreign
+owners, unsafe writable parents or hardlinked files are accepted. Operation
+subdirectories are exclusively created and never reused. Builder, publisher and
+E2E cloud-init, source archives, image locks/manifests and image archive transfers
+all use this exchange, including guest-to-host downloads. No host `/tmp` or hidden
+path is sent to Multipass. Guest `/tmp` remains inside the disposable VM.
+
+Copies are bounded to 4 GiB, streamed, hashed and fsynced. Snap access is checked
+with a fixed shell script through `snap run --shell multipass`: it opens the staged
+file for read/write and corroborates exact size and SHA-256. Uploaded artifacts
+are checked for guest type/ownership/size/hash before install or extraction;
+downloads corroborate the guest descriptor, retained staging copy and private
+copy. Raw manifests and OCI blobs retain their additional contract validation.
+Staging retains per-transfer receipts and all bytes on success, failure and
+unknown; nothing is automatically removed. GHCR credentials never enter staging;
+login remains inside the publisher VM only.
+
+For `multipass-staging-access-denied-check-snap-home-permission`, independently
+inspect `snap connections multipass`. If `home` is disconnected, an operator may
+separately authorize `sudo snap connect multipass:home`; the tool never changes
+Snap permissions itself. Check the retained staging file and its private parent
+ownership/modes. Do not create a symlink into `.local` or relax HOME permissions.
+A failed probe stops before the corresponding launch/transfer; no retry occurs.
+
+Transport failures have separate `multipass-list-*`, `multipass-info-*`,
+`multipass-launch-*`, `multipass-exec-*`, `multipass-transfer-*`,
+`multipass-cloud-init-*`, `multipass-identity-*` and staging codes. Safe stderr
+evidence is at most 256 characters of allowlisted diagnostic fragments extracted
+from at most 8192 bytes. Arbitrary lines, command arguments, URLs, tokens and raw
+guest logs are discarded, including unrecognized diagnostic text.
+
+## Closing an unknown builder preparation
+
+Session `4d51ffc5eb90ba5a` must remain in its original directory, with its original
+`execution.json`, cloud-init and lock. The following is an operator procedure;
+none of these live/read-only Multipass commands was run as part of this fix.
+Closure supports **only** unknown `builder-prepare`, with no pinned identities,
+build result, image archive, exported manifests, publication or pending receipt.
+Other phases remain blocked for a separately scoped recovery procedure.
+
+1. Stop all E2E/fixture controllers and independently verify no Multipass
+   launch/exec/transfer/cloud-init operation is unfinished. Process exit or an
+   empty inventory alone is insufficient. Review the original receipt, any
+   `.pending` files, cloud-init and Snap failure evidence. Do not unlink locks,
+   rename state out of the way, delete artifacts or repeat preparation.
+2. Independently inspect `multipass list --format json`, including stopped/deleted
+   instances. There must be no builder, publisher or E2E VM for this session.
+   Read the saved phase and fresh inventory without guest execution:
+
+   ```sh
+   make e2e-fixture-diagnose E2E_SESSION=4d51ffc5eb90ba5a
+   ```
+
+   For a custom original directory, pass `E2E_FIXTURE_DIR=/absolute/original/path`.
+   Retain the printed `receiptSha256` (canonical JSON hash, not a raw-file hash).
+3. Only after independent checks, create a private `0600` JSON evidence file in
+   the original private fixture directory, with these exact fields. Replace
+   `HASH_FROM_DIAGNOSIS`; set the attestations to true only when verified:
+
+   ```json
+   {
+     "session": "4d51ffc5eb90ba5a",
+     "receiptSha256": "HASH_FROM_DIAGNOSIS",
+     "controllersStopped": true,
+     "receiptsReviewed": true,
+     "noUnfinishedMultipassOperations": true,
+     "vmInventoryIndependentlyChecked": true
+   }
+   ```
+
+4. Request closure in a real TTY, using the same original directory:
+
+   ```sh
+   make e2e-close-unknown E2E_SESSION=4d51ffc5eb90ba5a E2E_EVIDENCE="$HOME/.local/share/portfolio-deployment/e2e-fixtures/independent-review.json"
+   ```
+
+   Review the shown session/VM/decision and answer `y` only if correct. Under the
+   fixed host fence and original directory lock, the tool checks receipt/hash,
+   absence of artifacts and two fresh inventories around confirmation. It records
+   the attestations, evidence hash, inventory hashes, operator UID and timestamp
+   in `e2e-control/closed-4d51ffc5eb90ba5a.json`. The original receipt stays unknown;
+   all locks and evidence remain. Decline, changed inventory, changed receipt,
+   pending files or missing evidence leave the block in place.
+5. Closure never resumes or repeats a phase. After a successful recorded decision,
+   an operator may separately authorize a fresh fixture session in a new private
+   fixture directory. The old directory remains evidence and cannot be replayed.
+   A new directory before closure does not bypass the global fence. Removing or
+   replacing that fence/lock is not a recovery operation.

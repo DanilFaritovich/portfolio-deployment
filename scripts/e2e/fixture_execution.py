@@ -12,11 +12,13 @@ from scripts.docker_adapter import DockerError
 from scripts.e2e.fixture_bundle import prepare, source_bytes, import_manifests
 from scripts.e2e.fixture_guest import digest_file, unpack
 from scripts.e2e.host_state import Store
+from scripts.e2e.control import guard, preflight
 from scripts.e2e.images import Images, ROLES
 from scripts.e2e.image_lock import create
 from scripts.e2e.orchestration import confirm
 from scripts.e2e.safety import require
 from scripts.e2e.vm import ROOT, VM
+from scripts.e2e.multipass import evidence
 
 GUEST_ROOT = "/var/lib/pd-fixtures"
 
@@ -39,26 +41,28 @@ class FixtureVM(VM):
         info = self.info()
         require(info.get("state") == "Running", "fixture-vm-not-running")
         if not initializing:
-            check = ("import json,pathlib,platform; "
-                     "d=json.loads(pathlib.Path('/etc/pd-fixture.json').read_text()); "
+            check = ("import json,pathlib,platform,stat; "
+                     "p=pathlib.Path('/etc/pd-fixture.json'); s=p.lstat(); "
+                     "assert stat.S_ISREG(s.st_mode) and s.st_uid==0 and not s.st_mode&0o077; "
+                     "d=json.loads(p.read_text()); "
                      f"assert d['session']=='{self.session}' and d['kind']=='{self.kind}'; "
                      f"assert pathlib.Path('/etc/hostname').read_text().strip()=='{self.name}'; "
                      "assert d['machine']==pathlib.Path('/etc/machine-id').read_text().strip(); "
                      "assert platform.machine()=='x86_64'; print(d['machine'])")
-            identity = self.command("exec", self.name, "--", "sudo", "--", "python3", "-c", check, timeout=10).decode().strip()
+            identity = self.checked_exec("identity", "python3", "-c", check, timeout=10).decode().strip()
             require(self.pinned is None or identity == self.pinned, "fixture-vm-identity-changed")
             self.pinned = identity
-        return self.command("exec", self.name, "--", "sudo", "--", *args, timeout=timeout)
+        return self.checked_exec("cloud-init" if initializing else "exec", *args, timeout=timeout)
 
     def transfer(self, path, name):
         require(name in {"plan.json", "Dockerfile", "app.py", "fixture_guest.py", "images.tar"}, "invalid-fixture-transfer")
         self.guest("true")  # Recheck ownership and no mounts before every transfer.
-        self.command("transfer", str(path), f"{self.name}:/tmp/pd-fixture-{name}", timeout=600)
+        self.upload(path, f"/tmp/pd-fixture-{name}", timeout=600)
         destination = GUEST_ROOT + ("/context/" if name in {"Dockerfile", "app.py"} else "/") + name
         self.guest("install", "-m", "600", f"/tmp/pd-fixture-{name}", destination)
 
     def prepare_fixture(self, directory):
-        existing = json.loads(self.command("list", "--format", "json"))
+        existing = self.inventory()
         require(not any(item["name"] == self.name for item in existing["list"]), "fixture-vm-exists-no-adoption")
         marker = ("import pathlib,json,os; os.umask(0o077); "
                   f"pathlib.Path('/etc/pd-fixture.json').write_text(json.dumps(dict(session='{self.session}',kind='{self.kind}',"
@@ -68,11 +72,12 @@ class FixtureVM(VM):
                  "runcmd": [["mkdir", "-p", GUEST_ROOT + "/context"],
                             ["chmod", "700", GUEST_ROOT], ["python3", "-c", marker]]}
         path = directory / (self.kind + "-cloud-init.yaml")
-        with path.open("x") as out:
+        with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "w") as out:
             out.write("#cloud-config\n" + yaml.safe_dump(cloud))
         path.chmod(0o600)
+        staged, _ = self.staging().copy_to(path)
         self.command("launch", "24.04", "--name", self.name, "--cpus", "2", "--memory", "4G", "--disk", "24G",
-                     "--cloud-init", str(path), timeout=900)
+                     "--cloud-init", str(staged), timeout=900)
         self.guest("cloud-init", "status", "--wait", timeout=900, initializing=True)
         self.transfer(directory / "plan.json", "plan.json")
         self.transfer(directory / "fixture_guest.py", "fixture_guest.py")
@@ -87,8 +92,10 @@ class FixtureVM(VM):
         target = directory / "images.tar"
         require(not target.exists(), "fixture-artifact-exists")
         self.guest("install", "-o", "ubuntu", "-g", "ubuntu", "-m", "600", GUEST_ROOT + "/images.tar", "/home/ubuntu/pd-fixture-images.tar", timeout=600)
-        self.command("transfer", f"{self.name}:/home/ubuntu/pd-fixture-images.tar", str(target), timeout=600)
-        target.chmod(0o600)
+        expected = self.remote_fingerprint("/home/ubuntu/pd-fixture-images.tar")
+        require(expected["sha256"] == result["archive"], "fixture-archive-digest-mismatch")
+        self.staging().receive(self.command, f"{self.name}:/home/ubuntu/pd-fixture-images.tar",
+                               target, result["archive"], size=expected["size"])
         require(digest_file(target) == result["archive"], "fixture-archive-digest-mismatch")
         return result
 
@@ -101,6 +108,13 @@ class FixtureVM(VM):
 
 
 def execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=confirm):
+    preflight()
+    prepare(directory, owner, base, epoch=epoch)  # Offline validation before registration.
+    with guard(directory, "fixtures"):
+        return _execute(directory, owner, base, epoch=epoch, factory=factory, consent=consent)
+
+
+def _execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=confirm):
     prepare(directory, owner, base, epoch=epoch)  # Verify frozen plan/source before any VM access.
     with Store(directory).locked() as store:
         state = store.read("execution.json")
@@ -118,7 +132,7 @@ def execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=confi
             return {**prerequisites, "reason": "fixture-host-prerequisites-blocked",
                     "missing": [name for name, passed in prerequisites.get("checks", {}).items() if not passed]}
         payload = source_bytes(ROOT / "scripts/e2e/fixture_guest.py")
-        with (store.path / "fixture_guest.py").open("xb") as out:
+        with os.fdopen(os.open("fixture_guest.py", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=store.fd), "wb") as out:
             out.write(payload)
         (store.path / "fixture_guest.py").chmod(0o600)
         state = {"version": 1, "session": session, "builder": builder.name, "publisher": publisher.name,
@@ -139,7 +153,11 @@ def execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=confi
                  "Never enter credentials in this terminal. Publisher removes only the temporary auth file after the attempt."),
                 ("verify-public", "Make ALL six GHCR packages public in GitHub package settings now; then verify exact manifests/configs anonymously. No push is repeated."),
             ):
-                consent(message, f"{phase}:{session}")
+                machine = builder if phase in ("builder-prepare", "build") else publisher
+                if phase == "publish":
+                    message += "\nTarget repositories:\n" + "\n".join(
+                        pinned_plan["images"][role]["repository"] for role in sorted(ROLES))
+                consent(f"Phase: {phase}; session: {session}; VM: {machine.name}\n{message}", f"{phase}:{session}")
                 plan = store.read("plan.json")
                 require(plan == pinned_plan, "fixture-plan-changed")
                 require(sha256(source_bytes(store.path / "fixture_guest.py")).hexdigest() == state["payloadSha256"],
@@ -158,7 +176,7 @@ def execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=confi
                     raw = store.path / "raw"
                     raw.mkdir(mode=0o700)
                     for role, content in manifests.items():
-                        with (raw / (role + ".json")).open("xb") as stream:
+                        with os.fdopen(os.open(raw / (role + ".json"), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb") as stream:
                             stream.write(content)
                         (raw / (role + ".json")).chmod(0o600)
                     create(store.path / "repositories.json", raw)  # Validate candidate contract before any publication.
@@ -182,6 +200,7 @@ def execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=confi
             return state
         except BaseException as error:
             state["status"] = "unknown" if state["status"] == "in-progress" else "blocked"
+            state.update(evidence(error))
             state["reason"] = error.code if isinstance(error, DockerError) else "fixture-interrupted-or-incomplete"
             store.write("execution.json", state)
             if isinstance(error, (KeyboardInterrupt, Exception)):

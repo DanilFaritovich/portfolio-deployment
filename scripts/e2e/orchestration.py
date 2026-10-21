@@ -9,20 +9,22 @@ import re
 
 from scripts.docker_adapter import DockerError
 from scripts.e2e.host_state import Store
+from scripts.e2e.control import guard
 from scripts.e2e.images import Images
 from scripts.e2e.safety import require, session_id
 from scripts.e2e.vm import VM
+from scripts.e2e.multipass import evidence
 from scripts.planning_inputs import parse_snapshot, read_snapshot
 
 
 def confirm(message, token):
-    print(message, flush=True)
+    print(f"Operation: {token}\n{message}", flush=True)
     require(sys.stdin.isatty(), "e2e-interactive-confirmation-required")
     try:
-        answer = input(f"Type {token} to continue [default: deny]: ")
+        answer = input("Continue? [y/N]: ")
     except EOFError:
         answer = ""
-    require(answer == token, "e2e-operation-declined")
+    require(answer.strip().lower() in ("y", "yes"), "e2e-operation-declined")
 
 
 def image_fingerprint(path):
@@ -63,6 +65,12 @@ def identity(machine):
 
 
 def run(lock, directory, *, factory=VM, consent=confirm):
+    image_fingerprint(lock)  # Reject invalid input without registering an operation.
+    with guard(directory, "state"):
+        return _run(lock, directory, factory=factory, consent=consent)
+
+
+def _run(lock, directory, *, factory=VM, consent=confirm):
     # Validate before any hypervisor command or confirmation.
     fingerprint = image_fingerprint(lock)
     with Store(directory).locked() as store:
@@ -93,7 +101,7 @@ def run(lock, directory, *, factory=VM, consent=confirm):
             if target.exists():
                 require(target.read_bytes() == raw, "conflicting-e2e-image-snapshot")
             else:
-                with target.open("xb") as stream:
+                with os.fdopen(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb") as stream:
                     stream.write(raw)
                 target.chmod(0o600)
         pinned = snapshot / "lock.json"
@@ -110,9 +118,9 @@ def run(lock, directory, *, factory=VM, consent=confirm):
                 ("images", "Pull six public immutable GHCR fixtures inside the owned VM; no credentials are transferred."),
                 ("run", "Run real Docker mutations and scenarios in the VM; retain all failure state."),
             ):
-                consent(message, f"{phase}:{session}")
+                consent(f"Phase: {phase}; session: {session}; VM: {machine.name}\n{message}", f"{phase}:{session}")
                 if phase == "run":
-                    consent("Authorize readiness-gated loopback Caddy activation inside this VM.", f"activate:{session}")
+                    consent(f"Phase: activate; session: {session}; VM: {machine.name}\nAuthorize readiness-gated loopback Caddy activation inside this VM.", f"activate:{session}")
                 require(image_fingerprint(pinned) == fingerprint, "e2e-lock-changed")
                 if state["identity"] is not None:
                     require(identity(machine) == state["identity"], "e2e-vm-identity-changed")
@@ -144,7 +152,7 @@ def run(lock, directory, *, factory=VM, consent=confirm):
             # SIGKILL leaves durable in-progress intent. Neither path retries/cleans.
             state["status"] = "unknown" if state["status"] == "in-progress" else "blocked"
             state["result"] = {"reason": error.code if isinstance(error, DockerError) else "e2e-interrupted-or-unconfirmed",
-                               "realE2E": "unknown" if state["phase"] == "run" else "not-performed"}
+                               "realE2E": "unknown" if state["phase"] == "run" else "not-performed", **evidence(error)}
             store.write(session + ".json", state)
             if isinstance(error, (KeyboardInterrupt, Exception)):
                 return state
