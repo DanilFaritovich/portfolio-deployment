@@ -14,6 +14,23 @@ from scripts.e2e import cloud_config
 SESSION = "a" * 16
 
 
+def test_http_helper_starts_without_shadowing_stdlib_or_opening_socket(monkeypatch):
+    import subprocess
+    from scripts.e2e import transports
+    def bounded(argv, **kwargs):
+        # Exercise the actual launcher/imports while failing before HTTPConnection
+        # can open a socket. The old launcher shadows stdlib http with http.py.
+        args = list(argv)
+        args[args.index("127.0.0.1") + 1] = "invalid-port"
+        result = subprocess.run(args, capture_output=True, timeout=5)
+        assert result.returncode != 0
+        assert b"invalid literal for int()" in result.stderr
+        assert b"ModuleNotFoundError" not in result.stderr
+        return b'[204, ""]'
+    monkeypatch.setattr(transports, "run_bounded", bounded)
+    assert transports.request("127.0.0.1", 8080, "/health") == (204, b"")
+
+
 @pytest.mark.parametrize("role", ["e2e", "builder", "publisher"])
 def test_generated_cloud_config_preserves_string_arguments(role):
     config = vm.cloud_init(SESSION) if role == "e2e" else fixture_execution.FixtureVM(SESSION, role).cloud_init()

@@ -17,7 +17,7 @@ def request(ip, port, path, *, timeout=2, method="GET", data=None, host=None):
     """Numeric destination only. http.client does not follow redirects or use env proxies."""
     require(ipaddress.ip_address(ip).version == 4 and 0.1 <= timeout <= 10 and
             type(port) is int and 1 <= port <= 65535 and path.startswith("/"), "invalid-private-http-request")
-    raw = run_bounded([sys.executable, str(Path(__file__).with_name("http.py")), ip, str(port), path,
+    raw = run_bounded([sys.executable, "-I", str(Path(__file__).with_name("http.py")), ip, str(port), path,
                        str(timeout), method, base64.b64encode(data).decode("ascii") if data else "", host or ""],
                       timeout=timeout)
     status, body = json.loads(raw)
