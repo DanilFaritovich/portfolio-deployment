@@ -414,6 +414,14 @@ snapshot, durable phase intents and a persistent whole-operation flock. Separate
 interactive confirmations authorize VM creation, immutable pulls, Docker mutations
 and Caddy activation. Host receipts pin VM machine/daemon identity; failed or unknown
 sessions block another orchestration in that state directory without replay/reset.
+`prepared_recovery.py` narrowly handles a lost terminal after successful image
+pulls: `make e2e-interrupt-prepared` pins and verifies the idle controller with a
+Linux pidfd and both flock owners, archives its receipt, then separately confirms
+SIGINT through its existing handler. `make e2e-continue-prepared` requires the
+matching stopped receipt, unchanged images/VM identity and pristine guest session
+evidence. Separate run/activation approvals dispatch only the never-started run;
+a new durable intent forbids replay. Original receipts and lock inodes remain;
+only a complete real 15-scenario result closes the fence with retained evidence.
 `e2e-report` reads local receipts, not live state. Missing fixtures are offered by
 `make e2e`; `e2e-fixtures` prepares them separately with the same defaults and
 confirmations. Verified GitHub origin supplies a lowercase owner. The reviewed

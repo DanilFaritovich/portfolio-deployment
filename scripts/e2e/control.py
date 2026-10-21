@@ -51,7 +51,7 @@ def check(control, path, kind):
             require(terminal or declined or closed(control, state, store.path), "e2e-global-unfinished-review-required")
 
 
-def check_all(control):
+def check_all(control, *, recovering=None):
     require(not any(name.endswith(".pending") for name in os.listdir(control.fd)), "e2e-control-pending-review-required")
     # Existing-builder decisions retain their source directory as durable evidence.
     for name in os.listdir(control.fd):
@@ -60,16 +60,21 @@ def check_all(control):
             if decision.get("decision") == "closed-stopped-failed-builder-no-replay":
                 from scripts.e2e.builder_recovery import verify_retained
                 verify_retained(decision, control)
+            elif decision.get("decision") == "completed-prepared-run-no-replay":
+                from scripts.e2e.prepared_recovery import verify_retained
+                verify_retained(decision)
     # Fixed defaults are checked regardless of overrides: legacy unknown cannot
     # be bypassed by selecting a fresh output/state directory.
     base = Path.home() / ".local/share/portfolio-deployment"
     for path, kind in ((base / "e2e-fixtures", "fixtures"), (base / "e2e-state", "state")):
-        check(control, path, kind)
+        if path != recovering:
+            check(control, path, kind)
     active = control.read("active.json")
     if active:
         path = Path(active["directory"])
         require(os.path.lexists(path), "e2e-tracked-evidence-missing")
-        check(control, path, active["kind"])
+        if path != recovering:
+            check(control, path, active["kind"])
 
 
 @contextmanager
