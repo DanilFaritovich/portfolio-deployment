@@ -427,6 +427,12 @@ only after matching host/guest reports, no guest controller or deployment eviden
 and an empty Caddy configuration. It retains all resources/evidence, permits a new
 VM/session, and never replays the old run. The VM Caddy unit uses `Type=notify`
 so service startup waits for Caddy's readiness signal before the first API read.
+`e2e-close-failed-run` handles known terminal real failures without replay: it
+matches host/guest reports and identity, checks absence of guest operations and
+collects read-only SQLite attempt evidence under flock. Separate approvals stop
+only the pinned disposable VM and record abandonment after Stopped metadata is
+corroborated. Incomplete journals and disks remain unresolved evidence; immutable
+closure decisions allow a new isolated session and retain checks on host evidence.
 `e2e-report` reads local receipts, not live state. Missing fixtures are offered by
 `make e2e`; `e2e-fixtures` prepares them separately with the same defaults and
 confirmations. Verified GitHub origin supplies a lowercase owner. The reviewed

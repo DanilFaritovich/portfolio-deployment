@@ -80,7 +80,7 @@ e2e-report:
 .PHONY: e2e-check e2e-prerequisites e2e-prepare e2e-status e2e-images e2e-test e2e-diagnose e2e-clean
 export E2E_SESSION E2E_AUTHORIZE E2E_GATEWAY_AUTHORIZE E2E_IMAGES
 e2e-check:
-	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_local_e2e.py tests/test_e2e_fixtures.py tests/test_e2e_bootstrap.py tests/test_e2e_paths.py tests/test_e2e_control.py tests/test_e2e_transport.py tests/test_e2e_builder_recovery.py tests/test_e2e_prepared_recovery.py
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_local_e2e.py tests/test_e2e_fixtures.py tests/test_e2e_bootstrap.py tests/test_e2e_paths.py tests/test_e2e_control.py tests/test_e2e_transport.py tests/test_e2e_builder_recovery.py tests/test_e2e_prepared_recovery.py tests/test_e2e_failed_run_recovery.py
 
 e2e-prerequisites:
 	@$(PYTHON) -m scripts.e2e.cli prerequisites
@@ -113,7 +113,7 @@ e2e-close-unknown:
 	@$(PYTHON) -m scripts.e2e.cli close-unknown
 
 # Incident-specific read-only review while Running, closure only after operator stop.
-.PHONY: e2e-interrupt-prepared e2e-continue-prepared e2e-close-failed-bootstrap
+.PHONY: e2e-interrupt-prepared e2e-continue-prepared e2e-close-failed-bootstrap e2e-close-failed-run
 export E2E_CONTROLLER_PID
 e2e-interrupt-prepared:
 	@$(PYTHON) -m scripts.e2e.cli interrupt-prepared
@@ -123,6 +123,9 @@ e2e-continue-prepared:
 
 e2e-close-failed-bootstrap:
 	@$(PYTHON) -m scripts.e2e.cli close-failed-bootstrap
+
+e2e-close-failed-run:
+	@$(PYTHON) -m scripts.e2e.cli close-failed-run
 
 e2e-review-failed-builder:
 	@$(PYTHON) -m scripts.e2e.cli review-failed-builder

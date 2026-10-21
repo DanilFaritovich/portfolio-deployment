@@ -63,6 +63,9 @@ def check_all(control, *, recovering=None):
             elif decision.get("decision") in ("completed-prepared-run-no-replay", "closed-failed-bootstrap-no-replay"):
                 from scripts.e2e.prepared_recovery import verify_retained
                 verify_retained(decision)
+            elif decision.get("decision") == "abandoned-failed-run-stopped-no-replay":
+                from scripts.e2e.failed_run_recovery import verify_retained
+                verify_retained(decision)
     # Fixed defaults are checked regardless of overrides: legacy unknown cannot
     # be bypassed by selecting a fresh output/state directory.
     base = Path.home() / ".local/share/portfolio-deployment"
