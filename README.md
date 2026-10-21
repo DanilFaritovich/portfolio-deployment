@@ -186,8 +186,15 @@ isolation, scoped cleanup and incomplete live discovery. Real smoke was not run.
 Compose success is `applied-unverified`; timeout/disconnect is `unknown` and
 requires fresh discovery. Readiness and release success remain unverified.
 
-No GitHub Actions workflow is installed through Stage 07; CI is Planned in Stage 08.
-No `verify`, `ci`, deploy or production apply target exists. Passing offline checks
+Stage 08 adds offline GitHub Actions for PRs into `develop` and `main`: pinned
+Python/tools, pip caching, minimal read permissions, `make check` and
+`make workflow-check` (actionlint). No `make ci` alias is needed. No real VM/E2E,
+Docker, publication or deployment runs in CI. Configure the required
+**Offline CI / Offline checks** check in GitHub branch rules manually.
+See [Stage 08](docs/stage-08-automation.md) for tool setup and the reviewed manual
+procedure to export/verify successful-session evidence before separately approved
+VM stop/deletion. This procedure has not been executed; existing VMs are retained.
+No `verify`, deploy or production apply target exists. Passing offline checks
 does not prove live Docker, HTTPS, reconciliation or rollback.
 
 ## Development standards and Git delivery
@@ -226,7 +233,7 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | Stage 05 | Docker Deployment Engine | Implemented foundation; PR #5 merged; smoke not-performed; production apply blocked |
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Implemented; real local VM E2E passed, 15/15; production acceptance pending |
-| Stage 08 | GitHub Actions & Automation | Planned |
+| Stage 08 | GitHub Actions & Automation | Implemented offline; manual VM completion procedure awaiting live review |
 | Stage 09 | Production Integration & Release | Planned |
 
 Stage 05 selects Python CLI without changing Stage 02–04 contracts. Real
@@ -279,7 +286,7 @@ automatically. `make e2e-check` and `make check` remain fully offline.
 **Verified local acceptance (2026-10-21):** session `4963fe050c4567f2`, receipt
 `complete/passed`, `realE2E=performed`, **15/15 real scenarios passed**; the accepted
 implementation also passed **779 offline tests**. Production deployment was not
-performed, and Stages 08–09 remain Planned. Earlier failed attempts and their
+performed. Stage 08 adds offline CI; Stage 09 remains Planned. Earlier failed attempts and their
 closure evidence are retained; intentional crash/unknown journals remain
 analysis-only, without replay. See [acceptance and history](docs/local-e2e.md#verified-local-acceptance).
 

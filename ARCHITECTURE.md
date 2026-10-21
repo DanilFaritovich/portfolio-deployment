@@ -284,10 +284,19 @@ YAML and installed standards without network, Docker or secrets. `make validate`
 runs Stage 02–07 offline pytest suites. `make plan` performs explicit-input offline
 planning. Dependencies are provisioned separately; clean setup may download PyYAML, jsonschema and pytest. External URLs are not contacted by checks.
 
-**Planned offline CI (Stage 08):** use the same Makefile interface, pinned tools,
-read-only checks and least-privilege permissions. No SSH, production endpoints,
-DNS or production credentials. GitHub-hosted tool/source provisioning is distinct
-from offline test execution. No workflow is installed through Stage 07.
+**Implemented offline CI (Stage 08):** PRs into `develop`/`main` run `make check`
+and `make workflow-check` with pinned Python/dependencies/actions and checked
+actionlint, pip caching and `contents: read` only. Source credentials are not
+persisted. Tool/source provisioning needs network; validation is offline and
+read-only. No VM/E2E, Docker, publication or deployment runs. Required branch
+checks remain an administrator setting. See [Stage 08](docs/stage-08-automation.md).
+
+The VM-only gateway now requires retained-route reachability before `/load`; the
+replacement target uses caller readiness instead of its stale old endpoint. All
+routes are verified after load. Successful VM completion is a documented manual
+export/integrity-review procedure with separate stop/delete approvals, not a new
+recovery/deletion API. No VM was stopped/deleted; failed-session evidence and
+recovery fences remain unchanged.
 
 **Implemented and accepted in a disposable local VM (Stage 07):** separate
 Multipass Ubuntu VM, fixed local daemon identity, admitted immutable test images,
@@ -305,7 +314,7 @@ production mutations. Never present local results as production acceptance evide
 See the preliminary [roadmap](docs/roadmap.md). Stages 01–04 are implemented
 offline; Stage 05 is an engine foundation with an unexecuted local smoke harness.
 Stage 06 is implemented offline; Stage 07 infrastructure passed real disposable
-VM acceptance; Stages 08–09 remain Planned. Production
+VM acceptance; Stage 08 adds offline CI and Stage 09 remains Planned. Production
 source/trigger, configuration delivery, full live observation integration and
 operator recovery/retention procedures remain open. See
 [development instructions](AGENTS.md) for workflow boundaries.
@@ -379,7 +388,7 @@ Acceptance evidence is retained outside Git: host receipt
 `~/.local/share/portfolio-deployment/e2e-state-agent.uZQWee44/4963fe050c4567f2.json`
 records `complete/passed`, `mode=real`, `realE2E=performed` and all 15 results.
 The accepted implementation also passed 779 offline tests. Production deployment
-was not performed; this local VM acceptance leaves Stages 08–09 Planned.
+was not performed; Stage 08 adds offline CI, while Stage 09 remains Planned.
 See [acceptance and failed-attempt history](docs/local-e2e.md#verified-local-acceptance).
 The VM retains its report, baseline, gateway snapshots and intentional crash/unknown
 journals; recovery analysis confirms no automatic completion or replay. Failed
