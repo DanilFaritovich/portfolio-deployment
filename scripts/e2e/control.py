@@ -60,7 +60,7 @@ def check_all(control, *, recovering=None):
             if decision.get("decision") == "closed-stopped-failed-builder-no-replay":
                 from scripts.e2e.builder_recovery import verify_retained
                 verify_retained(decision, control)
-            elif decision.get("decision") == "completed-prepared-run-no-replay":
+            elif decision.get("decision") in ("completed-prepared-run-no-replay", "closed-failed-bootstrap-no-replay"):
                 from scripts.e2e.prepared_recovery import verify_retained
                 verify_retained(decision)
     # Fixed defaults are checked regardless of overrides: legacy unknown cannot

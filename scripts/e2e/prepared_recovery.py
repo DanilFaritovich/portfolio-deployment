@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import select
 import signal
+import base64
 
 from scripts.docker_adapter import DockerError
 from scripts.e2e import control, orchestration
@@ -189,8 +190,90 @@ def verify_retained(decision):
                 'recovery-retained-evidence-missing')
         prepared(proof['before'], session)
         interrupted(state, proof['before'])
+        closing_bootstrap = decision['decision'] == 'closed-failed-bootstrap-no-replay'
         require(stopped == {'receipt': state, 'receiptSha256': control.digest(state)} and
-                decision['receiptSha256'] == control.digest(state) and attempt['status'] == 'passed' and
+                decision['receiptSha256'] == control.digest(state) and
+                attempt['status'] == ('blocked' if closing_bootstrap else 'passed') and
                 attempt['originalReceiptSha256'] == control.digest(state) and
                 decision['runSha256'] == control.digest(attempt) and
                 not any(n.endswith('.pending') for n in os.listdir(archive.fd)), 'recovery-retained-evidence-changed')
+        if closing_bootstrap:
+            observation = archive.read('abandoned-bootstrap.json')
+            require(observation is not None and control.digest(observation) == decision['observationSha256'],
+                    'recovery-retained-bootstrap-review-changed')
+            failed_bootstrap_report(attempt['result'])
+
+
+def failed_bootstrap_report(report):
+    from scripts.e2e.runner import SCENARIOS
+    require(report.get('status') == 'blocked' and report.get('mode') == 'real' and
+            report.get('realE2E') == 'performed' and
+            report.get('scenarios') == [
+                {'scenario': s, 'status': 'blocked' if i == 0 else 'not-performed',
+                 'evidence': {'reason': 'docker-command-failed'} if i == 0 else {}}
+                for i, s in enumerate(SCENARIOS)], 'recovery-only-failed-bootstrap-without-scenarios')
+
+
+def bootstrap_observation(machine, state, attempt):
+    from scripts.e2e.gateway import configuration
+    require(orchestration.identity(machine) == state['identity'], 'recovery-vm-identity-changed')
+    report = machine.invoke('diagnose', f'diagnose:{machine.session}')
+    require(report.get('status') == 'passed' and report.get('report') == attempt['result'],
+            'recovery-guest-report-changed')
+    names = json.loads(machine.guest('/opt/portfolio-e2e/.venv/bin/python', '-c',
+        'import json,os; print(json.dumps(sorted(os.listdir('
+        f'"/var/lib/portfolio-e2e/{machine.session}"))))'))
+    require(names == ['baseline.json', 'identity.json', 'registry', 'report.json'],
+            'recovery-bootstrap-has-deployment-evidence')
+    # Bootstrap precedes creation of any journal/deployment container. Accept no
+    # deployment or unknown container, even when stopped. No resource is removed.
+    containers = machine.guest('/usr/bin/docker', '--host', 'unix:///run/docker.sock',
+                               'ps', '--all', '--format', '{{.Names}}').decode().splitlines()
+    require(containers == [machine.name + '-unrelated'], 'recovery-bootstrap-container-scope-changed')
+    processes = machine.guest('/usr/bin/ps', '-eo', 'args=').decode().splitlines()
+    require(not any(('e2e_guest.py' in p and 'run' in p.split()) or
+                    ('docker' in p.split() and 'compose' in p.split()) for p in processes),
+            'recovery-guest-controller-still-running')
+    status, raw = json.loads(machine.guest('/opt/portfolio-e2e/.venv/bin/python', '-I',
+        '/opt/portfolio-e2e/scripts/e2e/http.py', '127.0.0.1', '2019', '/config/', '2', 'GET', '', ''))
+    require(status == 200 and json.loads(base64.b64decode(raw, validate=True)) == configuration(),
+            'recovery-bootstrap-caddy-not-empty')
+    return {'identity': state['identity'], 'report': report['report'], 'sessionFiles': names,
+            'containers': containers, 'guestController': 'absent', 'gateway': 'verified-empty'}
+
+
+def abandon_bootstrap(path, session, *, consent=orchestration.confirm, factory=VM):
+    """Close a terminal, pre-deployment bootstrap failure; NEVER resume/replay it."""
+    session_id(session)
+    with Store(control.root()).locked() as fence, Store(path).locked() as store, \
+            Store(control.root() / ('prepared-' + session)).locked() as archive:
+        state, proof = orchestration.current(store), archive.read('stop.json')
+        stopped, attempt = archive.read('stopped.json'), archive.read('run.json')
+        require(proof is not None and proof['session'] == session and proof['directory'] == str(store.path) and
+                stopped == {'receipt': state, 'receiptSha256': control.digest(state)} and
+                attempt is not None and attempt['status'] == 'blocked' and
+                attempt['originalReceiptSha256'] == control.digest(state), 'recovery-bootstrap-proof-required')
+        prepared(proof['before'], session)
+        interrupted(state, proof['before'])
+        failed_bootstrap_report(attempt['result'])
+        require(fence.read('active.json') == {'kind': 'state', 'directory': str(store.path)},
+                'recovery-active-directory-mismatch')
+        require(fence.read('closed-' + session + '.json') is None and
+                not any(n.endswith('.pending') for n in os.listdir(archive.fd)) and
+                not any(n.endswith('.pending') for n in os.listdir(store.fd)), 'recovery-bootstrap-uncertain')
+        control.check_all(fence, recovering=store.path)
+        machine = factory(session)
+        before = bootstrap_observation(machine, state, attempt)
+        consent(f'Phase: close-failed-bootstrap; session: {session}; VM: {machine.name}.\n'
+                'Record failed bootstrap as terminal, never successful. Preserve VM, resources, images, '
+                'all reports and journals. No replay, cleanup or deletion. A NEW VM/run needs separate approvals.',
+                f'close-failed-bootstrap:{session}')
+        require(orchestration.current(store) == state and archive.read('run.json') == attempt and
+                bootstrap_observation(machine, state, attempt) == before, 'recovery-bootstrap-observation-changed')
+        archive.write('abandoned-bootstrap.json', before, immutable=True)
+        decision = {'session': session, 'directory': str(store.path), 'receiptSha256': control.digest(state),
+                    'decision': 'closed-failed-bootstrap-no-replay', 'recovery': str(archive.path),
+                    'runSha256': control.digest(attempt), 'observationSha256': control.digest(before)}
+        fence.write('closed-' + session + '.json', decision, immutable=True)
+        return {'status': 'passed', 'session': session, 'decision': 'closed-failed-bootstrap-no-replay',
+                'realE2E': 'failed-bootstrap-preserved', 'vm': 'retained'}

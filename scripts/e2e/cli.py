@@ -77,7 +77,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("run", "fixtures", "report", "fixture-diagnose", "close-unknown",
                                           "review-failed-builder", "close-failed-builder",
-                                          "interrupt-prepared", "continue-prepared"))
+                                          "interrupt-prepared", "continue-prepared", "close-failed-bootstrap"))
     parser.add_argument("--pid", type=int, default=int(os.environ.get("E2E_CONTROLLER_PID") or 0))
     parser.add_argument("--session", default=os.environ.get("E2E_SESSION", ""))
     parser.add_argument("--evidence", default=os.environ.get("E2E_EVIDENCE", ""))
@@ -121,9 +121,11 @@ def main(argv=None):
                         return 2
             Images(lock)  # Invalid existing locks fail closed, never trigger a rebuild.
             result = orchestration.run(lock, args.state_dir)
-        elif args.action in ("interrupt-prepared", "continue-prepared"):
+        elif args.action in ("interrupt-prepared", "continue-prepared", "close-failed-bootstrap"):
             from scripts.e2e import prepared_recovery
-            result = (prepared_recovery.stop(args.state_dir, args.session, args.pid)
+            result = (prepared_recovery.abandon_bootstrap(args.state_dir, args.session)
+                      if args.action == "close-failed-bootstrap" else
+                      prepared_recovery.stop(args.state_dir, args.session, args.pid)
                       if args.action == "interrupt-prepared" else
                       prepared_recovery.continue_prepared(args.state_dir, args.session))
         elif args.action == "fixture-diagnose":

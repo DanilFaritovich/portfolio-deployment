@@ -422,6 +422,11 @@ matching stopped receipt, unchanged images/VM identity and pristine guest sessio
 evidence. Separate run/activation approvals dispatch only the never-started run;
 a new durable intent forbids replay. Original receipts and lock inodes remain;
 only a complete real 15-scenario result closes the fence with retained evidence.
+`e2e-close-failed-bootstrap` separately records an unsuccessful terminal bootstrap
+only after matching host/guest reports, no guest controller or deployment evidence,
+and an empty Caddy configuration. It retains all resources/evidence, permits a new
+VM/session, and never replays the old run. The VM Caddy unit uses `Type=notify`
+so service startup waits for Caddy's readiness signal before the first API read.
 `e2e-report` reads local receipts, not live state. Missing fixtures are offered by
 `make e2e`; `e2e-fixtures` prepares them separately with the same defaults and
 confirmations. Verified GitHub origin supplies a lowercase owner. The reviewed

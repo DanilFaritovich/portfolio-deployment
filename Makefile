@@ -113,13 +113,16 @@ e2e-close-unknown:
 	@$(PYTHON) -m scripts.e2e.cli close-unknown
 
 # Incident-specific read-only review while Running, closure only after operator stop.
-.PHONY: e2e-interrupt-prepared e2e-continue-prepared
+.PHONY: e2e-interrupt-prepared e2e-continue-prepared e2e-close-failed-bootstrap
 export E2E_CONTROLLER_PID
 e2e-interrupt-prepared:
 	@$(PYTHON) -m scripts.e2e.cli interrupt-prepared
 
 e2e-continue-prepared:
 	@$(PYTHON) -m scripts.e2e.cli continue-prepared
+
+e2e-close-failed-bootstrap:
+	@$(PYTHON) -m scripts.e2e.cli close-failed-bootstrap
 
 e2e-review-failed-builder:
 	@$(PYTHON) -m scripts.e2e.cli review-failed-builder

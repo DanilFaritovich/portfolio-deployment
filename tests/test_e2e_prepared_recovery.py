@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import base64
 
 import pytest
 
@@ -225,3 +226,72 @@ def test_stop_declined_never_sends_signal(setup, monkeypatch):
         recovery.stop(path, SESSION, 123, consent=decline, factory=Machine)
     with Store(control.root() / ('prepared-' + SESSION)).locked() as archive:
         assert archive.read('stop.json') is None
+
+
+def blocked_bootstrap():
+    return {'version': 1, 'mode': 'real', 'status': 'blocked', 'realE2E': 'performed', 'scenarios': [
+        {'scenario': s, 'status': 'blocked' if i == 0 else 'not-performed',
+         'evidence': {'reason': 'docker-command-failed'} if i == 0 else {}}
+        for i, s in enumerate(SCENARIOS)]}
+
+
+class BootstrapMachine(Machine):
+    def invoke(self, action, *args):
+        assert action == 'diagnose'
+        return {'status': 'passed', 'report': blocked_bootstrap()}
+
+    def guest(self, *args):
+        if args[0] == '/usr/bin/docker':
+            return (self.name + '-unrelated\n').encode()
+        if args[0] == '/usr/bin/ps':
+            return b'/sbin/init\n/usr/bin/caddy run --config /etc/portfolio-e2e-caddy.json\n'
+        if '-I' in args:
+            from scripts.e2e.gateway import configuration
+            return json.dumps([200, base64.b64encode(json.dumps(configuration()).encode()).decode()]).encode()
+        return json.dumps(['baseline.json', 'identity.json', 'registry', 'report.json']).encode()
+
+
+def test_close_failed_bootstrap_keeps_all_receipts_and_no_replay(setup):
+    path, state = setup
+    after = archive_stop(path, state)
+    attempt = {'version': 1, 'status': 'blocked', 'originalReceiptSha256': control.digest(after),
+               'result': blocked_bootstrap()}
+    archive_path = control.root() / ('prepared-' + SESSION)
+    with Store(archive_path).locked() as archive:
+        archive.write('run.json', attempt)
+    original = (path / (SESSION + '.json')).read_bytes()
+    original_run = (archive_path / 'run.json').read_bytes()
+    result = recovery.abandon_bootstrap(path, SESSION, factory=BootstrapMachine, consent=lambda *a: None)
+    assert result['decision'] == 'closed-failed-bootstrap-no-replay'
+    assert (path / (SESSION + '.json')).read_bytes() == original
+    assert (archive_path / 'run.json').read_bytes() == original_run
+    control.preflight()
+    with pytest.raises(DockerError):
+        recovery.continue_prepared(path, SESSION, factory=Machine)
+    (archive_path / 'abandoned-bootstrap.json').unlink()
+    with pytest.raises(DockerError, match='bootstrap-review-changed'):
+        control.preflight()
+
+
+@pytest.mark.parametrize('change', ['run-process', 'journal', 'container', 'report', 'caddy'])
+def test_bootstrap_closure_rejects_unknown_or_deployment_evidence(setup, change):
+    _, state = setup
+    class Changed(BootstrapMachine):
+        def invoke(self, *args):
+            doc = super().invoke(*args)
+            if change == 'report':
+                doc['report']['status'] = 'failed'
+            return doc
+
+        def guest(self, *args):
+            if change == 'run-process' and args[0] == '/usr/bin/ps':
+                return b'python /opt/portfolio-e2e/scripts/e2e_guest.py run\n'
+            if change == 'journal' and '-c' in args:
+                return json.dumps(['baseline.json', 'identity.json', 'journal', 'registry', 'report.json']).encode()
+            if change == 'container' and args[0] == '/usr/bin/docker':
+                return b'deployment-container\n'
+            if change == 'caddy' and '-I' in args:
+                return json.dumps([200, base64.b64encode(b'{}').decode()]).encode()
+            return super().guest(*args)
+    with pytest.raises(DockerError):
+        recovery.bootstrap_observation(Changed(SESSION), state, {'result': blocked_bootstrap()})
