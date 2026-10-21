@@ -35,7 +35,7 @@ class Gateway:
         require(doc == configuration(routes) and len(routes) <= 32, "foreign-caddy-configuration")
         return doc
 
-    def observations(self, desired, endpoints):
+    def observations(self, desired, endpoints, *, updating=None):
         doc = self.active()
         active = doc["apps"]["http"]["servers"]["e2e"]["routes"]
         catalog = {r.application: r for r in desired_routes(desired)}
@@ -50,6 +50,11 @@ class Gateway:
             # Host/component/port come from actual active config matched against the
             # closed registry route catalog. A stale IP is present but unverified.
             result[identity] = {"hostname": route.hostname, "component": route.component, "port": route.port}
+            # Activation may replace a stale target endpoint after the caller's
+            # readiness gate. Still validate its ownership/shape above; only
+            # retained routes must be reachable through their current endpoint.
+            if identity == updating:
+                continue
             ip = endpoints.get((identity, route.component))
             if not ip or dial != f"{ip}:{route.port}":
                 verified = False
@@ -85,8 +90,10 @@ class Gateway:
         require(self.authorization == f"activate:{self.scope.session}" and ready is True,
                 "explicit-ready-gateway-authorization-required")
         before = self.active()
-        # Validate ALL active routes before retaining them.
-        self.observations(desired, endpoints)
+        # Validate every active route; require reachability for retained routes.
+        # The target uses the caller's readiness gate and full post-load probes.
+        _, verified = self.observations(desired, endpoints, updating=application)
+        require(verified, "caddy-retained-route-unreachable")
         route = next(r for r in desired_routes(desired) if r.application == application)
         require((application, route.component) in endpoints, "gateway-upstream-unavailable")
         target = self.route(route, f"{endpoints[(application, route.component)]}:{route.port}")

@@ -463,6 +463,60 @@ def test_gateway_readiness_authorization_preserves_retained_routes(world, monkey
     assert before == state[0] and len(loads) == 2
 
 
+@pytest.mark.parametrize("retained_failure", [None, "proxy", "upstream", "transport", "stale", "missing"])
+def test_gateway_activation_checks_retained_routes_before_load(world, monkeypatch, retained_failure):
+    scope = SimpleNamespace(session=SESSION, validate=lambda: None, directory=world.reader.root.parent)
+    gate = gateway.Gateway(scope, authorization=f"activate:{SESSION}")
+    desired, _, _ = world.provider.refresh()
+    catalog = {r.application: r for r in gateway.desired_routes(desired)}
+    retained = gate.route(catalog["e2e-sentinel"], "172.28.0.4:8080")
+    target = gate.route(catalog["e2e-app"], "172.28.0.2:8080")
+    # Derive ports from the fixture contract, rather than assuming its values.
+    retained["handle"][0]["upstreams"][0]["dial"] = f"172.28.0.4:{catalog['e2e-sentinel'].port}"
+    target["handle"][0]["upstreams"][0]["dial"] = f"172.28.0.2:{catalog['e2e-app'].port}"
+    state, loads, probes = [gateway.configuration([target, retained])], [], []
+    before = deepcopy(state[0])
+    endpoints = {("e2e-app", "frontend"): "172.28.0.3", ("e2e-sentinel", "frontend"): "172.28.0.4"}
+    if retained_failure == "stale":
+        endpoints[("e2e-sentinel", "frontend")] = "172.28.0.9"
+    if retained_failure == "missing":
+        del endpoints[("e2e-sentinel", "frontend")]
+
+    def http(ip, port, path, **kwargs):
+        if path == "/config/":
+            return 200, json.dumps(state[0]).encode()
+        if path == "/load":
+            loads.append(json.loads(kwargs["data"]))
+            state[0] = loads[-1]
+            return 200, b""
+        probes.append((ip, kwargs.get("host")))
+        is_retained = ip == "172.28.0.4" or kwargs.get("host") == catalog["e2e-sentinel"].hostname
+        if is_retained and retained_failure == "transport":
+            raise DockerError("unreachable")
+        if (retained_failure == "proxy" and kwargs.get("host") == catalog["e2e-sentinel"].hostname or
+                retained_failure == "upstream" and ip == "172.28.0.4"):
+            return 503, b""
+        # Old target is unavailable both directly and through the old Caddy route.
+        if ip == "172.28.0.2" or not loads and kwargs.get("host") == catalog["e2e-app"].hostname:
+            return 503, b""
+        return 200, b""
+
+    monkeypatch.setattr(gateway, "request", http)
+    monkeypatch.setattr(gate, "validate", lambda candidate: None)
+    if retained_failure:
+        with pytest.raises(DockerError, match="caddy-retained-route-unreachable"):
+            gate.activate(desired, "e2e-app", endpoints, True, lease=SimpleNamespace(active=True))
+        assert not loads and state[0] == before
+        assert not (scope.directory / "gateway-snapshots").exists()
+    else:
+        assert gate.activate(desired, "e2e-app", endpoints, True, lease=SimpleNamespace(active=True))
+        assert len(loads) == 1
+        routes = state[0]["apps"]["http"]["servers"]["e2e"]["routes"]
+        assert routes == [gate.route(catalog["e2e-app"], f"172.28.0.3:{catalog['e2e-app'].port}"), retained]
+        assert ("172.28.0.3", None) in probes
+        assert ("127.0.0.1", catalog["e2e-app"].hostname) in probes
+
+
 def test_gateway_foreign_config_cannot_be_loaded(monkeypatch):
     gate = gateway.Gateway(SimpleNamespace(validate=lambda: None))
     monkeypatch.setattr(gateway, "request", lambda *a, **kw: (200, b'{"admin":{"listen":"0.0.0.0:2019"}}'))
