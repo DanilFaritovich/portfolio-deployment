@@ -8,7 +8,7 @@ import sys
 try:
     from scripts.deployment_journal import JournalError
     from scripts.docker_adapter import DockerError
-    from scripts.e2e import bootstrap, fixture_bundle, fixture_execution, orchestration, vm
+    from scripts.e2e import bootstrap, fixture_bundle, fixture_execution, orchestration, paths, vm
     from scripts.e2e.host_state import Store
     from scripts.e2e.images import Images
     from scripts.e2e.safety import require
@@ -47,6 +47,10 @@ def fixtures(args):
 
 
 def guidance(reason):
+    if reason == "e2e-legacy-state-review-required":
+        return "Legacy .e2e-state or .e2e-fixtures needs manual review. Stop concurrent controllers; inspect receipts and pinned VM identity locally. Resolve unfinished/unknown operations before migration; never retry or reset them. See docs/local-e2e.md legacy transition. No files were moved or deleted."
+    if reason.startswith("e2e-path-") or reason == "unsafe-e2e-host-state":
+        return "Use owned private state directories (0700; files 0600) below ~/.local/share/portfolio-deployment, or safe E2E_STATE_DIR/E2E_FIXTURE_DIR overrides. Every ancestor must be owned by root/current user and not group/world writable; symlinks and traversal are forbidden. Do not chmod HOME, Work or the Git checkout. Existing unsafe directories are never repaired automatically."
     if "origin" in reason or "owner" in reason:
         return "Set a single GitHub origin fetch/push URL for this repository (git remote -v); use E2E_FIXTURE_OWNER only to override the target GHCR owner."
     if "base" in reason or "python3" in reason:
@@ -66,9 +70,9 @@ def main(argv=None):
         return vm.main(argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("run", "fixtures", "report"))
-    parser.add_argument("--state-dir", default=os.environ.get("E2E_STATE_DIR") or ".e2e-state")
+    parser.add_argument("--state-dir", default=None)
     parser.add_argument("--images", default=os.environ.get("E2E_IMAGES", ""))
-    parser.add_argument("--output", default=os.environ.get("E2E_FIXTURE_DIR") or ".e2e-fixtures")
+    parser.add_argument("--output", default=None)
     parser.add_argument("--owner", default=os.environ.get("E2E_FIXTURE_OWNER", ""))
     parser.add_argument("--base", default=os.environ.get("E2E_PYTHON_BASE", ""))
     parser.add_argument("--epoch", type=int, default=os.environ.get("E2E_SOURCE_DATE_EPOCH") or 0)
@@ -77,6 +81,9 @@ def main(argv=None):
     parser.add_argument("--plan", action="store_true", help="offline plan only; requires an explicit immutable --base")
     args = parser.parse_args(argv)
     try:
+        paths.check_legacy()
+        args.state_dir = paths.resolve("state", args.state_dir)
+        args.output = paths.resolve("fixtures", args.output)
         if args.action in ("run", "fixtures"):
             args.owner = bootstrap.owner_from_origin(args.owner)
         if args.action == "run":
@@ -113,8 +120,9 @@ def main(argv=None):
         return 0 if result["status"] == "passed" else 2
     except (DockerError, JournalError, OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         print(json.dumps({"status": "blocked", "reason": error.code if isinstance(error, DockerError)
+                          else str(error) if isinstance(error, JournalError) and str(error).startswith("e2e-path-")
                           else "e2e-prerequisite-or-host-state-invalid",
-                          "help": guidance(error.code if isinstance(error, DockerError) else "invalid-state"),
+                          "help": guidance(error.code if isinstance(error, DockerError) else str(error) if isinstance(error, JournalError) else "invalid-state"),
                           "realE2E": "not-performed-by-this-call"}))
         return 2
 

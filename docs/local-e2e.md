@@ -111,7 +111,7 @@ make e2e
 
 Install the pinned development dependencies first (see README); if they are in
 `.venv`, pass `PYTHON=.venv/bin/python` to Make. A real terminal is required.
-Without a ready `.e2e-fixtures/artifacts/lock.json`, the command offers preparation
+Without a ready `~/.local/share/portfolio-deployment/e2e-fixtures/artifacts/lock.json`, the command offers preparation
 of six images (`prepare-fixtures`, default deny), then requests every separate
 approval listed below. A verified existing lock skips build/publication and goes
 straight to VM prepare → immutable pulls → real E2E. An invalid lock or an
@@ -122,7 +122,11 @@ and push URLs (HTTPS, scp-style SSH or `ssh://git@github.com/`). Both must name 
 same repository; unknown hosts, credentials in URLs, multiple URLs or conflicting
 identities fail closed. The owner is normalized to lowercase. `E2E_FIXTURE_OWNER`
 overrides the target owner after origin verification. All `E2E_*` settings are
-optional overrides; `.e2e-fixtures` and `.e2e-state` are private defaults.
+optional overrides. Private defaults are absolute paths based on the current user's
+home: `~/.local/share/portfolio-deployment/e2e-fixtures/` and
+`~/.local/share/portfolio-deployment/e2e-state/`. No exports are required.
+`make e2e`, `e2e-fixtures` and `e2e-report` share this path mechanism; individual
+VM commands continue to use explicit session IDs and guest-side state.
 
 The reviewed source in `e2e/python-base.json` is Docker Official Image
 `docker.io/library/python:3.13-slim-bookworm`, maintained at
@@ -302,18 +306,31 @@ make e2e-report PYTHON=.venv/bin/python
 ```
 
 After successful fixture publication, `make e2e` automatically uses
-`$E2E_FIXTURE_DIR/artifacts/lock.json` (default `.e2e-fixtures/artifacts/lock.json`).
+`$E2E_FIXTURE_DIR/artifacts/lock.json` (default `~/.local/share/portfolio-deployment/e2e-fixtures/artifacts/lock.json`).
 `E2E_IMAGES=/absolute/lock.json` remains an explicit override. With this verified lock it skips build/publication; the lock drives Multipass
 prepare → pulls → real scenarios. Without it, initial preparation is offered.
 
 `make e2e` is an orchestrator of the existing `VM.prepare`, transfer/images and
 run paths, not another deployment engine. It validates all images offline,
 checks local prerequisites, generates a unique 16-hex session and freezes the
-lock/raw bytes under `.e2e-state/<session>/`. `E2E_SESSION` does not select or reuse
-a session here. Override `E2E_STATE_DIR` with an absolute private directory if
-needed. Keep custom state/fixture directories outside the source checkout. The
-default `.e2e-state` and `.e2e-fixtures` directories are Git-ignored and excluded
-from `make fix`/bootstrap traversal so exact raw manifest bytes stay unchanged.
+lock/raw bytes under `~/.local/share/portfolio-deployment/e2e-state/<session>/`.
+`E2E_SESSION` does not select or reuse a session here. `E2E_STATE_DIR` and
+`E2E_FIXTURE_DIR` may override these defaults (absolute paths recommended; relative
+overrides remain relative to the invocation directory). Keep custom directories
+outside the checkout. A single shared path module creates missing parents and
+state directories with `0700`, using pinned directory descriptors and no-follow
+opens; private files use `0600`. All existing components retain strict ownership
+and permission checks, including the unchanged `private_directory()` validator.
+Existing safe `.local`/`share` ancestors may be `0755`; private leaf directories
+must be owned by the current user with no group/other access. Symlinks, `..`,
+foreign owners and writable unsafe ancestors are rejected. Root-owned sticky
+system ancestors retain the existing validator's exception (for example `/tmp`).
+No chmod/chown is applied to HOME, Work, the checkout or any existing directory.
+A checkout with mode `775` works because private state no longer traverses it.
+Legacy directories remain Git-ignored and excluded from normalization so their
+exact evidence is preserved. Path failures return specific `e2e-path-*` codes and
+safe guidance instead of the generic prerequisite error; no private path values,
+file contents or tokens are printed by path diagnostics.
 The session, VM name, receipt path and exact diagnosis command are printed
 before VM work. Four prompts require the exact printed tokens, with default deny:
 
@@ -457,3 +474,45 @@ recovery, TLS/DNS, remote observation, production execution policy or shared-hos
 isolation is established. Stage 08 adds separately scoped offline CI/automation;
 Stage 09 needs reviewed production source/permissions, real host evidence,
 configuration/secrets delivery, artifact retention and operator acceptance.
+
+
+## Legacy state transition
+
+Before accessing the new host stores, unified commands check `.e2e-state` and
+`.e2e-fixtures` in the source checkout and invocation directory. Any nonempty,
+symlinked or unreadable legacy directory returns
+`e2e-legacy-state-review-required`, including when overrides select another path.
+Even apparently completed contents require review: a single `passed` field does
+not prove that all receipts and VM operations are complete. Directory entries are
+checked without reading or printing journal contents. Empty legacy directories
+are left untouched. No automatic move, deletion, permission repair, retry, reset
+or cleanup is implemented. `e2e-report` also reports this transition blocker;
+legacy receipts must be inspected locally by the operator.
+
+Manual procedure (operator only):
+
+1. Stop all controllers and ensure no operation is still running. Retain the
+   persistent `controller.lock` files; never unlink a lock to bypass a blocker.
+2. Inspect both legacy directories locally: E2E `current.json` and session receipts,
+   fixture `execution.json`, pending files, plans, pinned identity and immutable
+   image-lock/raw artifacts. Keep private evidence out of shared logs. Check the
+   referenced VMs through separately authorized diagnosis if necessary. Missing,
+   corrupt or unknown evidence is unresolved, not a fresh-run authorization.
+3. If an operation is unfinished/unknown, stop here. Keep all state and VM identity
+   evidence; obtain a separate reviewed resolution. Moving evidence aside or choosing
+   a fresh override is not recovery and must not be used to retry that operation.
+4. Only after confirming that no mutation occurred, or after explicitly resolving
+   all prior operations, choose a safe owned destination below the new private
+   base. Manually relocate each entire reviewed state directory without replacing
+   or merging any existing destination. Prefer a same-filesystem rename while all
+   controllers are stopped, preserving lock inodes and exact receipts/artifact bytes.
+   If defaults already exist, select unused destinations through the overrides.
+   Check that private directories/files are `0700`/`0600`, owned by you, and contain
+   no symlinks. Do not change HOME, Work, checkout or foreign-directory permissions.
+   Keep a private evidence archive for a reviewed attempt that never mutated; never
+   discard receipts to create the appearance of a clean run.
+5. After both legacy locations have been reviewed and relocated, use
+   `make e2e-report` with the selected state path. Unfinished migrated receipts still
+   block execution. Verify any ready fixture lock before `make e2e`; every real
+   operation still requires its separate confirmation. No command resumes or resets
+   a previous session automatically.

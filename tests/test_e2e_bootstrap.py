@@ -7,14 +7,19 @@ import subprocess
 import pytest
 
 from scripts.docker_adapter import DockerError
-from scripts.e2e import bootstrap, cli
+from scripts.e2e import bootstrap, cli, paths
 from scripts.e2e.host_state import Store
 from test_e2e_fixtures import artifact, BASE, FakeVM
 from scripts.e2e import fixture_execution
 
 
 @pytest.fixture(autouse=True)
-def offline(monkeypatch):
+def offline(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(paths, "ROOT", tmp_path / "checkout")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("E2E_STATE_DIR", raising=False)
+    monkeypatch.delenv("E2E_FIXTURE_DIR", raising=False)
     def forbidden(*a, **kw):
         pytest.fail("real process/network forbidden")
     monkeypatch.setattr(subprocess, "Popen", forbidden)
@@ -121,7 +126,7 @@ def test_unified_first_and_repeat_run_without_environment(tmp_path, monkeypatch)
     calls.clear()
     monkeypatch.setattr(cli.bootstrap, "resolve_base", lambda *a: pytest.fail("rebuild"))
     assert cli.main(["run"]) == 0 and calls == ["run"]
-    with Store(".e2e-fixtures").locked() as store:
+    with Store(paths.resolve("fixtures")).locked() as store:
         state = store.read("execution.json")
         state["status"] = "unknown"
         store.write("execution.json", state)
@@ -187,10 +192,10 @@ def test_unfinished_e2e_prevents_initial_fixture_work(tmp_path, monkeypatch):
     monkeypatch.setattr(cli.bootstrap, "owner_from_origin", lambda owner: "fixtures")
     monkeypatch.setattr(cli.orchestration, "confirm", lambda *a: pytest.fail("fixture work after unknown E2E"))
     session = "a" * 16
-    with Store(".e2e-state").locked() as store:
+    with Store(paths.resolve("state")).locked() as store:
         store.write("current.json", {"version": 1, "session": session})
         store.write(session + ".json", {"version": 1, "session": session, "vm": "pd-e2e-" + session,
                     "phase": "run", "status": "unknown", "mutationStarted": True, "images": "b" * 64,
                     "identity": {}, "result": {}})
     assert cli.main(["run"]) == 2
-    assert not (tmp_path / ".e2e-fixtures").exists()
+    assert not paths.resolve("fixtures").exists()

@@ -30,7 +30,10 @@ BASE = "docker.io/library/python@sha256:" + "1" * 64
 
 
 @pytest.fixture(autouse=True)
-def no_live(monkeypatch):
+def no_live(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli.paths, "ROOT", tmp_path / "checkout")
+    monkeypatch.chdir(tmp_path)
     def forbidden(*args, **kwargs):
         raise AssertionError("offline tests forbid VM/Docker/Caddy/network/process operations")
     monkeypatch.setattr(subprocess, "Popen", forbidden)
@@ -196,7 +199,8 @@ def test_separate_registry_admission_and_no_reuse(registry, images):
     desired = build_desired_state(registry, SHA)
     assert len(desired.applications) == 9
     assert all(a.id.startswith("e2e-") for a in desired.applications)
-    assert yaml.safe_load(Path("policy/admission.yaml").read_text())["applications"] == []
+    policy = Path(__file__).absolute().parents[1] / "policy/admission.yaml"
+    assert yaml.safe_load(policy.read_text())["applications"] == []
     with pytest.raises(FileExistsError):
         create_registry(registry, images)
     change_image(registry, "e2e-app", images.records["v2"])

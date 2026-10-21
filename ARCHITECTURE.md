@@ -372,7 +372,20 @@ analysis-only crash recovery and Stage 07–09 prerequisites.
 
 ## Stage 07 disposable VM integration boundary
 
-`scripts/e2e/cli.py` is the host entry point. `make e2e` orchestrates the existing
+`scripts/e2e/cli.py` is the host entry point. Shared `scripts/e2e/paths.py`
+resolves checkout-independent absolute host defaults:
+`~/.local/share/portfolio-deployment/e2e-state/` and
+`~/.local/share/portfolio-deployment/e2e-fixtures/`. Optional state/fixture overrides
+use the same validation. `Store` creates missing parents through no-follow pinned
+descriptors with `0700` and retains the unchanged journal path validator; private
+files use `0600`. No existing ancestor modes or owners are changed. Writable source
+checkouts therefore need no permission repair. Path failures expose bounded safe
+codes and guidance. Nonempty or unsafe legacy `.e2e-state`/`.e2e-fixtures` in the
+source/invocation directory block unified commands even with overrides, pending
+manual review and relocation; no automatic migration/reset/cleanup exists.
+See [legacy transition](docs/local-e2e.md#legacy-state-transition).
+
+`make e2e` orchestrates the existing
 prepare/images/test lifecycle with a generated session, private pinned image-lock
 snapshot, durable phase intents and a persistent whole-operation flock. Separate
 interactive confirmations authorize VM creation, immutable pulls, Docker mutations

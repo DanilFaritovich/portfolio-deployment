@@ -244,7 +244,16 @@ acceptance. See [Stage 06 limits and APIs](docs/readiness-recovery.md).
 ## Disposable local E2E
 
 `make e2e` handles first and repeated runs without environment exports. It derives
-a lowercase GHCR owner from verified GitHub origin and uses private `.e2e-fixtures`.
+a lowercase GHCR owner from verified GitHub origin. Private state defaults to
+`~/.local/share/portfolio-deployment/e2e-state/` and fixtures to
+`~/.local/share/portfolio-deployment/e2e-fixtures/`, independently of the checkout
+and current directory. Missing directories are safely created with mode `0700`;
+private files use `0600`. Existing permissions are never changed; a `775` checkout
+needs no permission changes. `E2E_STATE_DIR` and `E2E_FIXTURE_DIR` override the paths
+with the same owner, permission, no-symlink and no-traversal checks. Nonempty legacy
+`.e2e-state`/`.e2e-fixtures` directories block new commands pending
+[manual review and transition](docs/local-e2e.md#legacy-state-transition); nothing
+is automatically moved, deleted or reset.
 Without a ready lock it offers preparation of six images, resolves the official
 Python 3 source in `e2e/python-base.json` to a verified direct linux/amd64 digest,
 and pins raw manifest/config metadata before building. Separate confirmations

@@ -6,20 +6,21 @@ import os
 from pathlib import Path
 import stat
 
-from scripts.deployment_journal import private_directory
+from scripts.e2e.paths import directory
 from scripts.e2e.safety import require
 from scripts.planning_inputs import parse_snapshot
 
 
 class Store:
     def __init__(self, path):
+        require(".." not in Path(path).parts, "e2e-path-traversal-forbidden")
         self.path = Path(path).absolute()
 
     @contextmanager
     def locked(self):
-        with private_directory(self.path) as directory:
-            self.fd = directory
-            lock = os.open("controller.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+        with directory(self.path) as descriptor:
+            self.fd = descriptor
+            lock = os.open("controller.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600, dir_fd=descriptor)
             try:
                 self.check(os.fstat(lock))
                 try:

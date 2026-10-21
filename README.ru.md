@@ -247,7 +247,15 @@ ownership и live acceptance. См. [ограничения и API Stage 06](doc
 
 `make e2e` выполняет первый и повторные запуски без экспорта переменных окружения.
 Lowercase GHCR owner определяется из проверенного GitHub origin; приватный каталог
-по умолчанию — `.e2e-fixtures`. Без готового lock команда предлагает подготовить
+состояния по умолчанию — `~/.local/share/portfolio-deployment/e2e-state/`, fixtures —
+`~/.local/share/portfolio-deployment/e2e-fixtures/`, независимо от checkout и текущей
+директории. Недостающие каталоги безопасно создаются с правами `0700`, приватные
+файлы — `0600`. Права существующих каталогов не меняются; checkout с правами `775`
+не требует изменений. Overrides `E2E_STATE_DIR` и `E2E_FIXTURE_DIR` проходят те же
+проверки владельцев, permissions, symlink и traversal. Непустые legacy-каталоги
+`.e2e-state`/`.e2e-fixtures` блокируют команды до
+[ручной проверки и перехода](docs/local-e2e.md#legacy-state-transition); автоматического
+переноса, удаления или reset нет. Без готового lock команда предлагает подготовить
 шесть образов, разрешает официальный Python 3 source из `e2e/python-base.json`
 в проверенный direct linux/amd64 digest и фиксирует raw manifest/config до сборки.
 Отдельные подтверждения обязательны для создания builder VM, сборок, создания

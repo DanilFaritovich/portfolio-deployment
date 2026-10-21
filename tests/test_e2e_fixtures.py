@@ -19,7 +19,10 @@ PHASES = ["builder-prepare", "build", "publisher-prepare", "publish", "verify-pu
 
 
 @pytest.fixture(autouse=True)
-def offline(monkeypatch):
+def offline(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli.paths, "ROOT", tmp_path / "checkout")
+    monkeypatch.chdir(tmp_path)
     def forbidden(*a, **kw):
         pytest.fail("real processes/network forbidden")
     monkeypatch.setattr(subprocess, "Popen", forbidden)
