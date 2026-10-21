@@ -224,7 +224,8 @@ def test_cli_execute_opt_in_and_default_ready_lock(tmp_path, monkeypatch, capsys
     assert cli.main(args + ["--execute", "--manifests", str(tmp_path)]) == 2
 
 
-def test_guest_build_verifies_base_source_and_preserves_healthcheck(tmp_path, monkeypatch):
+@pytest.mark.parametrize("readable", [True, False])
+def test_guest_build_verifies_base_source_and_preserves_healthcheck(tmp_path, monkeypatch, readable):
     fixture_bundle.prepare(tmp_path / "bundle", "fixtures", BASE)
     root = tmp_path / "bundle"
     plan = json.loads((root / "plan.json").read_bytes())
@@ -237,7 +238,17 @@ def test_guest_build_verifies_base_source_and_preserves_healthcheck(tmp_path, mo
             return base_config if "--config" in args else base_raw
         if "--version" in args:
             return (args[0] + " test-version").encode()
-        assert args[0] == "buildah" and "--retry=0" in args
+        assert args[0] == "buildah"
+        if args[1] == "from":
+            assert args[2] == "--pull=never"
+            return b"test-check-container"
+        if args[1] == "run":
+            assert args[2:7] == ("--isolation=chroot", "test-check-container", "--", "python3", "-c")
+            assert "os.geteuid()==" in args[-1] and "read_bytes()" in args[-1]
+            if not readable:
+                raise ValueError("fixture source unreadable by runtime user")
+            return b""
+        assert "--retry=0" in args
         if args[1] == "bud":
             assert "--format=docker" in args and "--rm=false" in args and "--force-rm=false" in args
             assert "--timestamp=0" in args and "--platform=linux/amd64" in args
@@ -257,9 +268,17 @@ def test_guest_build_verifies_base_source_and_preserves_healthcheck(tmp_path, mo
             (output / "version").write_text("Directory Transport Version: 1.1\n")
         return b""
     monkeypatch.setattr(guest, "command", command)
+    if not readable:
+        with pytest.raises(ValueError, match="unreadable"):
+            guest.build(plan, root)
+        assert not (root / "images.tar").exists()
+        assert not list(root.glob("*-build.result.json"))
+        assert not any(c[:2] == ("buildah", "push") for c in calls)
+        return
     result = guest.build(plan, root)
     assert result["archive"] == guest.digest_file(root / "images.tar")
     assert len([c for c in calls if c[:2] == ("buildah", "bud")]) == 6
+    assert len([c for c in calls if c[:2] == ("buildah", "run")]) == 6
     assert len(list(root.glob("*-build.result.json"))) == 6
     before = len(calls)
     with pytest.raises(FileExistsError):

@@ -148,6 +148,11 @@ def build(plan, root=ROOT):
         command("buildah", "bud", "--isolation=chroot", "--platform=linux/amd64", "--format=docker",
                 "--timestamp=" + str(plan["epoch"]), "--retry=0", "--pull=missing", "--layers=false", "--rm=false", "--force-rm=false", "-t", tag,
                 *arguments, str(root / "context"))
+        check_container = command("buildah", "from", "--pull=never", tag).decode().strip()
+        need(re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}", check_container))
+        command("buildah", "run", "--isolation=chroot", check_container, "--", "python3", "-c",
+                "import os,pathlib; " + f"assert os.geteuid()=={int(record['buildArgs']['USER_ID'])}; " +
+                "compile(pathlib.Path('/fixture/app.py').read_bytes(), '/fixture/app.py', 'exec')")
         command("buildah", "push", "--retry=0", "--compression-format=gzip", "--force-compression", "--format=v2s2", tag, "dir:" + str(output / role))
         raw = validate_directory(output / role)
         config = json.loads((output / role / json.loads(raw)["config"]["digest"].split(":")[1]).read_bytes())
