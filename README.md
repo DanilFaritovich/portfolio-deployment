@@ -3,23 +3,24 @@
 [Русская версия](README.ru.md)
 
 Central Docker/GitOps deployment platform for independently built portfolio
-applications on a single Ubuntu VPS. **Current status: Stage 07 — Local E2E infrastructure (real E2E not-performed).**
+applications on a single Ubuntu VPS. **Current status: Stage 07 — real local VM E2E passed, 15/15 scenarios.**
 Registry/admission, offline planning and retained Caddy previews are implemented;
 Stage 04 PR #4, Stage 05 PR #5 and Stage 06 PR #6 are merged into `develop`. Stage 05 adds deterministic Compose,
 bounded Docker discovery, preflight, locking and scoped execution with offline mocks.
 Stage 06 adds bounded readiness, SQLite journal/LKG, constrained rollback and crash
 recovery analysis in the same executor. Stage 07 adds a separate disposable Ubuntu
-VM harness and real test-only observation/probe adapters; actual execution remains opt-in.
+VM harness and real test-only observation/probe adapters; local acceptance passed,
+and future executions still require separate opt-ins.
 Production deployment remains **Planned**: full registry/gateway observations are
 not available from Docker alone. No production apply interface exists. The real
-registry/admission allowlist remain empty; local smoke was not performed.
+registry/admission allowlist remain empty; the separate Stage 05 local smoke was not performed.
 
 ## Purpose and architecture
 
 The target flow is application CI → GHCR immutable image → approved desired state
 in Git → reconciliation → Docker Compose → health verification → Caddy routing.
 Real production integration and gateway activation remain **Planned**; readiness
-and recovery have offline-tested contracts, with VM-only adapters in Stage 07.
+and recovery have offline-tested contracts and VM-only adapters verified by real Stage 07 E2E.
 
 - [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure)
   owns Ubuntu, SSH/users, Docker Engine and host security.
@@ -224,7 +225,7 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | Stage 04 | Caddy Gateway Foundation | Implemented offline; PR #4 merged into develop |
 | Stage 05 | Docker Deployment Engine | Implemented foundation; PR #5 merged; smoke not-performed; production apply blocked |
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
-| Stage 07 | Local E2E & Integration Testing | Infrastructure implemented; real E2E not-performed |
+| Stage 07 | Local E2E & Integration Testing | Implemented; real local VM E2E passed, 15/15; production acceptance pending |
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
 
@@ -268,13 +269,19 @@ required. Host Docker is unused; all `E2E_*` variables are optional overrides.
 confirmations. CLI `fixtures --plan --base <immutable-reference>` and raw-manifest
 import remain offline. Unknown outcomes preserve evidence and block retry; no
 reset or cleanup runs automatically. See the [Stage 07 operator instructions](docs/local-e2e.md).
-No digests are fabricated; real builds/publication remain **not-performed**.
+All six fixture images (**6/6**) were built, published to GHCR and anonymously verified by
+immutable digest in fixture session `5b780834b80ffe9e`; later E2E attempts reused them.
 `make e2e-report` reads private local session receipts; `e2e-diagnose` reads the VM.
 The CLI is `python -m scripts.e2e.cli`; separate prepare/images/test/status/clean
 commands remain available. Failed/unknown runs block another orchestration in the
 same state directory, retain all evidence and are never resumed or cleaned up
 automatically. `make e2e-check` and `make check` remain fully offline.
-**Real E2E: not-performed.** No VM or real Docker/Caddy was run for this stage.
+**Verified local acceptance (2026-10-21):** session `4963fe050c4567f2`, receipt
+`complete/passed`, `realE2E=performed`, **15/15 real scenarios passed**; the accepted
+implementation also passed **779 offline tests**. Production deployment was not
+performed, and Stages 08–09 remain Planned. Earlier failed attempts and their
+closure evidence are retained; intentional crash/unknown journals remain
+analysis-only, without replay. See [acceptance and history](docs/local-e2e.md#verified-local-acceptance).
 
 ## Security, limitations and licensing
 

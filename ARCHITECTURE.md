@@ -29,7 +29,7 @@ discovery cannot establish full Stage 03 registry/gateway evidence. See the
 | Desired state | Per-application manifests selecting component digests and references | Deeply immutable normalized model implemented offline |
 | Validator | Bounded YAML, closed schemas, semantic/global checks and separate admission policy | Implemented offline |
 | Planner | Pure desired/observed comparison using explicit local snapshots; reviewable plan only | Implemented offline |
-| Compose engine | Deterministic renderer, bounded Docker discovery, ownership/preflight, lock and scoped executor | Implemented foundation with mocks; disposable smoke opt-in; full live observation/readiness integration pending |
+| Compose engine | Deterministic renderer, bounded Docker discovery, ownership/preflight, lock and scoped executor | Implemented foundation with mocks; disposable smoke opt-in; full production observation/readiness integration pending |
 | Caddy gateway | Canonical offline route/candidate rendering and opt-in local validation | Foundation implemented offline; Stage 07 adds VM-only runtime/activation; production TLS Planned |
 | State/result journal | Intent/events, readiness evidence, atomic application LKG and recovery status under host lock | Implemented with SQLite; Stage 07 disposable VM integration accepted by 15 real scenarios |
 | [Application repositories, e.g. project-router](https://github.com/DanilFaritovich/project-router) | Source, tests/CI, Docker builds, GHCR publishing and deployment contract | External ownership; integration Planned; deployability not verified |
@@ -236,7 +236,7 @@ updates need a reviewed strategy for readiness and traffic: in-place Compose
 replacement can interrupt traffic. Zero downtime/blue-green is not guaranteed.
 Preserve healthy unrelated routes and journal failed/partial convergence.
 
-## Rollback and recovery boundaries — Implemented offline; live acceptance pending
+## Rollback and recovery boundaries — Local VM E2E accepted; production acceptance pending
 
 SQLite v1 commits intent before each mutation and stores component transitions,
 readiness evidence and application-wide atomic LKG pointers. Only proven stateless
@@ -293,7 +293,7 @@ from offline test execution. No workflow is installed through Stage 07.
 Multipass Ubuntu VM, fixed local daemon identity, admitted immutable test images,
 real private-network HTTP/Engine/Caddy observations, lifecycle-gated test-only
 loopback activation and 15 scenarios. Separate opt-ins cover prepare, images,
-run and cleanup. All 15 real Docker/Caddy scenarios passed in session
+run and cleanup. All 15 real Docker/Caddy scenarios (**15/15**) passed in session
 `4963fe050c4567f2` on 2026-10-21, using source revision
 `35af4761ee80d32e657174e08dd086a12022562d`. See
 [local E2E](docs/local-e2e.md).
@@ -378,6 +378,9 @@ analysis-only crash recovery and Stage 07–09 prerequisites.
 Acceptance evidence is retained outside Git: host receipt
 `~/.local/share/portfolio-deployment/e2e-state-agent.uZQWee44/4963fe050c4567f2.json`
 records `complete/passed`, `mode=real`, `realE2E=performed` and all 15 results.
+The accepted implementation also passed 779 offline tests. Production deployment
+was not performed; this local VM acceptance leaves Stages 08–09 Planned.
+See [acceptance and failed-attempt history](docs/local-e2e.md#verified-local-acceptance).
 The VM retains its report, baseline, gateway snapshots and intentional crash/unknown
 journals; recovery analysis confirms no automatic completion or replay. Failed
 earlier attempts retain independent closure evidence and original journals.

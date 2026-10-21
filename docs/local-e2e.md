@@ -1,9 +1,47 @@
 # Stage 07 — Disposable Ubuntu VM E2E
 
-Infrastructure implemented; **real E2E: not-performed**. No VM, Docker daemon,
-Caddy process, image build/pull or real E2E was started during implementation.
+Infrastructure implemented and locally accepted: **15/15 real VM E2E scenarios
+passed** on 2026-10-21. All **6/6 GHCR fixture digests** were published and
+anonymously verified. The accepted implementation passed **779 offline tests**.
+Production deployment was not performed; local VM acceptance does not establish
+VPS, DNS, production TLS or production recovery readiness.
 Stage 06 PR #6 is merged into `develop`. Stage 08 GitHub Actions and Stage 09
 production integration remain Planned. The production registry/policy stay empty.
+
+## Verified local acceptance
+
+| Evidence | Confirmed result |
+| --- | --- |
+| Real E2E session | `4963fe050c4567f2`: host receipt `phase=complete`, `status=passed`; report `mode=real`, `realE2E=performed`; 15/15 scenarios passed; Make exit 0 |
+| Tested implementation revision | `35af4761ee80d32e657174e08dd086a12022562d`, before subsequent documentation-only commits |
+| Fixture session | `5b780834b80ffe9e`: `complete/passed`; six images built, published to GHCR and anonymously verified by immutable digest; subsequent E2E attempts reused them |
+| Offline validation | `make check PYTHON=.venv/bin/python`: 779 passed, with bootstrap and registry validation passing; separate evidence from real E2E |
+| Production | Not deployed or accepted; Stages 08–09 remain Planned |
+
+Private host evidence is retained under `~/.local/share/portfolio-deployment/`:
+`e2e-state-agent.uZQWee44/4963fe050c4567f2.json` contains the final receipt and all
+15 scenario results; `e2e-fixtures-agent.FWWSgbBJ/execution.json` and
+`e2e-fixtures-agent.FWWSgbBJ/artifacts/lock.json` retain the publication receipt
+and six exact digest references. The accepted VM `pd-e2e-4963fe050c4567f2` retains
+`/var/lib/portfolio-e2e/4963fe050c4567f2/report.json`, baseline, gateway snapshots
+and journals. These are recorded evidence locations, not authorization to run
+commands or create another VM.
+
+Earlier unsuccessful attempts remain historical evidence:
+
+| E2E session | Recorded outcome and disposition |
+| --- | --- |
+| `796bb4381c03dc62` | Prepared VM and six loaded images; lost confirmation terminal. Verified pidfd/SIGINT interruption ended the old controller. Separately authorized continuation failed during bootstrap after Caddy startup, before scenario 1 completed; closed as failed bootstrap, VM/resources/evidence retained |
+| `dc7d62a85f8bd6b8` | Scenario 1 failed because absent image defaults differed from typed empty container values. VM stopped and operation abandoned without replay; original receipt and incomplete journal retained |
+| `12a86ca712cfd69b` | 8 scenarios passed; scenario 9 failed because the proposed invalid listener was accepted by Caddy validation. VM stopped and operation abandoned; original report/journals retained |
+
+Earlier builder-preparation failures and their incident-specific procedures remain
+in [Closing an unknown builder preparation](#closing-an-unknown-builder-preparation).
+The successful run supersedes those attempts for local acceptance without
+rewriting them as successful. Its deliberate crash/unknown scenarios retain five
+unfinished journals as test evidence: recovery analysis verified no automatic
+completion, promotion or replay. E2E controllers finished; those journals do not
+authorize further mutations or production recovery.
 
 ## Prerequisites and topology
 
@@ -49,7 +87,8 @@ not provision or contact a VPS or change the infrastructure repository.
 
 | Module | Responsibility |
 | --- | --- |
-| `scripts/e2e/cli.py`, `orchestration.py`, `host_state.py` | Unified CLI, generated session, default-deny phase confirmations, private receipts/lock snapshots, whole-operation host flock, no retry/resume |
+| `scripts/e2e/cli.py`, `orchestration.py`, `host_state.py` | Unified CLI, generated session, default-deny phase confirmations, private receipts/lock snapshots, whole-operation host flock, no automatic retry/resume |
+| `scripts/e2e/prepared_recovery.py`, `failed_run_recovery.py` | Narrow separately confirmed lost-terminal continuation or failed-run abandonment; preserve original receipts/journals and forbid replay of a started failed run |
 | `scripts/e2e/fixture_bundle.py` | Offline six-role source/base plan, exact raw-manifest import and fsynced atomic image lock |
 | `scripts/e2e/fixture_execution.py`, `fixture_guest.py` | Separately confirmed disposable builder/publisher VMs, daemonless Buildah/Skopeo, bounded artifacts, isolated credentials, digest-preserving publication and anonymous verification |
 | `scripts/e2e/vm.py` | Explicit finite Multipass prepare/status/transfer/invoke; no mount, adoption, delete or purge |
@@ -165,7 +204,9 @@ tag or contacts Multipass/registries. Repeating identical inputs verifies the
 bundle. Changed owner/base/epoch/source needs a new directory, retaining old
 evidence; never bypass an unknown operation by selecting fresh state.
 The source epoch defaults to 0 (`E2E_SOURCE_DATE_EPOCH` override).
-Real fixture operations and real E2E remain **not-performed** in implementation.
+Build/publication and real E2E were completed in the separately authorized
+[accepted sessions](#verified-local-acceptance); future operations still require
+the confirmations below.
 
 Requirements: a real TTY, Linux amd64/KVM, authenticated Multipass, Ubuntu/package
 and registry network access, at least 64 GiB free host disk for fixture work, and
@@ -260,7 +301,9 @@ Engine ID/config/platform/RepoDigests before scenarios. Production admission is
 unchanged, and no credentials enter the test VM.
 
 Source is in [Dockerfile](../e2e/images/Dockerfile) and [app.py](../e2e/images/app.py).
-**Real builds, publication and E2E: not-performed.** No confirmed digest is invented.
+The [accepted fixture session](#verified-local-acceptance) completed real build,
+publication and anonymous verification of all six digest references. Offline
+import alone still proves only the local contract.
 
 | Role / raw file | Build arguments | Expected behavior |
 | --- | --- | --- |
@@ -359,6 +402,7 @@ unified fixture/E2E operations and tracks their receipt directory. The default
 fixture and E2E receipts are inspected even when overrides select new paths. The pinned VM session/machine/daemon identity is checked
 again after each confirmation. No locks, resources or journal are reset after
 failure. The guest's existing host flock still protects its engine operations.
+The separately confirmed exceptions below never replay a started failed run.
 
 `make e2e-report` reads the validated **local** `current.json`/session receipt and
 does not contact Multipass or establish live success. The generated command
@@ -367,6 +411,26 @@ guest report/identity. If preparation failed before the guest tools were install
 use the explicit `e2e-status` metadata path first; do not retry prepare as if absent.
 The host receipt and VM retain all evidence; no cleanup runs on an error. An
 unknown guest outcome needs manual diagnosis even if the host process has exited.
+
+### Evidence-preserving host recovery
+
+`make e2e-interrupt-prepared` supports only a lost confirmation terminal after
+successful immutable pulls, before any scenario run. It verifies the supplied
+`E2E_CONTROLLER_PID`, process identity and both flock owners, checks pristine
+guest state, archives evidence and separately confirms pidfd/SIGINT interruption.
+It never writes to the old PTY. `make e2e-continue-prepared` requires matching
+stopped-controller evidence and unchanged VM/image identity, separately confirms
+run and activation, and records a new intent before the never-started run.
+
+`make e2e-close-failed-bootstrap` closes only the verified terminal bootstrap
+failure with no deployment evidence and empty Caddy config, retaining resources.
+`make e2e-close-failed-run` matches a known terminal host/guest failure, collects
+read-only journal evidence, separately confirms stopping the pinned VM and then
+records abandonment after Stopped metadata checks. Both preserve original
+receipts/journals and permit a new isolated session, never replay of the old run.
+Use the original `E2E_SESSION` and `E2E_STATE_DIR`; commands fail closed on changed
+evidence or uncertain state. Neither resets guest recovery nor authorizes a new
+VM automatically. See [architecture boundaries](../ARCHITECTURE.md#stage-07-disposable-vm-integration-boundary).
 
 ## Individual commands — only after separate authorization
 
@@ -422,6 +486,9 @@ lifecycle + temporary SQLite, rollback, candidate retention, cleanup, failures
 and interrupts. Ordinary `make check` includes these offline tests and never runs
 VM, Docker, Caddy or real scenarios. Simulated tests always report `mode=offline`
 and `realE2E=not-performed`.
+
+All 15 real scenarios below passed in session `4963fe050c4567f2`; see
+[verified local acceptance](#verified-local-acceptance) for retained evidence.
 
 | # | Real scenario | Required evidence |
 | --- | --- | --- |
@@ -568,13 +635,15 @@ guest logs are discarded, including unrecognized diagnostic text.
 
 ### Existing builder: session `b616980ef1c99192`
 
-Operator-reported evidence: Ubuntu 24.04 / cloud-init 26.1 finished `degraded done`;
+Historical incident snapshot, before its later evidence-preserving closure:
+Ubuntu 24.04 / cloud-init 26.1 finished `degraded done`;
 system schema validation reported `E1: 700 is not of type 'string'` in `runcmd`.
 Buildah/Skopeo and `/etc/pd-fixture.json` exist, and builder
-`pd-fixture-builder-b616980ef1c99192` is running. The original receipt is `unknown`.
+`pd-fixture-builder-b616980ef1c99192` was running. The original receipt was `unknown`
+and remains so after closure; the VM was stopped and retained.
 These are operator observations, not a successful fixture build or E2E acceptance.
 
-The current source used Python string `"700"`, which PyYAML serializes as `'700'`;
+The source at the time used Python string `"700"`, which PyYAML serializes as `'700'`;
 an unquoted YAML `700` loads as an integer and violates the
 [runcmd string-argument schema](https://docs.cloud-init.io/en/26.1/reference/modules.html#runcmd).
 The exact conversion point in this incident is unverified: compare retained
@@ -750,8 +819,9 @@ its output; do not paste the whole procedure as an unattended script.
 ### Absent builder only: earlier session `4d51ffc5eb90ba5a`
 
 Session `4d51ffc5eb90ba5a` must remain in its original directory, with its original
-`execution.json`, cloud-init and lock. The following is an operator procedure;
-none of these live/read-only Multipass commands was run as part of this fix.
+`execution.json`, cloud-init and lock. The following preserves the original
+incident-specific operator procedure. It was not executed when that recovery fix
+was implemented; later closure retained the original unknown receipt and evidence.
 Closure supports **only** unknown `builder-prepare`, with no pinned identities,
 build result, image archive, exported manifests, publication or pending receipt.
 Other phases remain blocked for a separately scoped recovery procedure.

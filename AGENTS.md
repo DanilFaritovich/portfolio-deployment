@@ -22,7 +22,10 @@ SQLite journal/LKG, constrained rollback and read-only crash recovery analysis i
 the same executor; Stage 06 PR #6 is merged into develop. Stage 07 adds a separate
 Multipass Ubuntu 24.04 VM harness, real test-only adapters, readiness-gated loopback
 Caddy activation and 15 real scenario definitions, reusing the same executor.
-Real E2E and image builds are **not-performed**. Stages 08–09 remain **Planned**.
+Real local VM E2E passed **15/15** scenarios in session `4963fe050c4567f2`
+(`complete/passed`, `realE2E=performed`); all **6/6** GHCR fixture digests were
+published and anonymously verified. The accepted implementation passed
+**779 offline tests**. Production deployment was not performed; Stages 08–09 remain **Planned**.
 Server provisioning, Ubuntu, SSH, users, Docker Engine and host hardening belong
 to `DanilFaritovich/portfolio-server-infrastructure`. Application repositories
 own source, CI, image builds/publication and deployment contracts.
@@ -72,6 +75,9 @@ architectural rationale and the relevant task scope.
 - `scripts/e2e/`, `scripts/e2e_guest.py`, `e2e/images/`: VM-only integration,
   separate test admission/image lock, real readers/probes, guarded activation,
   scenario runner and non-destructive cleanup. See [Stage 07](docs/local-e2e.md).
+- `scripts/e2e/prepared_recovery.py`, `scripts/e2e/failed_run_recovery.py`: narrow,
+  separately confirmed lost-terminal recovery and terminal-failure abandonment;
+  retain original receipts/journals, never replay a started failed run.
 - `Makefile`, `requirements-dev.txt`, `.editorconfig`: local check interface/setup.
 
 Use local skills, not a fresh upstream download on each task:

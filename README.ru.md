@@ -3,23 +3,24 @@
 [English version](README.md)
 
 Централизованная платформа Docker/GitOps-деплоя независимо собираемых портфолио-
-приложений на одном Ubuntu VPS. **Текущее состояние: Stage 07 — инфраструктура локального E2E (real E2E not-performed).**
+приложений на одном Ubuntu VPS. **Текущее состояние: Stage 07 — реальный локальный VM E2E пройден, 15/15 сценариев.**
 Реализованы registry/admission, offline-планирование и retained Caddy previews;
 PR #4 Stage 04, PR #5 Stage 05 и PR #6 Stage 06 смержены в `develop`. Stage 05 добавляет детерминированный Compose,
 ограниченный Docker discovery, preflight, lock и адресный executor с offline mocks.
 Stage 06 добавляет bounded readiness, SQLite journal/LKG, ограниченный rollback
 и анализ crash recovery в существующий executor. Stage 07 добавляет отдельную
-disposable Ubuntu VM, test-only readers/probes и явные opt-in для реальных сценариев.
+disposable Ubuntu VM и test-only readers/probes; локальная приёмка пройдена,
+а будущие запуски по-прежнему требуют отдельных opt-in.
 Production-деплой остаётся **Planned**: Docker не даёт полный registry/gateway
 snapshot Stage 03. Production apply интерфейса нет. Реальный реестр/admission
-allowlist пуст; локальный smoke не запускался.
+allowlist пуст; отдельный локальный smoke Stage 05 не запускался.
 
 ## Назначение и архитектура
 
 Целевая цепочка: CI приложения → immutable-образ в GHCR → утверждённое desired
 state в Git → reconciliation → Docker Compose → проверка готовности → маршрутизация
 Caddy. Реальная production integration и активация gateway — **Planned**; readiness
-и recovery имеют offline-tested contracts и VM-only adapters Stage 07.
+и recovery имеют offline-tested contracts и VM-only adapters, проверенные реальным E2E Stage 07.
 
 - [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure)
   отвечает за Ubuntu, SSH/пользователей, Docker Engine и безопасность хоста.
@@ -226,7 +227,7 @@ references; читать references нужно только для текуще�
 | Stage 04 | Caddy Gateway Foundation | Implemented offline; PR #4 merged into develop |
 | Stage 05 | Docker Deployment Engine | Implemented foundation; PR #5 merged; smoke not-performed; production apply blocked |
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
-| Stage 07 | Local E2E & Integration Testing | Infrastructure implemented; real E2E not-performed |
+| Stage 07 | Local E2E & Integration Testing | Реализован; реальный локальный VM E2E пройден, 15/15; production acceptance ожидается |
 | Stage 08 | GitHub Actions & Automation | Planned |
 | Stage 09 | Production Integration & Release | Planned |
 
@@ -270,13 +271,19 @@ publisher VM. При готовом проверенном lock сборка и 
 CLI `fixtures --plan --base <immutable-reference>` и импорт raw manifests остаются
 офлайн. Unknown outcome сохраняет evidence и блокирует retry; автоматического
 reset или cleanup нет. См. [инструкцию оператора Stage 07](docs/local-e2e.md).
-Digests не выдумываются; реальные сборки/публикация остаются **not-performed**.
+Все шесть fixture-образов (**6/6**) собраны, опубликованы в GHCR и анонимно проверены по
+immutable digest в fixture-сессии `5b780834b80ffe9e`; последующие E2E-попытки использовали их повторно.
 `make e2e-report` читает приватные локальные receipts сессии; `e2e-diagnose` читает VM.
 CLI: `python -m scripts.e2e.cli`; отдельные prepare/images/test/status/clean остаются
 доступны. Failed/unknown run блокирует новый оркестрированный запуск в том же
 каталоге состояния, сохраняет evidence и не возобновляется и не очищается
 автоматически. `make e2e-check` и `make check` остаются полностью офлайн.
-**Real E2E: not-performed.** VM и реальные Docker/Caddy в рамках этапа не запускались.
+**Подтверждённая локальная приёмка (2026-10-21):** сессия `4963fe050c4567f2`, receipt
+`complete/passed`, `realE2E=performed`, **15/15 реальных сценариев passed**; принятая
+реализация также прошла **779 offline tests**. Production deployment не выполнялся,
+Stages 08–09 остаются Planned. Предыдущие неудачные попытки и evidence их закрытия
+сохранены; journals намеренных crash/unknown сценариев остаются analysis-only,
+без replay. См. [результаты приёмки и историю](docs/local-e2e.md#verified-local-acceptance).
 
 ## Безопасность, ограничения и лицензирование
 
