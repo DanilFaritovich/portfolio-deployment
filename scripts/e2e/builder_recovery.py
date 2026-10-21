@@ -97,9 +97,16 @@ def snapshot(machine, state, required_state):
             "e2e-builder-closure-vm-info-invalid")
     # Multipass has no guest machine-id in stopped metadata. The running guest
     # review and independent operator no-replacement attestation bridge the stop.
-    # Guest-reported release/load/IP/usage can disappear when stopped. Compare
-    # image/config metadata, never those runtime fields, across the manual stop.
+    # Guest-reported release/load/IP/usage can disappear when stopped. Multipass
+    # also leaves cpu_count empty then; corroborate it with the saved setting,
+    # without starting or executing inside the stopped guest.
     stable = {key: info.get(key) for key in ("image_hash", "image_release", "cpu_count")}
+    cpus = stable["cpu_count"]
+    if cpus in (None, ""):
+        cpus = machine.command("get", "local." + state["builder"] + ".cpus").decode().strip()
+    require(re.fullmatch(r"[1-9][0-9]*", str(cpus)) is not None,
+            "e2e-builder-closure-cpu-count-unverified")
+    stable["cpu_count"] = str(cpus)
     return {"inventorySha256": control.digest(listing), "metadata": stable}
 
 

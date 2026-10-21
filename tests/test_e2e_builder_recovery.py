@@ -156,6 +156,30 @@ def assert_blocked(path):
             pytest.fail("unknown bypassed")
 
 
+@pytest.mark.parametrize("stopped_cpus", ["", None, "2", "3", "invalid"])
+def test_stopped_cpu_setting_is_verified_without_guest_access(incident, tmp_path, monkeypatch, stopped_cpus):
+    path, _ = incident
+    evidence = reviewed(incident, tmp_path)
+    Machine.state = "Stopped"
+    Machine.metadata["cpu_count"] = ""
+    original_command = Machine.command
+    def command(self, *args):
+        if args == ("get", "local." + self.name + ".cpus"):
+            self.calls.append("get-cpus")
+            return (stopped_cpus or "").encode()
+        return original_command(self, *args)
+    monkeypatch.setattr(Machine, "command", command)
+    Machine.calls = []
+    if stopped_cpus == "2":
+        recovery.close(path, recovery.SESSION, evidence, factory=Machine, consent=lambda *a: None)
+        assert Machine.calls == ["list", "info", "get-cpus", "list", "info", "get-cpus"]
+    else:
+        with pytest.raises(DockerError):
+            recovery.close(path, recovery.SESSION, evidence, factory=Machine,
+                           consent=lambda *a: pytest.fail("confirmation before CPU verification"))
+        assert_blocked(path)
+
+
 def test_stopped_closure_preserves_every_input_and_forbids_replay(incident, tmp_path, monkeypatch):
     path, state = incident
     original = {p.relative_to(path): p.read_bytes() for p in path.rglob("*") if p.is_file()}
