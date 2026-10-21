@@ -36,6 +36,7 @@ daemon = subprocess.check_output(['docker', '--host', 'unix:///run/docker.sock',
 Description=Disposable E2E loopback Caddy
 After=docker.service
 [Service]
+Type=notify
 User=caddy
 Group=caddy
 ExecStart=/usr/bin/caddy run --config /etc/portfolio-e2e-caddy.json

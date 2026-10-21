@@ -393,6 +393,8 @@ def test_vm_unknown_and_mounts_block_before_exec():
 
 def test_vm_cloud_init_masks_public_caddy_and_has_no_host_mounts():
     cloud = vm.cloud_init(SESSION)
+    unit = next(f['content'] for f in cloud['write_files'] if f['path'].endswith('portfolio-e2e-caddy.service'))
+    assert 'Type=notify\n' in unit
     assert cloud["hostname"] == f"pd-e2e-{SESSION}"
     assert cloud["runcmd"][0] == ["systemctl", "mask", "caddy.service"]
     config = json.loads(next(f["content"] for f in cloud["write_files"] if f["path"].endswith("caddy.json")))
