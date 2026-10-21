@@ -426,7 +426,8 @@ and publisher VMs, with independent preparation/build/publication/public-verific
 confirmations. Buildah runs daemonless in the builder; Skopeo preserves exact
 exported direct Docker schema-2 manifests (including worker healthcheck) in GHCR.
 Only the publisher receives its temporary publication credential via an operator
-login inside that VM. Anonymous exact manifest/config/platform verification gates
+login inside that VM, attached directly to the `make e2e` terminal without
+controller capture of authentication input/output. Anonymous exact manifest/config/platform verification gates
 the fsynced atomic ready lock. Whole-operation flock, durable phase/role intents
 and retained archives/VM evidence prevent retry/replay after uncertainty. No host
 or E2E daemon participates in fixture creation. `make e2e` defaults to that ready
@@ -441,7 +442,9 @@ before commands. The default public Caddy package unit is masked; the test unit
 binds HTTP/admin exclusively to VM loopback. Applications publish no ports.
 
 The isolated image contract hashes raw direct-manifest bytes and corroborates
-manifest config digest, Engine ID, RepoDigests and platform. It neither substitutes
+Engine ID, RepoDigests and platform. Classic Engine config IDs must match the
+locked manifest's config digest; Docker 29 containerd manifest IDs instead require
+the exact locked descriptor digest, media type and raw-byte size. It neither substitutes
 image IDs for manifest digests nor relaxes production admission; runtime refs and
 OCI indexes remain blocked. Images are built/published separately, pulled only by
 the explicit preparation command, and must be preloaded before execution.

@@ -176,6 +176,34 @@ def test_image_identity_uses_manifest_config_relationship(images):
         assert not images.evidence(ref, {**engine, **altered}).verified
 
 
+@pytest.mark.parametrize("change", [None, "missing", "digest", "size", "boolean-size", "index", "config-id-only", "platform", "repository"])
+def test_containerd_manifest_id_requires_exact_locked_descriptor(images, change):
+    ref = images.records["v1"]
+    selected = ref.split("@")[1]
+    engine = {**Engine(None, images).image(ref), "Id": selected,
+              "Descriptor": {"digest": selected, "mediaType": images.manifests[ref]["mediaType"],
+                             "size": images.manifest_sizes[ref]}}
+    if change == "missing":
+        engine.pop("Descriptor")
+    elif change == "digest":
+        engine["Descriptor"]["digest"] = "sha256:" + "f" * 64
+    elif change == "size":
+        engine["Descriptor"]["size"] += 1
+    elif change == "boolean-size":
+        engine["Descriptor"]["size"] = True
+    elif change == "index":
+        engine["Descriptor"]["mediaType"] = "application/vnd.oci.image.index.v1+json"
+    elif change == "config-id-only":
+        engine["Descriptor"]["digest"] = images.manifests[ref]["config"]["digest"]
+    elif change == "platform":
+        engine["Architecture"] = "arm64"
+    elif change == "repository":
+        engine["RepoDigests"] = []
+    result = images.evidence(ref, engine)
+    assert result.verified == (change is None)
+    assert result.image_id == selected and result.manifest_digest == selected
+
+
 @pytest.mark.parametrize("change", ["digest", "index", "tag", "production", "path", "extra", "missing"])
 def test_image_contract_rejections(images, tmp_path, change):
     path = tmp_path / "lock.json"
@@ -216,9 +244,18 @@ def test_separate_registry_admission_and_no_reuse(registry, images):
 
 
 @pytest.mark.parametrize("recovery_confirmed", [True, False])
+@pytest.mark.parametrize("image_store", ["classic", "containerd"])
 def test_complete_provider_and_real_journal_with_simulated_transports(world, registry, images, tmp_path,
-                                                                    monkeypatch, recovery_confirmed):
+                                                                    monkeypatch, recovery_confirmed, image_store):
     """Offline integration of actual contracts; this is explicitly simulated."""
+    if image_store == "containerd":
+        original = world.adapter.image
+        def image(reference):
+            selected = reference.split("@")[1]
+            return {**original(reference), "Id": selected,
+                    "Descriptor": {"digest": selected, "mediaType": images.manifests[reference]["mediaType"],
+                                   "size": images.manifest_sizes[reference]}}
+        monkeypatch.setattr(world.adapter, "image", image)
     def apply():
         desired, observed, _ = world.provider.refresh()
         lifecycle = runner.E2ELifecycle(tmp_path / "journal", world.probes, policy=runner.POLICY,

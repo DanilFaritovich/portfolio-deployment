@@ -18,7 +18,7 @@ class Images:
         doc = parse_snapshot(read_snapshot(path))
         require(set(doc) == {"version", "images"} and doc["version"] == 1 and set(doc["images"]) == ROLES,
                 "invalid-e2e-image-lock")
-        self.records, self.manifests = {}, {}
+        self.records, self.manifests, self.manifest_sizes = {}, {}, {}
         for role, record in doc["images"].items():
             require(set(record) == {"reference", "manifest"}, "invalid-e2e-image-record")
             ref, filename = record["reference"], record["manifest"]
@@ -48,13 +48,24 @@ class Images:
                     "invalid-oci-layer-descriptor")
             self.records[role] = ref
             self.manifests[ref] = manifest
+            self.manifest_sizes[ref] = len(raw)
         require(len(set(self.records.values())) == len(ROLES), "distinct-e2e-images-required")
 
     def evidence(self, reference, engine):
         manifest = self.manifests.get(reference)
         require(manifest is not None, "image-outside-e2e-lock")
         platform = f"{engine.get('Os')}/{engine.get('Architecture')}"
+        selected = reference.split("@")[1]
+        descriptor = engine.get("Descriptor") or {}
+        # Classic Engine IDs name the config blob. Docker 29's containerd store
+        # names the selected manifest instead: require its exact locked raw-byte
+        # descriptor, never infer a config relationship from RepoDigests alone.
+        manifest_id = (engine.get("Id") == selected and isinstance(descriptor, dict) and
+                       descriptor.get("digest") == selected and
+                       descriptor.get("mediaType") == manifest["mediaType"] and
+                       type(descriptor.get("size")) is int and
+                       descriptor["size"] == self.manifest_sizes[reference])
         verified = (platform == "linux/amd64" and reference in engine.get("RepoDigests", []) and
-                    manifest["config"]["digest"] == engine.get("Id"))
-        return ImageEvidence(reference, engine.get("Id", ""), platform, reference.split("@")[1],
+                    (manifest["config"]["digest"] == engine.get("Id") or manifest_id))
+        return ImageEvidence(reference, engine.get("Id", ""), platform, selected,
                              verified, encode(engine.get("Config") or {}))
