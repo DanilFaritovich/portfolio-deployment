@@ -85,6 +85,9 @@ class FakeVM:
         self.calls.append("publish")
         return self.references()
 
+    def login(self):
+        self.calls.append("login")
+
     def verify_public(self):
         self.calls.append("verify-public")
         return self.references()
@@ -100,6 +103,8 @@ def test_execute_exact_digests_confirmations_and_no_rebuild(tmp_path):
     result = execution.execute(directory, "fixtures", BASE, factory=FakeVM, consent=consent)
     assert result["status"] == "passed" and result["phase"] == "complete"
     assert approvals == PHASES
+    publisher = FakeVM.instances[-1]
+    assert publisher.calls == ["prepare", "login", "publish", "verify-public"]
     images = Images(result["lock"])
     assert images.records == result["references"]
     for role in ROLES:
@@ -366,6 +371,60 @@ def test_fixture_vm_prepare_transport_has_no_daemon_mount_or_credentials(tmp_pat
         assert (any(p.endswith("app.py") for p in transferred)) == (kind == "builder")
         assert all(c[0] in {"list", "launch", "info", "exec", "transfer"} for c in calls)
         assert not any("/run/docker.sock" in str(c) or "delete" in c or "mount" in c for c in calls)
+
+
+@pytest.mark.parametrize("outcome", [0, 1, "timeout", "unavailable"])
+def test_publisher_login_uses_operator_terminal_without_capturing_credentials(monkeypatch, outcome):
+    from types import SimpleNamespace
+    machine = execution.FixtureVM("a" * 16, "publisher")
+    monkeypatch.setattr(execution.sys, "stdin", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr(execution.sys, "stdout", SimpleNamespace(isatty=lambda: True, write=lambda s: len(s), flush=lambda: None))
+    calls = []
+    monkeypatch.setattr(machine, "guest", lambda *args: calls.append(args))
+    def run(argv, **kwargs):
+        assert calls == [("true",)]
+        assert argv == ["multipass", "exec", "--no-map-working-directory", machine.name, "--", "sudo", "--",
+                        "skopeo", "login", "--authfile", "/run/pd-fixtures-auth.json", "ghcr.io"]
+        assert kwargs == {"timeout": 600, "check": False,
+                          "env": {"PATH": "/usr/local/bin:/usr/bin:/bin:/snap/bin", "LANG": "C", "HOME": str(Path.home())}}
+        if outcome == "timeout":
+            raise subprocess.TimeoutExpired(argv, 600, output=b"private-sentinel")
+        if outcome == "unavailable":
+            raise OSError("private-sentinel")
+        return SimpleNamespace(returncode=outcome)
+    monkeypatch.setattr(subprocess, "run", run)
+    if outcome == 0:
+        machine.login()
+        assert calls == [("true",), ("true",)]
+    else:
+        with pytest.raises(DockerError, match="fixture-login-incomplete") as error:
+            machine.login()
+        assert "private-sentinel" not in str(error.value)
+        assert calls == [("true",)]
+
+
+@pytest.mark.parametrize("kind,tty", [("builder", True), ("publisher", False)])
+def test_login_rejects_wrong_role_or_nonterminal_before_guest_access(monkeypatch, kind, tty):
+    from types import SimpleNamespace
+    monkeypatch.setattr(execution.sys, "stdin", SimpleNamespace(isatty=lambda: tty))
+    machine = execution.FixtureVM("a" * 16, kind)
+    monkeypatch.setattr(machine, "guest", lambda *a: pytest.fail("guest access before authorization"))
+    with pytest.raises(DockerError, match="publisher-terminal"):
+        machine.login()
+
+
+def test_login_failure_prevents_publication_and_retains_no_replay_evidence(tmp_path):
+    class FailedLogin(FakeVM):
+        def login(self):
+            raise DockerError("fixture-login-incomplete")
+        def publish(self, directory):
+            pytest.fail("publication after failed login")
+    path = tmp_path / "failed-login"
+    result = execution.execute(path, "fixtures", BASE, factory=FailedLogin, consent=lambda *a: None)
+    assert result["status"] == "unknown" and result["phase"] == "publish"
+    assert (path / "images.tar").exists() and not (path / "artifacts").exists()
+    with pytest.raises(DockerError, match="global-unfinished-review"):
+        execution.execute(path, "fixtures", BASE, factory=lambda *a: pytest.fail("retry"))
 
 
 def test_fixture_vm_refuses_adoption_identity_changes_and_host_mounts():

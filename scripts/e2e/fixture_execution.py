@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 import secrets
 import shutil
+import subprocess
+import sys
 
 from scripts.docker_adapter import DockerError
 from scripts.e2e.cloud_config import render, validate_file
@@ -104,6 +106,26 @@ class FixtureVM(VM):
     def verify_public(self):
         return json.loads(self.guest("python3", GUEST_ROOT + "/fixture_guest.py", "verify-public", self.session, timeout=1800))
 
+    def login(self):
+        require(self.kind == "publisher" and sys.stdin.isatty() and sys.stdout.isatty(),
+                "fixture-login-requires-publisher-terminal")
+        self.guest("true")  # Pin identity and reject mounts before attaching the terminal.
+        print("GHCR login inside publisher VM. Enter your GitHub username and a short-lived "
+              "write:packages PAT at Skopeo's hidden password prompt. "
+              "Credentials are stored only in publisher /run.", flush=True)
+        try:
+            # Inherit the operator terminal directly: never capture, parse or log
+            # authentication input/output, or pass a token in argv/environment.
+            result = subprocess.run(
+                ["multipass", "exec", "--no-map-working-directory", self.name, "--", "sudo", "--",
+                 "skopeo", "login", "--authfile", "/run/pd-fixtures-auth.json", "ghcr.io"],
+                env={"PATH": "/usr/local/bin:/usr/bin:/bin:/snap/bin", "LANG": "C", "HOME": str(Path.home())},
+                timeout=600, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            raise DockerError("fixture-login-incomplete", True) from None
+        require(result.returncode == 0, "fixture-login-incomplete")
+        self.guest("true")
+
     def publish(self, directory):
         self.transfer(directory / "images.tar", "images.tar")
         return json.loads(self.guest("python3", GUEST_ROOT + "/fixture_guest.py", "publish", self.session, timeout=7200))
@@ -150,10 +172,9 @@ def _execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=conf
                 ("build", "Verify pinned source/base/platform and build/export six direct OCI images inside builder VM."),
                 ("publisher-prepare", "Create NEW isolated publisher Ubuntu VM (2 CPU / 4 GiB / 24 GiB); install Skopeo, no Docker daemon."),
                 ("publish", f"Publish six images to GHCR and verify exact manifest bytes with publisher authentication.\n"
-                 f"In a SEPARATE terminal run: multipass shell {publisher.name}\n"
-                 "Inside publisher only: sudo skopeo login --authfile /run/pd-fixtures-auth.json ghcr.io\n"
-                 "Use a short-lived write:packages PAT. "
-                 "Never enter credentials in this terminal. Publisher removes only the temporary auth file after the attempt."),
+                 "After confirmation, Skopeo will request your GitHub username and short-lived write:packages PAT "
+                 "in this terminal, inside the publisher VM. The password prompt is hidden; "
+                 "the controller never reads credentials. Publisher removes only the temporary auth file after the attempt."),
                 ("verify-public", "Make ALL six GHCR packages public in GitHub package settings now; then verify exact manifests/configs anonymously. No push is repeated."),
             ):
                 machine = builder if phase in ("builder-prepare", "build") else publisher
@@ -186,6 +207,8 @@ def _execute(directory, owner, base, *, epoch=0, factory=FixtureVM, consent=conf
                     (raw / "lock.json").chmod(0o600)
                 else:
                     require(digest_file(store.path / "images.tar") == state["build"]["archive"], "fixture-archive-changed")
+                    if phase == "publish":
+                        publisher.login()
                     result = publisher.publish(store.path) if phase == "publish" else publisher.verify_public()
                     require(set(result) == {"references"} and result["references"] == {
                         role: plan["images"][role]["repository"] + "@sha256:" +
