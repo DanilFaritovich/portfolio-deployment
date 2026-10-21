@@ -65,6 +65,39 @@
             "minItems": 1,
             "maxItems": 1,
             "uniqueItems": true
+          },
+          "staticSite": {
+            "description": "Optional single-component stateless HTTP contract; artifact origin still needs external evidence.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "component": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                "maxLength": 32
+              },
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "readinessPath": {
+                "type": "string",
+                "pattern": "^/(?:[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*(?:/[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*)*/?)?(?![\\s\\S])",
+                "maxLength": 256
+              },
+              "buildOrigin": {
+                "type": "string",
+                "pattern": "^https://(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?(?![\\s\\S])",
+                "maxLength": 261
+              }
+            },
+            "required": [
+              "component",
+              "port",
+              "readinessPath",
+              "buildOrigin"
+            ]
           }
         },
         "required": [

@@ -58,8 +58,9 @@ before runtime integration. Each component is single-instance in v1.
 
 ## Admission policy
 
-[policy/admission.yaml](../policy/admission.yaml) starts with an empty allowlist.
-It has the same `apiVersion`, `kind: AdmissionPolicy`, and `applications: []`.
+[policy/admission.yaml](../policy/admission.yaml) has the same `apiVersion` and
+`kind: AdmissionPolicy`. Stage 09.1 proposes narrow ProjectRouter eligibility;
+the real application registry remains empty until artifact evidence is reviewed.
 Each entry requires:
 
 - `id`, `sourceRepository`: exact application identity and source.
@@ -74,12 +75,22 @@ extend its own permissions. Any policy change requires separate security review;
 reviewer authorization, branch protection and CI enforcement are deferred to
 later stages. Offline validation cannot prove that a reviewer is authorized.
 
+An optional closed `staticSite` object requires `component`, integer `port`, safe
+`readinessPath` and `buildOrigin` (HTTPS hostname only). Its image-map component
+key and sole admitted hostname must match. Admitted manifests must contain exactly
+that HTTP component/health/ingress, stateless storage and no runtime references,
+dependencies or mounts. It constrains declarations even when disabled; artifact
+origin/provenance and release authorization need independent evidence. See
+[production contracts/security](production-contracts.md) and the
+[inactive template](templates/project-router.yaml). This is an additive admission
+constraint; it does not relax existing validation or grant execution rights.
+
 OCI image-manifest and image-index digests share the same accepted syntax.
 Existence, access, provenance, index contents and platform compatibility require
 future deployment preflight. Third-party infrastructure images require an
 explicitly approved GHCR source. Real ProjectRouter registration waits for a
-confirmed digest and known routing requirements; no production hostname is
-invented and synthetic fixtures must not be promoted into the real registry.
+verified digest built for `https://danil-miftakhov.dev`; the confirmed production
+hostname is `danil-miftakhov.dev`. Synthetic fixtures must not be promoted into the real registry.
 
 ## Validation and API
 

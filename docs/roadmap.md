@@ -7,7 +7,7 @@ Stage 07 passed **15/15 real local VM E2E scenarios** in session `4963fe050c4567
 on 2026-10-21; all six GHCR fixture digests were published and anonymously verified.
 The Stage 07 implementation passed **779 offline tests**. Stage 08 adds offline
 PR CI, the Caddy retained-route regression fix and a manual successful-session VM
-completion procedure; its final offline check passed **785 tests**. Stage 09 and
+completion procedure; its final offline check passed **785 tests**. Stage 09.1 adds offline production contracts/security; Stages 09.2–09.5 and
 production execution remain **Planned**; the separate Stage 05 smoke was not run.
 Each stage needs its own scoped task, validation evidence and review. This roadmap
 does not authorize production actions, merges, release tags or changes to other
@@ -23,13 +23,14 @@ repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
 | Stage 06 — Health Checks, Rollback & Recovery | Readiness gates, last-known-good journal and bounded restoration | Implemented offline: bounded readiness, SQLite/LKG, constrained rollback, analysis-only crash recovery and composite interfaces; PR #6 merged into develop |
 | Stage 07 — Local E2E & Integration Testing | Isolated end-to-end registration/update/failure/recovery scenarios | Implemented and accepted: 15/15 real local VM scenarios passed; 6/6 GHCR digests verified; no production deployment, VPS/DNS/real certificates |
 | Stage 08 — GitHub Actions & Automation | Offline PR CI for develop/main, actionlint, retained-route fix and manual evidence-first VM completion | Implemented offline; 785 tests; VM export/stop/deletion unperformed; branch rules manual; production triggers remain gated |
-| Stage 09 — Production Integration & Release | Separately authorized host integration, DNS/TLS, controlled rollout and release process | Planned; operator acceptance and explicit permissions required |
+| Stage 09.1 — Production Contracts & Security | Producer audit, inactive template, narrow admission, manual protected-source policy | Implemented offline; no verified production digest or VDS contact |
+| Stage 09.2–09.5 — Production Integration & Release | Read-only diagnostics, adapters/Caddy, first rollout, update/rollback and release | Planned; stage-specific prerequisites and explicit permissions required |
 
 Stage 02 defines the [v1 application and admission contracts](manifest-v1.md),
 accepts immutable OCI manifest/index digests with explicit `linux/amd64`, and
 provides a bounded Python/PyYAML/jsonschema validator with offline pytest fixtures.
-The real registry/policy are empty pending reviewed applications and confirmed
-artifacts. Validator tooling does not choose the future controller language.
+The real registry is empty pending a confirmed origin-bound artifact. Stage 09.1
+admission reserves ProjectRouter identity/source/image/hostname and runtime contract. Validator tooling does not choose the future controller language.
 
 Stage 03 implements [offline reconciliation planning](reconciliation-planning.md):
 deeply immutable models, bounded closed snapshots, component-scoped diffs, route
@@ -56,7 +57,7 @@ resumed. Composite sources have offline contracts/fakes; Stage 07 adds VM-only r
 PR #6 is merged into `develop`.
 
 Before production execution, decide full fresh observation and real readiness
-transports, protected production source/release policy, runtime configuration
+transports, protected production source enforcement, runtime configuration
 delivery, OCI index mapping, durable local storage/retention, backups and recovery
 ownership. Stage 07 implements [disposable Ubuntu VM E2E infrastructure](local-e2e.md),
 separate prepare/images/run/diagnose/clean opt-ins, independently collected
@@ -73,3 +74,13 @@ setup, required GitHub checks and separate export/review/stop/delete boundaries.
 No existing VM is deleted by implementation or CI. Historical failed sessions and
 recovery fences remain unchanged; no new recovery framework or production trigger
 is introduced.
+
+Stage 09.1 [production contracts/security](production-contracts.md) audits the
+producer at an exact GitHub revision and keeps its untranslated sample out of the
+registry. The manager keeps canonical resource names and alias, pins `/en/`
+readiness and admits only the confirmed hostname/source/image/platform.
+Manual approval from protected `main` is selected; enforcement and exact-SHA
+validation must be established before production. The document defines concrete
+inputs/acceptance for 09.2 read-only diagnostics, 09.3 production adapters/Caddy
+(including missing runtime hardening), 09.4 first rollout and 09.5 update, rollback,
+acceptance/release. None is authorized by ordinary merge or successful offline CI.

@@ -235,7 +235,10 @@ def test_separate_registry_admission_and_no_reuse(registry, images):
     assert len(desired.applications) == 9
     assert all(a.id.startswith("e2e-") for a in desired.applications)
     policy = Path(__file__).absolute().parents[1] / "policy/admission.yaml"
-    assert yaml.safe_load(policy.read_text())["applications"] == []
+    production = yaml.safe_load(policy.read_text())["applications"]
+    assert not {a.id for a in desired.applications} & {p["id"] for p in production}
+    production_images = {repo for p in production for repos in p["imageRepositories"].values() for repo in repos}
+    assert not {reference.split("@")[0] for reference in images.records.values()} & production_images
     with pytest.raises(FileExistsError):
         create_registry(registry, images)
     change_image(registry, "e2e-app", images.records["v2"])
