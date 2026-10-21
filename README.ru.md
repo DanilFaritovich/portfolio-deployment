@@ -187,8 +187,15 @@ SMOKE_AUTHORIZE=disposable-local-docker. `check` никогда его не вы
 Успех Compose — `applied-unverified`; timeout/disconnect — `unknown` с обязательным
 fresh discovery. Readiness и release success остаются неподтверждёнными.
 
-GitHub Actions до Stage 07 включительно не настроен; CI — Planned в Stage 08.
-Targets `verify`, `ci`, deploy и production apply отсутствуют. Успешные offline
+Stage 08 добавляет offline GitHub Actions для PR в `develop` и `main`: закреплённые
+Python/tools, pip cache, минимальные read permissions, `make check` и
+`make workflow-check` (actionlint). Отдельный `make ci` не нужен. Реальные VM/E2E,
+Docker, публикация образов и деплой в CI не запускаются. Required check
+**Offline CI / Offline checks** нужно вручную включить в branch rules GitHub.
+См. [Stage 08](docs/stage-08-automation.md): установка инструментов и ручная процедура
+экспорта/проверки evidence успешной сессии перед отдельно подтверждаемыми остановкой
+и удалением VM. Процедура ещё не выполнялась; существующие VM сохранены.
+Targets `verify`, deploy и production apply отсутствуют. Успешные offline
 проверки не доказывают live Docker, HTTPS, reconciliation или rollback.
 
 ## Стандарты разработки и Git delivery
@@ -228,7 +235,7 @@ references; читать references нужно только для текуще�
 | Stage 05 | Docker Deployment Engine | Implemented foundation; PR #5 merged; smoke not-performed; production apply blocked |
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Реализован; реальный локальный VM E2E пройден, 15/15; production acceptance ожидается |
-| Stage 08 | GitHub Actions & Automation | Planned |
+| Stage 08 | GitHub Actions & Automation | Реализован офлайн; ручная процедура завершения VM ожидает live review |
 | Stage 09 | Production Integration & Release | Planned |
 
 Stage 05 выбирает Python CLI без изменений контрактов Stage 02–04. Реальному
@@ -281,7 +288,7 @@ CLI: `python -m scripts.e2e.cli`; отдельные prepare/images/test/status/
 **Подтверждённая локальная приёмка (2026-10-21):** сессия `4963fe050c4567f2`, receipt
 `complete/passed`, `realE2E=performed`, **15/15 реальных сценариев passed**; принятая
 реализация также прошла **779 offline tests**. Production deployment не выполнялся,
-Stages 08–09 остаются Planned. Предыдущие неудачные попытки и evidence их закрытия
+Stage 08 добавляет offline CI; Stage 09 остаётся Planned. Предыдущие неудачные попытки и evidence их закрытия
 сохранены; journals намеренных crash/unknown сценариев остаются analysis-only,
 без replay. См. [результаты приёмки и историю](docs/local-e2e.md#verified-local-acceptance).
 

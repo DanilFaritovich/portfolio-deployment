@@ -5,7 +5,9 @@ offline; Stage 05 adds a constrained engine foundation and opt-in local smoke.
 Stage 06 adds offline readiness, SQLite journal/LKG and constrained recovery.
 Stage 07 passed **15/15 real local VM E2E scenarios** in session `4963fe050c4567f2`
 on 2026-10-21; all six GHCR fixture digests were published and anonymously verified.
-The accepted implementation passed **779 offline tests**. Stages 08–09 and
+The Stage 07 implementation passed **779 offline tests**. Stage 08 adds offline
+PR CI, the Caddy retained-route regression fix and a manual successful-session VM
+completion procedure; its final offline check passed **785 tests**. Stage 09 and
 production execution remain **Planned**; the separate Stage 05 smoke was not run.
 Each stage needs its own scoped task, validation evidence and review. This roadmap
 does not authorize production actions, merges, release tags or changes to other
@@ -20,7 +22,7 @@ repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
 | Stage 05 — Docker Deployment Engine | Deterministic Compose, Docker discovery, preflight, scoped executor, locking and idempotency | Implemented foundation with offline mocks; local smoke not-performed; production apply blocked pending full observation integration; PR #5 merged into develop |
 | Stage 06 — Health Checks, Rollback & Recovery | Readiness gates, last-known-good journal and bounded restoration | Implemented offline: bounded readiness, SQLite/LKG, constrained rollback, analysis-only crash recovery and composite interfaces; PR #6 merged into develop |
 | Stage 07 — Local E2E & Integration Testing | Isolated end-to-end registration/update/failure/recovery scenarios | Implemented and accepted: 15/15 real local VM scenarios passed; 6/6 GHCR digests verified; no production deployment, VPS/DNS/real certificates |
-| Stage 08 — GitHub Actions & Automation | Deterministic offline PR CI, exact-revision gates and reviewed trigger policy | Planned; production automation remains gated |
+| Stage 08 — GitHub Actions & Automation | Offline PR CI for develop/main, actionlint, retained-route fix and manual evidence-first VM completion | Implemented offline; 785 tests; VM export/stop/deletion unperformed; branch rules manual; production triggers remain gated |
 | Stage 09 — Production Integration & Release | Separately authorized host integration, DNS/TLS, controlled rollout and release process | Planned; operator acceptance and explicit permissions required |
 
 Stage 02 defines the [v1 application and admission contracts](manifest-v1.md),
@@ -64,3 +66,10 @@ See [acceptance evidence and earlier failed attempts](local-e2e.md#verified-loca
 Local VM acceptance does not verify or authorize production deployment.
 No project license has been chosen;
 resolve it before project release.
+
+Stage 08 uses `make check` and `make workflow-check`, without a redundant `ci`
+alias. [Automation and VM completion](stage-08-automation.md) documents pinned tool
+setup, required GitHub checks and separate export/review/stop/delete boundaries.
+No existing VM is deleted by implementation or CI. Historical failed sessions and
+recovery fences remain unchanged; no new recovery framework or production trigger
+is introduced.

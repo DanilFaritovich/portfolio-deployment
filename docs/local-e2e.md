@@ -5,8 +5,8 @@ passed** on 2026-10-21. All **6/6 GHCR fixture digests** were published and
 anonymously verified. The accepted implementation passed **779 offline tests**.
 Production deployment was not performed; local VM acceptance does not establish
 VPS, DNS, production TLS or production recovery readiness.
-Stage 06 PR #6 is merged into `develop`. Stage 08 GitHub Actions and Stage 09
-production integration remain Planned. The production registry/policy stay empty.
+Stage 06 PR #6 is merged into `develop`. Stage 08 adds offline GitHub Actions;
+Stage 09 production integration remains Planned. The production registry/policy stay empty.
 
 ## Verified local acceptance
 
@@ -16,7 +16,7 @@ production integration remain Planned. The production registry/policy stay empty
 | Tested implementation revision | `35af4761ee80d32e657174e08dd086a12022562d`, before subsequent documentation-only commits |
 | Fixture session | `5b780834b80ffe9e`: `complete/passed`; six images built, published to GHCR and anonymously verified by immutable digest; subsequent E2E attempts reused them |
 | Offline validation | `make check PYTHON=.venv/bin/python`: 779 passed, with bootstrap and registry validation passing; separate evidence from real E2E |
-| Production | Not deployed or accepted; Stages 08–09 remain Planned |
+| Production | Not deployed or accepted; Stage 09 remains Planned |
 
 Private host evidence is retained under `~/.local/share/portfolio-deployment/`:
 `e2e-state-agent.uZQWee44/4963fe050c4567f2.json` contains the final receipt and all
@@ -548,7 +548,7 @@ Live evidence assumes an honest dedicated VM administrator/Engine/Caddy and a
 quiescent test host; repeated reads are not an atomic multi-source transaction.
 No production ref delivery, OCI index mapping, signatures, backups, disk-loss
 recovery, TLS/DNS, remote observation, production execution policy or shared-host
-isolation is established. Stage 08 adds separately scoped offline CI/automation;
+isolation is established. Stage 08 adds [offline CI and manual successful-session completion](stage-08-automation.md);
 Stage 09 needs reviewed production source/permissions, real host evidence,
 configuration/secrets delivery, artifact retention and operator acceptance.
 
@@ -874,3 +874,12 @@ Other phases remain blocked for a separately scoped recovery procedure.
    fixture directory. The old directory remains evidence and cannot be replayed.
    A new directory before closure does not bypass the global fence. Removing or
    replacing that fence/lock is not a recovery operation.
+
+## Successful-session VM completion
+
+Stage 08 documents a [manual evidence-first completion procedure](stage-08-automation.md#manual-successful-session-completion--review-before-execution):
+require complete/passed and matching VM identity, exclude active controllers,
+retain host/guest evidence with integrity checks outside the VM, then separately
+authorize stop and permanent deletion of only the selected VM. No deletion
+automation or automatic cleanup after failure is added. The procedure has not
+been executed; existing VM evidence and failed-session fences are retained.
