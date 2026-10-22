@@ -18,11 +18,16 @@ BUILD_ORIGIN = 'https://github.com/' + PRODUCER + '/attestations/build-origin/v1
 
 class AuthenticatedReleaseCollector:
     def __init__(self, candidate, *, github, registry, crypto, checks, signer_sha,
-                 builder, slsa_builder, manifest_path='registry/applications/project-router.yaml'):
+                 builder, slsa_builder, publication_check, manifest_path='registry/applications/project-router.yaml'):
         candidate.validate()
         self.candidate, self.github, self.registry, self.crypto = candidate, github, registry, crypto
         self.checks, self.signer_sha, self.builder = tuple(checks), signer_sha, builder
         self.workflow = '.github/workflows/publish.yml'
+        publication_check.validate()
+        require(publication_check.repository == PRODUCER and
+                publication_check.workflow == '.github/workflows/ci.yml',
+                'production-release-workflow-policy-invalid')
+        self.publication_check = publication_check
         self.slsa_builder = slsa_builder
         require(isinstance(slsa_builder, str) and slsa_builder.startswith('https://github.com/') and
                 len(slsa_builder) <= 256, 'production-release-builder-policy-invalid')
@@ -68,7 +73,8 @@ class AuthenticatedReleaseCollector:
         publication = None
         for repo, sha in ((PRODUCER, c.producer_sha), (MANAGER, c.manager_sha)):
             run = source.collect(repo, sha, [p for p in self.checks if p.repository == repo],
-                                 self.workflow if repo == PRODUCER else None)
+                                 self.publication_check if repo == PRODUCER else None,
+                                 self.signer_sha, self.workflow)
             if repo == PRODUCER:
                 publication = run
         manifest_hash = self._content_hash(self.manifest_path)

@@ -60,11 +60,23 @@ def fixture():
                'head_repository': metadata, 'check_suite_id': 20}
         runs = [run]
         if repo == PRODUCER:
-            runs.append(dict(run, id=101, path='.github/workflows/publish.yml', check_suite_id=21))
+            run['referenced_workflows'] = [{'path': repo+'/.github/workflows/publish.yml@'+sha,
+                                           'sha': sha, 'ref': 'refs/heads/main'}]
         docs[repo, '/actions/runs?head_sha='+sha+'&per_page=100'] = {'total_count': len(runs), 'workflow_runs': runs}
         docs[repo, '/commits/'+sha+'/check-runs?filter=latest&per_page=100'] = {'total_count': 1, 'check_runs': [
             {'name': 'ci', 'head_sha': sha, 'status': 'completed', 'conclusion': 'success',
              'app': {'id': 15368}, 'check_suite': {'id': 20}}]}
+    publication = {'id': 200, 'name': 'Publish validated image / publish', 'head_sha': c.producer_sha,
+                   'status': 'completed', 'conclusion': 'success', 'app': {'id': 15368},
+                   'check_suite': {'id': 20},
+                   'details_url': 'https://github.com/'+PRODUCER+'/actions/runs/100/job/200'}
+    checks_doc = docs[PRODUCER, '/commits/'+c.producer_sha+'/check-runs?filter=latest&per_page=100']
+    checks_doc['check_runs'].append(publication)
+    checks_doc['total_count'] = 2
+    docs[PRODUCER, '/actions/runs/100/attempts/1/jobs?per_page=100'] = {'total_count': 1, 'jobs': [
+        {'id': 200, 'name': publication['name'], 'run_id': 100, 'run_attempt': 1,
+         'head_sha': c.producer_sha, 'status': 'completed', 'conclusion': 'success',
+         'check_run_url': 'https://api.github.com/repos/'+PRODUCER+'/check-runs/200'}]}
     for path, raw in (('registry/applications/project-router.yaml', b'manifest'), ('policy/admission.yaml', b'policy')):
         docs[MANAGER, '/contents/'+path+'?ref='+c.manager_sha] = {'type': 'file', 'path': path,
                 'encoding': 'base64', 'size': len(raw), 'content': base64.b64encode(raw).decode()}
@@ -103,7 +115,8 @@ def fixture():
     checks = tuple(WorkflowCheck(r, 'ci', 15368, '.github/workflows/ci.yml') for r in (PRODUCER, MANAGER))
     collector = AuthenticatedReleaseCollector(c, github=github, registry=GHCRRead(transport), crypto=crypto,
                 checks=checks, signer_sha=c.producer_sha, builder=builder,
-                slsa_builder='https://github.com/actions/runner/github-hosted')
+                slsa_builder='https://github.com/actions/runner/github-hosted',
+                publication_check=WorkflowCheck(PRODUCER, 'Publish validated image / publish', 15368, '.github/workflows/ci.yml'))
     verifier = ReleaseVerifier(c, required_checks=[(p.repository, p.name, p.app_id) for p in checks],
                                allowed_builders=[builder], collector=collector)
     request = SourceRequest(PRODUCER, c.producer_sha, c.manager_sha, image, ORIGIN)
@@ -114,7 +127,7 @@ def test_authenticated_round_through_release_verifier():
     c, docs, transport, crypto, verifier, request = fixture()
     assert not verifier.verify(request).blockers
     assert crypto.called
-    assert crypto.expectations[1]['expectedPredicate']['runId'] == '101'
+    assert crypto.expectations[1]['expectedPredicate']['runId'] == '100'
     assert len(transport.calls) < 64
 
 
@@ -144,13 +157,13 @@ def test_collection_fails_closed(failure):
     if failure == 'check-workflow': runs['workflow_runs'][0]['path'] = '.github/workflows/evil.yml'
     if failure == 'check-event': runs['workflow_runs'][0]['event'] = 'pull_request'
     if failure == 'check-repository': runs['workflow_runs'][0]['repository'] = {'id': 42, 'full_name': 'evil/repo'}
-    if failure == 'publish-event': runs['workflow_runs'][1]['event'] = 'workflow_dispatch'
-    if failure == 'publish-workflow': runs['workflow_runs'][1]['path'] = '.github/workflows/other.yml'
-    if failure == 'publish-sha': runs['workflow_runs'][1]['head_sha'] = '0'*40
+    if failure == 'publish-event': runs['workflow_runs'][0]['event'] = 'workflow_dispatch'
+    if failure == 'publish-workflow': runs['workflow_runs'][0]['path'] = '.github/workflows/other.yml'
+    if failure == 'publish-sha': runs['workflow_runs'][0]['head_sha'] = '0'*40
     if failure in ('rate-limit', 'timeout', 'unknown-rules'):
         docs[PRODUCER, '/rules/branches/main?per_page=100'] = DockerError('production-release-api-'+failure)
     if failure == 'incomplete': del checks['check_runs'][0]['app']
-    if failure == 'partial-checks': checks['total_count'] = 2
+    if failure == 'partial-checks': checks['total_count'] = 3
     if failure == 'partial-runs': runs['total_count'] = 3
     if failure == 'content': docs[MANAGER, '/contents/policy/admission.yaml?ref='+c.manager_sha]['content'] = 'ZXZpbA=='
     if failure in ('unsigned', 'bad-signature'):
@@ -173,7 +186,7 @@ def test_collection_fails_closed(failure):
         verifier.verify(request)
 
 
-@pytest.mark.parametrize('change', ['sourceSha', 'buildArguments', 'runId', 'subject', 'predicate'])
+@pytest.mark.parametrize('change', ['sourceSha', 'buildArguments', 'runId', 'runAttempt', 'originOutputVerified', 'subject', 'predicate'])
 def test_signed_selector_rejects_substitutions(change):
     c, docs, transport, crypto, verifier, request = fixture()
     verifier.verify(request)
@@ -184,6 +197,8 @@ def test_signed_selector_rejects_substitutions(change):
     if change == 'sourceSha': statement['predicate']['sourceSha'] = '0'*40
     if change == 'buildArguments': statement['predicate']['buildArguments']['VITE_SITE_ORIGIN'] = 'https://evil.test'
     if change == 'runId': statement['predicate']['runId'] = '666'
+    if change == 'runAttempt': statement['predicate']['runAttempt'] = '2'
+    if change == 'originOutputVerified': statement['predicate']['originOutputVerified'] = False
     if change == 'subject': statement['subject'][0]['digest']['sha256'] = '0'*64
     if change == 'predicate': statement['predicateType'] = SLSA
     raw = encode([{'verificationResult': {'statement': statement}}]).encode()
@@ -338,3 +353,122 @@ def test_ghcr_redirect_never_forwards_credentials(target):
     else:
         with pytest.raises(DockerError): transport.get('https://ghcr.io/v2/owner/repo/blobs/sha256:abc', {})
         assert len(calls) == 1
+
+
+@pytest.mark.parametrize('change', [
+    'missing', 'duplicate-job', 'failed', 'skipped', 'cancelled', 'attempt', 'run', 'sha',
+    'job-url', 'check-id', 'check-app', 'check-suite', 'check-url', 'check-failed',
+    'reference-missing', 'reference-sha', 'reference-path', 'reference-ref', 'duplicate-run', 'partial-jobs',
+])
+def test_publication_requires_exact_reusable_job_and_check(change):
+    c, docs, transport, crypto, verifier, request = fixture()
+    jobs = docs[PRODUCER, '/actions/runs/100/attempts/1/jobs?per_page=100']
+    job = jobs['jobs'][0]
+    checks = docs[PRODUCER, '/commits/'+c.producer_sha+'/check-runs?filter=latest&per_page=100']
+    check = checks['check_runs'][1]
+    runs = docs[PRODUCER, '/actions/runs?head_sha='+c.producer_sha+'&per_page=100']
+    run = runs['workflow_runs'][0]
+    if change == 'missing': jobs.update(total_count=0, jobs=[])
+    if change == 'duplicate-job': jobs['jobs'].append(copy.deepcopy(job)); jobs['total_count'] = 2
+    if change in ('failed', 'skipped', 'cancelled'): job['conclusion'] = change
+    if change == 'attempt': job['run_attempt'] = 2
+    if change == 'run': job['run_id'] = 101
+    if change == 'sha': job['head_sha'] = '0'*40
+    if change == 'job-url': job['check_run_url'] = 'https://evil.test/check-runs/200'
+    if change == 'check-id': check['id'] = 201
+    if change == 'check-app': check['app']['id'] = 999
+    if change == 'check-suite': check['check_suite']['id'] = 21
+    if change == 'check-url': check['details_url'] = check['details_url'].replace('/100/', '/101/')
+    if change == 'check-failed': check['conclusion'] = 'failure'
+    if change == 'reference-missing': run['referenced_workflows'] = []
+    if change == 'reference-sha': run['referenced_workflows'][0]['sha'] = '0'*40
+    if change == 'reference-path': run['referenced_workflows'][0]['path'] = 'evil/repo/.github/workflows/publish.yml@'+c.producer_sha
+    if change == 'reference-ref': run['referenced_workflows'][0]['ref'] = 'refs/heads/develop'
+    if change == 'duplicate-run': runs['workflow_runs'].append(dict(run, id=101)); runs['total_count'] = 2
+    if change == 'partial-jobs': jobs['total_count'] = 2
+    with pytest.raises(DockerError): verifier.verify(request)
+    assert not crypto.called
+
+
+def test_real_api_reusable_structure_is_regression_data_only():
+    """Use captured structure with synthetic source/candidate; never install real IDs as policy."""
+    c, docs, transport, crypto, verifier, request = fixture()
+    captured = json.loads((ROOT/'fixtures/release/reusable-publication.json').read_text())
+    run = captured['run']
+    source_sha = run['head_sha']
+    # Rebind captured source SHA to this test's candidate. The live IDs stay
+    # fixture evidence, not defaults inside the installation implementation.
+    raw = json.dumps(captured).replace(source_sha, c.producer_sha)
+    captured = json.loads(raw)
+    run = captured['run']
+    metadata = docs[PRODUCER, '']
+    run.update(repository=metadata, head_repository=metadata)
+    docs[PRODUCER, '/actions/runs?head_sha='+c.producer_sha+'&per_page=100'] = {'total_count': 1, 'workflow_runs': [run]}
+    docs[PRODUCER, '/actions/runs/'+str(run['id'])+'/attempts/1/jobs?per_page=100'] = captured['jobs']
+    docs[PRODUCER, '/commits/'+c.producer_sha+'/check-runs?filter=latest&per_page=100'] = captured['checks']
+    docs[PRODUCER, '/branches/main/protection']['required_status_checks']['checks'][0]['context'] = 'Quality and static build'
+    verifier.collector.checks = (WorkflowCheck(PRODUCER, 'Quality and static build', 15368, '.github/workflows/ci.yml'),
+                                verifier.collector.checks[1])
+    verifier.required_checks = frozenset((p.repository, p.name, p.app_id) for p in verifier.collector.checks)
+    assert not verifier.verify(request).blockers
+    assert crypto.expectations[1]['expectedPredicate']['runId'] == str(run['id'])
+    assert crypto.expectations[1]['expectedPredicate']['runAttempt'] == str(run['run_attempt'])
+
+
+def test_manager_develop_sha_blocks_before_artifacts_or_crypto():
+    c, docs, transport, crypto, verifier, request = fixture()
+    docs[MANAGER, '/compare/'+c.manager_sha+'...'+c.manager_sha]['status'] = 'behind'
+    with pytest.raises(DockerError, match='^production-release-sha-not-on-main$'):
+        verifier.verify(request)
+    assert not crypto.called
+    assert all('ghcr.io/' not in url and '/attestations/' not in url for url, _ in transport.calls)
+
+
+def readiness_installation(tmp_path, monkeypatch):
+    from scripts.production_integration import release_readiness as module
+    c, docs, transport, crypto, verifier, request = fixture()
+    pinned = installed_crypto(tmp_path)
+    installation = module.ReleaseInstallation(c, verifier.collector.checks, verifier.collector.publication_check,
+        c.producer_sha, verifier.collector.builder, verifier.collector.slsa_builder,
+        pinned.binary, pinned.binary_hash, pinned.root, pinned.root_hash)
+    monkeypatch.setattr(module, 'HTTPSRead', lambda: transport)
+    monkeypatch.setattr(module, 'AttestationVerifier', lambda *args: crypto)
+    return module, installation, docs, transport, crypto
+
+
+@pytest.mark.parametrize('mode', ['no-opt-in', 'truthy-opt-in', 'json-installation', 'missing-pin', 'bad-root',
+                                  'token', 'manager-main', 'denied', 'secret-error', 'success'])
+def test_read_only_readiness_is_opt_in_redacted_and_never_authorizes(tmp_path, monkeypatch, mode):
+    module, installation, docs, transport, crypto = readiness_installation(tmp_path, monkeypatch)
+    opt_in = True
+    token = 'test_read_only'
+    if mode == 'no-opt-in': opt_in = False
+    if mode == 'truthy-opt-in': opt_in = 1
+    if mode == 'json-installation': installation = {'reviewed': True}
+    if mode == 'missing-pin': installation = replace(installation, gh_sha256='')
+    if mode == 'bad-root': installation.trusted_root.write_bytes(b'unreviewed')
+    if mode == 'token': token = None
+    if mode == 'manager-main':
+        sha = installation.candidate.manager_sha
+        docs[MANAGER, '/compare/'+sha+'...'+sha]['status'] = 'diverged'
+    if mode == 'denied': docs[PRODUCER, ''] = DockerError('production-release-api-denied-or-rate-limited')
+    if mode == 'secret-error': docs[PRODUCER, ''] = DockerError('token=secret response text https://private.test')
+    report = module.check_release_readiness(installation, authorize_read_only=opt_in, github_token=token)
+    assert report['productionAuthorized'] is False and report['readOnly'] is True
+    assert report['releaseVerified'] is (mode == 'success')
+    assert set(report) == {'productionAuthorized', 'readOnly', 'releaseVerified', 'blockers'}
+    if mode != 'success': assert len(report['blockers']) == 1
+    if mode == 'manager-main': assert report['blockers'] == ['production-release-sha-not-on-main']
+    if mode == 'secret-error': assert report['blockers'] == ['production-release-readiness-unverified']
+    assert all(secret not in encode(report) for secret in ('secret', 'test_read_only', 'private.test', 'daemon', 'sha256:'))
+    if mode in ('no-opt-in', 'truthy-opt-in', 'json-installation', 'missing-pin', 'bad-root', 'token'):
+        assert not transport.calls and not crypto.called
+
+
+def test_readiness_uses_a_fresh_collection_and_never_saved_success(tmp_path, monkeypatch):
+    module, installation, docs, transport, crypto = readiness_installation(tmp_path, monkeypatch)
+    assert module.check_release_readiness(installation, authorize_read_only=True, github_token='test_read_only')['releaseVerified']
+    docs[PRODUCER, ''] = DockerError('production-release-api-denied-or-rate-limited')
+    report = module.check_release_readiness(installation, authorize_read_only=True, github_token='test_read_only')
+    assert report['blockers'] == ['production-release-api-denied-or-rate-limited']
+    assert report['productionAuthorized'] is False

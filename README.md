@@ -66,6 +66,13 @@ protected-main exact-SHA source/artifact/origin evidence, trusted live transport
 and operation approval. Stage 09.6 automated digest-update PR/CD is planned after
 safe manual rollout/rollback; no automatic CD is implemented here.
 
+[Stage 09.4B.2 release readiness](docs/production-release-source-trust.md) adds
+strict reusable publication run/job/check linkage and an opt-in read-only API
+using reviewed installation policy and pinned gh/Sigstore files. Reports always
+set `productionAuthorized=false`. Live verification requires separate permission
+and read-only credentials; it is never run by PR CI. Manager develop revisions
+outside protected main block verification pending a separate reviewed main merge.
+
 [How to add a new application](docs/application-acceptance.md): add one validated
 Application YAML with release metadata and obtain independent admission/security
 review. One manual **Application isolated acceptance** workflow checks artifact

@@ -29,7 +29,9 @@ journal is introduced. `artifacts.verify_oci_bytes` verifies raw bytes and exact
 `linux/amd64`, including descriptor sizes and media types. Hash linkage proves
 content identity; source authenticity requires the separate signed evidence.
 
-Installation is an explicit trusted-code composition, not a new CLI or workflow.
+Installation is an explicit trusted-code composition. The opt-in readiness API
+below provides the reviewed composition; the preview CLI and workflows do not
+install it.
 For a reviewed `OperationCandidate`, compose a fresh `HTTPSRead`, a `GitHubRead`
 with a separately supplied read-only token, `GHCRRead` over that transport, and an
 `AttestationVerifier` with absolute installed binary/root paths and independently
@@ -38,7 +40,11 @@ that collector on `ReleaseVerifier`. No network occurs in these constructors.
 Call `ReleaseVerifier.verify(SourceRequest(...))` for the exact candidate. Use a
 fresh transport/collector for each collection; no cache fallback exists.
 
-The collector requires reviewed `WorkflowCheck` objects for **both** repositories
+The collector requires a separate reviewed `publication_check: WorkflowCheck`
+for the producer job `Publish validated image / publish`, its issuing App ID and
+caller `.github/workflows/ci.yml` (`push`). This is distinct from required branch
+checks; it need not be a mandatory merge check. The collector also requires
+reviewed `WorkflowCheck` objects for **both** repositories
 (exact check name, positive issuing App ID, workflow path and `push` event),
 `signer_sha`, the exact signer identity
 `https://github.com/DanilFaritovich/project-router/.github/workflows/publish.yml@<signer-sha>`,
@@ -54,6 +60,68 @@ The manager candidate hashes are SHA256 of the exact raw manifest and
 disabled `docs/candidates/project-router.yaml`, selected in reviewed installation
 code. Verifying that candidate does not enable its application or modify admission.
 The full candidate identity remains bound by the existing `ReleaseVerifier`.
+
+## Separately authorized read-only readiness API
+
+`release_readiness.check_release_readiness` accepts only a `ReleaseInstallation`
+object constructed in independently reviewed installed Python code. Its fields
+bind the complete `OperationCandidate`, both repositories' required workflow/check/
+App policies, separate publication job policy, immutable signer identity, SLSA
+builder, manifest path and absolute gh/trust-root paths with SHA256 pins. No
+production installation/pins are shipped. A dataclass type is not proof of review:
+review and installation are the operator's trusted-code boundary under ADR 0001.
+Fixtures, request JSON, manifest booleans, arbitrary module/path flags and saved
+facts cannot configure this API. Do not copy synthetic test candidates or fixture
+identities into an installation.
+
+After separate operation permission and installation review, trusted operator code
+may call the following (the variables must already be provided by that installation;
+this is not an executable fixture/default configuration):
+
+```python
+from scripts.production_integration.release_readiness import check_release_readiness
+
+report = check_release_readiness(
+    reviewed_installation,
+    authorize_read_only=True,
+    github_token=read_only_token,
+)
+```
+
+The API refuses missing opt-in or an untyped configuration before network reads.
+It checks installed binary/root bytes against reviewed pins before any API request;
+`AttestationVerifier` rechecks private copies and gh version before cryptographic
+execution. Each call constructs a fresh bounded transport, the existing
+`AuthenticatedReleaseCollector` and `ReleaseVerifier`; no cached success is used.
+Read-only credentials must be supplied separately and must have the permissions
+listed below. The API cannot certify a token's grants; possession of a broader
+token never authorizes writes. Tokens are never read from environment defaults,
+CLI arguments or user gh configuration.
+
+The only output is `readOnly`, `releaseVerified`, `productionAuthorized` and
+`blockers`. `productionAuthorized` is **always false**, including on complete
+verification success. The first failure returns one allowlisted fixed blocker;
+unrecognized errors become `production-release-readiness-unverified`. Reports
+contain no candidate/facts hashes, SHAs, image/host identities, credentials, URLs,
+API payloads, bundles or verifier output. Nothing is persisted or installed in the
+executor. Missing opt-in reports `production-release-read-only-opt-in-required`;
+non-installation input reports `production-release-reviewed-installation-required`.
+
+This API is never called by `make check`, `production-integration-check` or PR CI.
+No live check was run for this change. Read-only inspection of public workflow/run/
+job/check metadata supplied the regression structure; this did not perform source
+policy, GHCR or signature verification. A live invocation requires separate
+permission, read-only credentials for both repositories, authenticated gh 2.102.0
+bytes and an independently verified, pinned Sigstore trust root.
+
+At task start, manager `develop` was
+`d1873294a995e8e620b5d189c3797cabd42d01d8`. Its history is not contained in protected `main`.
+`production-release-sha-not-on-main` must block; there is no develop/PR exception.
+A successful final check requires a **separate reviewed merge into main**, its
+required successful exact-SHA push checks, and a newly reviewed candidate bound
+to that protected-main manager revision and exact manifest/policy bytes. Merging
+this fix into develop alone does not satisfy the gate; no main merge is authorized
+by this task.
 
 ## GitHub evidence and conservative policy
 
@@ -81,12 +149,28 @@ The authenticated API must establish all of the following for each repository:
    ID. Its check-suite ID must link to exactly one successful run from the exact
    repository/head repository, SHA, `main`, workflow path and `push` event.
 5. Producer publication must be a successful unique same-SHA `push` run of
-   `.github/workflows/publish.yml` on `main`. The signed build-origin predicate
-   must bind its run ID and attempt, selected image digest and source SHA.
+   caller `.github/workflows/ci.yml` on `main`. Its `referenced_workflows` must
+   include the exact producer `publish.yml@<signer-sha>`, SHA and main ref.
+   Read `/actions/runs/<id>/attempts/<attempt>/jobs` with complete bounded paging;
+   require exactly one reviewed publication job, completed successfully at the
+   same run ID, attempt and source SHA. Link its numeric ID and fixed check URL
+   to the same-SHA successful check run, exact name, reviewed App ID, run check
+   suite and fixed job details URL. No response URL is followed.
+   The signed build-origin predicate must still bind **this caller run ID and
+   attempt**, selected image digest and source SHA. Neither a successful CI run,
+   reusable-workflow reference nor job status alone proves publication.
 6. Close the source read round with the same main response and revalidated
    protection. A moving head blocks. API sampling proves current policy as read,
    not historical policy at build time or an atomic GitHub snapshot. Later
    production operation authorization/freshness remains a separate boundary.
+
+Regression fixture `tests/fixtures/release/reusable-publication.json` minimizes
+public [run 39776962924](https://github.com/DanilFaritovich/project-router/actions/runs/39776962924):
+caller `ci.yml`, reusable `publish.yml`, successful job/check `119819781254`,
+check suite `107801677419`, attempt 1. The fixture records API structure only,
+not authenticated release facts or production pins. Signed build-origin evidence
+is still checked through the pinned verifier, including negative run/attempt,
+subject, origin and signature cases; no real signature verification is claimed.
 
 A 404 from classical protection can only be tolerated when adequate effective
 rulesets are independently readable. It cannot prove absence or grant permission.

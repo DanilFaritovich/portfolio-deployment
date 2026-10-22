@@ -96,7 +96,7 @@ class ProtectedSource:
         # repository policy; unknown workflows cannot be silently ignored.
         require(effective == required, 'production-release-required-check-policy-mismatch')
 
-    def collect(self, repo, sha, checks, publish=None):
+    def collect(self, repo, sha, checks, publish=None, signer_sha=None, signer_workflow=None):
         api = lambda path: self.github.get(repo, path)
         metadata = api('')
         require(metadata['full_name'] == repo and type(metadata['id']) is int and metadata['id'] > 0)
@@ -134,9 +134,38 @@ class ProtectedSource:
             require(len(linked) == 1, 'production-release-check-workflow-mismatch')
         publication = None
         if publish is not None:
-            matches = [r for r in runs if valid_run(r, publish, 'push')]
+            publish.validate()
+            require(publish.repository == repo and publish.event == 'push',
+                    'production-release-workflow-policy-invalid')
+            matches = [r for r in runs if valid_run(r, publish.workflow, publish.event)]
             require(len(matches) == 1, 'production-release-publication-unverified')
-            publication = (str(matches[0]['id']), str(matches[0]['run_attempt']))
+            run = matches[0]
+            references = bounded_items(run['referenced_workflows'])
+            require(sum(r.get('path') == repo + '/' + signer_workflow + '@' + signer_sha and
+                        r.get('sha') == signer_sha and r.get('ref') == 'refs/heads/main'
+                        for r in references) == 1, 'production-release-publication-unverified')
+            # Attempt-specific endpoint prevents mixing a prior successful job
+            # with a rerun. Never follow API-provided job/check URLs.
+            jobs = bounded_items(api('/actions/runs/' + str(run['id']) + '/attempts/' +
+                                     str(run['run_attempt']) + '/jobs?per_page=100'), 'jobs')
+            jobs = [j for j in jobs if j.get('name') == publish.name]
+            require(len(jobs) == 1, 'production-release-publication-unverified')
+            job = jobs[0]
+            require(type(job['id']) is int and job['id'] > 0 and job['run_id'] == run['id'] and
+                    job['run_attempt'] == run['run_attempt'] and job['head_sha'] == sha and
+                    job['status'] == 'completed' and job['conclusion'] == 'success',
+                    'production-release-publication-unverified')
+            linked = [c for c in observed if c.get('id') == job['id'] and c.get('name') == publish.name]
+            require(len(linked) == 1, 'production-release-publication-unverified')
+            check = linked[0]
+            require(check['head_sha'] == sha and check['status'] == 'completed' and
+                    check['conclusion'] == 'success' and check['app']['id'] == publish.app_id and
+                    type(check['app']['id']) is int and type(run['check_suite_id']) is int and
+                    run['check_suite_id'] > 0 and check['check_suite']['id'] == run['check_suite_id'] and
+                    job['check_run_url'] == 'https://api.github.com/repos/' + repo + '/check-runs/' + str(check['id']) and
+                    check['details_url'] == 'https://github.com/' + repo + '/actions/runs/' +
+                    str(run['id']) + '/job/' + str(job['id']), 'production-release-publication-unverified')
+            publication = (str(run['id']), str(run['run_attempt']))
         # Close the read round: a moving head or policy prevents authenticated
         # evidence issuance. These API reads are not a historical policy proof.
         require(api('/branches/main') == branch, 'production-release-source-changed')
