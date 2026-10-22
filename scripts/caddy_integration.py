@@ -32,7 +32,7 @@ def environment_guard(endpoint, authorization, env=None):
             env.get('RUNNER_OS') == 'Linux' and env.get('RUNNER_ARCH') == 'X64' and
             env.get('GITHUB_EVENT_NAME') == 'pull_request' and
             env.get('GITHUB_REPOSITORY') == 'DanilFaritovich/portfolio-deployment' and
-            platform.system() == 'Linux' and platform.machine() == 'x86_64',
+            platform.system() == 'Linux' and platform.machine() == 'x86_64' and os.geteuid() == 0,
             'caddy-disposable-github-runner-required')
 
 
@@ -161,9 +161,16 @@ class CaddyHarness(Harness):
         (config / 'invalid.Caddyfile').write_text('{ invalid_directive }\n')
         self.docker('network', 'create', '--internal', '--label', LABEL + '.test-session=' + self.session,
                     self.artifact.model['networks']['proxy']['name'])
-        self.stage = 'startup'
+        self.observations['privateMountOwnershipMatchesImage'] = all(
+            Path(m['source']).stat().st_uid == 0 and Path(m['source']).stat().st_gid == 0 and
+            Path(m['source']).stat().st_mode & 0o777 == 0o700
+            for m in self.artifact.model['services']['caddy']['volumes'])
+        require(self.observations['privateMountOwnershipMatchesImage'], 'caddy-private-storage-owner-mismatch')
+        self.stage = 'compose-validation'
         self.compose(self.artifact.model, 'config', '--quiet')
+        self.stage = 'startup'
         self.compose(self.artifact.model, 'up', '-d', '--no-build', '--pull', 'never')
+        self.stage = 'initial-readiness'
         self.ready()
         doc = self.inspect('container', self.container)
         codes = self.verify(doc)

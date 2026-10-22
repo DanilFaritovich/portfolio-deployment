@@ -32,6 +32,7 @@ def runner_env():
 
 @pytest.mark.parametrize('field', list(runner_env()))
 def test_environment_rejects_missing_or_wrong_host(field, monkeypatch):
+    monkeypatch.setattr(c.os, 'geteuid', lambda: 0)
     monkeypatch.setattr(c.platform, 'system', lambda: 'Linux')
     monkeypatch.setattr(c.platform, 'machine', lambda: 'x86_64')
     env = runner_env()
@@ -259,3 +260,11 @@ def test_observed_caddy_engine_projection_and_official_alias(tmp_path):
     for key, value in (('User', '0'), ('User', None), ('Entrypoint', []), ('Entrypoint', ['sh'])):
         with pytest.raises(DockerError):
             bind_caddy_engine(runtime, evidence, {**inspected, 'Config': {**projected, key: value}})
+
+
+def test_nonroot_runner_refuses_private_root_storage(monkeypatch):
+    monkeypatch.setattr(c.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(c.platform, 'machine', lambda: 'x86_64')
+    monkeypatch.setattr(c.os, 'geteuid', lambda: 1001)
+    with pytest.raises(IntegrationFailure):
+        c.environment_guard('unix:///var/run/docker.sock', c.AUTHORIZATION, runner_env())
