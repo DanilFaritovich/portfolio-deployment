@@ -178,3 +178,9 @@ acceptance-check:
 export RUNTIME_TEST_ENDPOINT RUNTIME_TEST_AUTHORIZE
 runtime-integration-test:
 	@$(PYTHON) -c 'import os,sys; from scripts.runtime_integration import main; sys.exit(main(["--endpoint",os.environ.get("RUNTIME_TEST_ENDPOINT",""),"--authorize",os.environ.get("RUNTIME_TEST_AUTHORIZE","")]))'
+
+# Explicitly authorized ephemeral GitHub-hosted PR runner only; no host ports.
+.PHONY: caddy-integration-test
+export CADDY_TEST_ENDPOINT CADDY_TEST_AUTHORIZE
+caddy-integration-test:
+	@$(PYTHON) -c 'import os,sys; from scripts.caddy_integration import main; sys.exit(main(["--endpoint",os.environ.get("CADDY_TEST_ENDPOINT",""),"--authorize",os.environ.get("CADDY_TEST_AUTHORIZE","")]))'

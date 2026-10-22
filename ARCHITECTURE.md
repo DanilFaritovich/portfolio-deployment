@@ -697,3 +697,32 @@ no exception text, logs, response bodies or full inspect data enter these diagno
 Offline CI validates declarations and mocks; no real universal acceptance or
 production operation was run in this task. See [adding applications](docs/application-acceptance.md)
 and [ProjectRouter's remaining blockers](docs/project-router-acceptance.md).
+
+## Stage 09.4B.1 Caddy runtime acceptance boundary
+
+[Isolated Caddy acceptance](docs/caddy-runtime-acceptance.md) adds a dedicated
+opt-in GitHub-hosted PR harness over `CaddyRuntime.render()`, the existing image
+contract, shared OCI byte mapper/Engine binding and session-scoped Docker helpers.
+`production_integration/caddy_runtime.py` compares gateway-specific Engine fields
+with fixed diagnostics; it grants no active-gateway attestation or production
+write capability. The application runtime verifier/admission remain unchanged.
+No second gateway controller, Compose renderer or deployment engine is introduced.
+
+The official Caddy 2.11.7 amd64 index/manifest/config bytes are pinned in separate
+acceptance fixtures. Raw bytes/provenance statements establish content linkage;
+cryptographic build-origin verification remains a production blocker. The harness
+substitutes temporary bind paths/project/network names, removes host publishing,
+uses internal networking and runs an exact HTTP-only fixture with loopback admin.
+Official validation also checks the existing bootstrap and full generated candidate
+without activation. Process capabilities, read-only paths, restart/persistence,
+peer reachability/admin denial, negative create-only configurations and cleanup
+after partial failure have offline coverage and passed 17/17 real Docker cases
+in run 39844325743 (Caddy 2.11.7 / Engine 28.0.4 / Compose 2.38.2), including cleanup.
+No fixture receipt can satisfy production trust, release verification or approval.
+
+Confirmed prior evidence: ProjectRouter acceptance run 39837965499 and main Offline
+CI 39839861288 succeeded; see the [acceptance guide](docs/project-router-acceptance.md).
+Caddy real-runtime results are tracked separately in its acceptance guide. Production
+remains unperformed; Stage 09.4B privileged execution, authenticated observations,
+source/provenance, actual candidate/DNS/TLS/storage and explicit rollout approval
+remain required. ProductionGateway and ManagedGatewayReadPort write blockers stay intact.

@@ -21,3 +21,20 @@ def inspect_caddy_contract(runtime, evidence):
         raise DockerError('caddy-entrypoint-command-user-or-filesystem-contract-mismatch')
     return ('exact-caddy-image-provenance-required', 'isolated-caddy-read-only-capabilities-storage-test-required',
             'official-full-candidate-validation-required')
+
+
+def bind_caddy_engine(runtime, evidence, inspected):
+    """Docker Hub short RepoDigests are exact official-caddy name aliases only.
+
+    Observed in run 39843536752. Digest/config/platform checks remain shared and
+    unchanged. No aliasing of GHCR, other repositories, tags or mismatched digests.
+    """
+    from scripts.production_integration.artifacts import bind_engine_image
+    inspect_caddy_contract(runtime, evidence)
+    if isinstance(inspected, dict) and evidence.reference.startswith('docker.io/library/caddy@'):
+        digests = inspected.get('RepoDigests')
+        if isinstance(digests, list) and all(isinstance(d, str) for d in digests):
+            aliases = {'caddy@' + digest: 'docker.io/library/caddy@' + digest for digest in
+                       (evidence.reference.split('@')[1], evidence.manifest_digest)}
+            inspected = {**inspected, 'RepoDigests': [aliases.get(d, d) for d in digests]}
+    return bind_engine_image(evidence, inspected)
