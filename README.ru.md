@@ -67,6 +67,13 @@ protected-main exact-SHA source/artifact/origin evidence, trusted live transport
 и разрешения операции. Stage 09.6 automated digest-update PR/CD запланирован после
 безопасного ручного rollout/rollback; автоматический CD здесь не реализован.
 
+[Stage 09.4B.2 release readiness](docs/production-release-source-trust.md) добавляет
+строгую связь reusable publication run/job/check и opt-in read-only API с reviewed
+installation policy и проверенными gh/Sigstore pins. Отчёт всегда содержит
+`productionAuthorized=false`. Live-проверка требует отдельного разрешения и
+read-only credentials; PR CI её не запускает. Manager develop SHA вне защищённой
+main блокирует проверку до отдельного reviewed merge в main.
+
 [Как добавить новое приложение в Portfolio Deployment](docs/application-acceptance.md):
 добавить один валидируемый YAML с release metadata и пройти независимое
 admission/security-ревью. Один ручной workflow **Application isolated acceptance**

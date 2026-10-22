@@ -1,0 +1,103 @@
+{
+  "_note": "Minimized GitHub REST structure from public run 39776962924, 2026-10-22. Regression evidence only; not reviewed installation pins or cryptographic proof.",
+  "run": {
+    "id": 39776962924,
+    "run_attempt": 1,
+    "head_sha": "526c765f33932e163392dd1d512de4aa2f2a5260",
+    "head_branch": "main",
+    "path": ".github/workflows/ci.yml",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "check_suite_id": 107801677419,
+    "referenced_workflows": [
+      {
+        "path": "DanilFaritovich/project-router/.github/workflows/publish.yml@526c765f33932e163392dd1d512de4aa2f2a5260",
+        "sha": "526c765f33932e163392dd1d512de4aa2f2a5260",
+        "ref": "refs/heads/main"
+      }
+    ]
+  },
+  "jobs": {
+    "total_count": 3,
+    "jobs": [
+      {
+        "id": 119818239159,
+        "run_id": 39776962924,
+        "run_attempt": 1,
+        "head_sha": "526c765f33932e163392dd1d512de4aa2f2a5260",
+        "name": "Quality and static build",
+        "status": "completed",
+        "conclusion": "success",
+        "check_run_url": "https://api.github.com/repos/DanilFaritovich/project-router/check-runs/119818239159"
+      },
+      {
+        "id": 119819149287,
+        "run_id": 39776962924,
+        "run_attempt": 1,
+        "head_sha": "526c765f33932e163392dd1d512de4aa2f2a5260",
+        "name": "Docker build and container smoke",
+        "status": "completed",
+        "conclusion": "success",
+        "check_run_url": "https://api.github.com/repos/DanilFaritovich/project-router/check-runs/119819149287"
+      },
+      {
+        "id": 119819781254,
+        "run_id": 39776962924,
+        "run_attempt": 1,
+        "head_sha": "526c765f33932e163392dd1d512de4aa2f2a5260",
+        "name": "Publish validated image / publish",
+        "status": "completed",
+        "conclusion": "success",
+        "check_run_url": "https://api.github.com/repos/DanilFaritovich/project-router/check-runs/119819781254"
+      }
+    ]
+  },
+  "checks": {
+    "total_count": 3,
+    "check_runs": [
+      {
+        "id": 119819781254,
+        "name": "Publish validated image / publish",
+        "head_sha": "526c765f33932e163392dd1d512de4aa2f2a5260",
+        "status": "completed",
+        "conclusion": "success",
+        "check_suite": {
+          "id": 107801677419
+        },
+        "details_url": "https://github.com/DanilFaritovich/project-router/actions/runs/39776962924/job/119819781254",
+        "app": {
+          "id": 15368
+        }
+      },
+      {
+        "id": 119819149287,
+        "name": "Docker build and container smoke",
+        "head_sha": "526c765f33932e163392dd1d512de4aa2f2a5260",
+        "status": "completed",
+        "conclusion": "success",
+        "check_suite": {
+          "id": 107801677419
+        },
+        "details_url": "https://github.com/DanilFaritovich/project-router/actions/runs/39776962924/job/119819149287",
+        "app": {
+          "id": 15368
+        }
+      },
+      {
+        "id": 119818239159,
+        "name": "Quality and static build",
+        "head_sha": "526c765f33932e163392dd1d512de4aa2f2a5260",
+        "status": "completed",
+        "conclusion": "success",
+        "check_suite": {
+          "id": 107801677419
+        },
+        "details_url": "https://github.com/DanilFaritovich/project-router/actions/runs/39776962924/job/119818239159",
+        "app": {
+          "id": 15368
+        }
+      }
+    ]
+  }
+}

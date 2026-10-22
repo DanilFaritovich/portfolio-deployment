@@ -731,10 +731,18 @@ remain required. ProductionGateway and ManagedGatewayReadPort write blockers sta
 
 The [read-only release collector](docs/production-release-source-trust.md) implements
 the existing `ReleaseVerifier` port without installing it in CLI/CI.
+`release_readiness.py` adds a separately authorized read-only API over typed,
+reviewed installation policy, pinned gh/root files and explicit read-only token.
+It composes the existing collector/verifier on a fresh bounded transport and
+returns only anonymous status/fixed blockers, always `productionAuthorized=false`.
+It accepts no JSON-to-installation/facts or dynamic module/path configuration.
 `release_transport.py` confines authenticated GitHub reads to the two repositories
 and public GHCR immutable-byte reads to ProjectRouter; a fixed blob CDN receives
 no credentials. `release_source.py` establishes main ancestry, applicable active
 protection, App-bound mandatory checks and same-SHA workflow/publication identity.
+Publication links the exact `ci.yml` push run to its pinned referenced reusable
+`publish.yml`, attempt-specific successful publication job and App-bound check run
+in the same check suite. Signed build-origin must bind that caller run/attempt.
 Unreadable rules, bypass details or incomplete pages block. Manager manifest/policy
 hashes come from exact-SHA repository bytes, never echoed candidate claims.
 
@@ -745,6 +753,8 @@ constraints, SLSA builder and signed origin/publish-run predicates precede
 `release_collector.py` constructing `ReleaseFacts`. There is no second OCI mapper,
 cryptographic signature implementation, facts deserializer or production authority.
 Trusted Python ports retain ADR 0001's installed-code boundary.
+A manager SHA outside protected main remains blocked; develop/PR success cannot
+replace a separate reviewed main merge and exact-SHA checks.
 
 Controlled offline integration is verified; no real GitHub/GHCR collection was
 authorized/run here. The official Caddy selected bytes and plain hash-linked SLSA
