@@ -954,3 +954,131 @@ def test_generic_policy_predicate_claims(tmp_path, failure):
     else:
         app, release, artifact = candidate_model(root, tmp_path / 'projection', 'example-backend', 'a' * 40, SESSION)
         assert app.id == 'example-backend'
+
+
+@pytest.mark.parametrize('failure,step,code', [
+    ('resource', 'resource-preflight', 'resource-preflight-failed'),
+    ('config', 'compose-preflight', 'compose-preflight-failed'),
+    ('network', 'network-create', 'network-create-failed'),
+    ('up', 'compose-up', 'compose-up-failed'),
+    ('up-timeout', 'compose-up', 'compose-up-timeout'),
+    ('discovery', 'container-discovery', 'container-discovery-failed'),
+    ('inspect', 'container-inspect', 'container-inspect-failed'),
+    ('inspect-timeout', 'container-inspect', 'container-inspect-timeout'),
+    ('ownership', 'ownership', 'ownership-failed'),
+    ('identity', 'container-identity', 'container-identity-failed'),
+    ('contract', 'runtime-contract', 'runtime-contract-failed'),
+    ('malformed-contract', 'runtime-contract', 'runtime-contract-failed'),
+    ('state', 'container-state', 'container-not-running'),
+    ('malformed-state', 'container-state', 'container-state-failed'),
+    ('health', 'docker-health', 'docker-health-unhealthy'),
+    ('malformed-health', 'docker-health', 'docker-health-failed'),
+    ('starting', 'readiness', 'readiness-timeout'),
+    ('http', 'readiness', 'readiness-timeout'),
+    ('http-timeout', 'readiness', 'readiness-timeout'),
+    ('http-unavailable', 'readiness', 'readiness-timeout'),
+    ('http-contract', 'http-readiness', 'http-readiness-failed'),
+    ('address', 'http-readiness', 'http-readiness-failed'),
+    ('late-probe', 'readiness', 'readiness-timeout'),
+])
+def test_runtime_substage_diagnostics_and_partial_cleanup(tmp_path, monkeypatch, failure, step, code):
+    from scripts import readiness
+    app, release, artifact = project(tmp_path)
+    evidence = fixture_evidence(app)
+    for proof in evidence.values(): proof.verified = True
+    runtime = a.DisposableRuntime(app, artifact, tmp_path, SESSION)
+    engine = MockDocker(runtime, evidence)
+    clock = [0]
+    inspections = [0]
+    def docker(*args, **kwargs):
+        if failure == 'resource' and args[:2] == ('network', 'ls'):
+            raise RuntimeError('secret stderr env body')
+        if args[0] == 'compose':
+            operation = args[args.index(str(runtime.file)) + 1]
+            if failure == 'config' and operation == 'config':
+                raise RuntimeError('secret stderr env body')
+        raw = engine.docker(*args, **kwargs)
+        # Fail AFTER mutation to prove partial network/Compose resources clean up.
+        if (failure == 'network' and args[:2] == ('network', 'create') or
+            failure in ('up', 'up-timeout') and args[0] == 'compose' and 'up' in args):
+            if failure == 'up-timeout': raise a.subprocess.TimeoutExpired('secret command', 120, output=b'secret')
+            raise RuntimeError('secret stderr env body')
+        if args[0] == 'ps' and any(x.startswith('label=com.docker.compose.service=') for x in args):
+            if failure == 'discovery': return b''
+        if args[:2] == ('container', 'inspect'):
+            inspections[0] += 1
+            if failure == 'inspect': return b'[{"secret":"not inspect"},{}]'
+            if failure == 'inspect-timeout': raise TimeoutError('secret')
+            doc = json.loads(raw)[0]
+            if failure == 'ownership': doc['Config']['Labels'][LABEL + '.managed'] = 'secret'
+            if failure == 'identity' and inspections[0] > 1: doc['Id'] = 'replacement'
+            if failure == 'contract': doc['HostConfig']['Privileged'] = True
+            if failure == 'malformed-contract': del doc['HostConfig']
+            if failure == 'state': doc['State'].update(Running=False, Status='exited', ExitCode=137, OOMKilled=True)
+            if failure == 'malformed-state': doc['State']['Running'] = 'secret'
+            if failure in ('health', 'starting', 'malformed-health'):
+                doc['State']['Health']['Status'] = {'health': 'unhealthy', 'starting': 'starting', 'malformed-health': 'secret'}[failure]
+            if failure == 'address':
+                for network in doc['NetworkSettings']['Networks'].values(): network['IPAddress'] = '127.0.0.1'
+            return json.dumps([doc]).encode()
+        return raw
+    monkeypatch.setattr(runtime, 'docker', docker)
+    def request(*args, **kwargs):
+        if failure == 'http-timeout': raise TimeoutError('secret')
+        if failure == 'http-unavailable': raise ConnectionRefusedError('secret')
+        if failure == 'http-contract': raise a.AcceptanceError('secret body')
+        if failure == 'late-probe': clock[0] += 121
+        return failure != 'http'
+    monkeypatch.setattr(a, 'request', request)
+    def verify(*args, **kwargs):
+        return readiness.verify_readiness(*args, **kwargs, clock=lambda: clock[0],
+            sleep=lambda duration: clock.__setitem__(0, clock[0] + duration))
+    monkeypatch.setattr(a, 'verify_readiness', verify)
+    with pytest.raises(a.RuntimeFailure): runtime.start(evidence)
+    diagnostic = copy.deepcopy(runtime.diagnostics)
+    assert diagnostic['step'] == step and diagnostic['errorCode'] == code
+    assert diagnostic['steps'][step] == 'failed'
+    assert 0 <= diagnostic['probes'] <= 61 and 0 <= diagnostic['consecutive'] <= 2
+    if failure in ('ownership', 'identity', 'contract', 'malformed-contract', 'health', 'malformed-health'):
+        assert diagnostic['probes'] <= 1 and clock[0] == 0
+    if failure == 'state':
+        assert (diagnostic['containerState'], diagnostic['exitCode'], diagnostic['oomKilled']) == ('exited', 137, True)
+    if failure in ('http', 'http-timeout', 'http-unavailable'):
+        assert diagnostic['httpReadiness'] == {'http': 'not-ready', 'http-timeout': 'timeout', 'http-unavailable': 'unavailable'}[failure]
+    assert 'secret' not in json.dumps(diagnostic) and len(json.dumps(diagnostic)) < 4096
+    # Restore transport only: original inspected ownership gates still govern cleanup.
+    monkeypatch.setattr(runtime, 'docker', engine.docker)
+    runtime.cleanup()
+    assert not engine.docs and not engine.networks and not engine.volumes
+    assert runtime.diagnostics == diagnostic
+    if failure in ('resource', 'config'):
+        assert runtime.active is False
+        assert not any(c[0] == 'compose' and 'up' in c or c[:2] == ('network', 'create') for c in engine.calls)
+
+
+@pytest.mark.parametrize('cleanup_fails', [False, True])
+def test_accept_preserves_runtime_diagnosis_even_when_cleanup_fails(tmp_path, monkeypatch, cleanup_fails):
+    app, release, artifact = load_synthetic(tmp_path, persistent=True)
+    mock_verification(monkeypatch, app)
+    original = a.DisposableRuntime
+    engines = []
+    def runtime_factory(*args):
+        runtime = original(*args)
+        engine = MockDocker(runtime, fixture_evidence(app), 'start')
+        engines.append(engine)
+        def docker(*cmd, **kwargs):
+            if cleanup_fails and cmd[:2] == ('container', 'rm'): raise RuntimeError('secret cleanup')
+            return engine.docker(*cmd, **kwargs)
+        monkeypatch.setattr(runtime, 'docker', docker)
+        return runtime
+    monkeypatch.setattr(a, 'DisposableRuntime', runtime_factory)
+    report = {}
+    with pytest.raises(RuntimeError if cleanup_fails else a.RuntimeFailure):
+        a.accept(app, release, artifact, tmp_path, SESSION, '/verified/gh', report)
+    assert report['stage'] == 'runtime-start' and report['cleanup'] == ('failed' if cleanup_fails else 'passed')
+    assert report['errorCodes'] == ['compose-up-failed']
+    assert report['runtime']['step'] == 'compose-up'
+    assert 'secret' not in json.dumps(report)
+    assert bool(engines[0].docs) is cleanup_fails
+    if not cleanup_fails:
+        assert not engines[0].networks and not engines[0].volumes

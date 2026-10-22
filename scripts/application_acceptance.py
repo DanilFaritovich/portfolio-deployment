@@ -4,6 +4,7 @@ No producer checkout/build, production adapter, gateway or deployment lifecycle.
 The Compose renderer's test-session mode provides isolated resource identities.
 """
 import hashlib
+from contextlib import contextmanager
 import http.client
 import ipaddress
 import io
@@ -27,7 +28,7 @@ from scripts.production_integration.artifacts import (
     INDEX_TYPES, EngineBindingError, bind_engine_image, blob_digest, verify_oci_bytes,
 )
 from scripts.reconciliation import encode
-from scripts.readiness import ProbeResult, ReadinessPolicy, verify_readiness
+from scripts.readiness import ProbeResult, ReadinessPolicy, ReadinessContractError, verify_readiness
 
 ROOT = Path(__file__).resolve().parents[1]
 SLSA_TYPE = 'https://slsa.dev/provenance/v1'
@@ -232,6 +233,10 @@ if int(port):
 '''
 
 
+class RuntimeFailure(AcceptanceError, ReadinessContractError):
+    """Already classified locally; contains no transport or application data."""
+
+
 class DisposableRuntime:
     def __init__(self, application, artifact, directory, session):
         self.application, self.artifact, self.session = application, artifact, session
@@ -239,6 +244,28 @@ class DisposableRuntime:
         self.file.write_text(artifact.to_json())
         self.active = False
         self.components = {c['name']: c for c in application.spec['components']}
+        self.diagnostics = {'steps': {}, 'probes': 0, 'consecutive': 0}
+
+    @contextmanager
+    def phase(self, step):
+        # Call sites supply literals only. Never copy exceptions/command output.
+        self.diagnostics['step'] = step
+        self.diagnostics['steps'][step] = 'running'
+        try:
+            yield
+        except RuntimeFailure:
+            self.diagnostics['steps'][step] = 'failed'
+            raise
+        except Exception as error:
+            self.fail(step + ('-timeout' if isinstance(error, TimeoutError) or
+                             isinstance(error, subprocess.TimeoutExpired) else '-failed'))
+        else:
+            self.diagnostics['steps'][step] = 'passed'
+
+    def fail(self, code):
+        self.diagnostics['errorCode'] = code
+        self.diagnostics['steps'][self.diagnostics['step']] = 'failed'
+        raise RuntimeFailure() from None
 
     def docker(self, *args, **kwargs):
         return command(['docker', *args], **kwargs)
@@ -266,11 +293,16 @@ class DisposableRuntime:
             require(doc['Name'] in {n['name'] for n in self.artifact.model.get(kind + 's', {}).values()})
 
     def inspect(self, service, timeout=5):
-        identifiers = self.owned('container', service, timeout=timeout / 2)
-        require(len(identifiers) == 1)
-        doc = decoded(self.docker('container', 'inspect', identifiers[0], timeout=timeout / 2))[0]
-        self.ownership(doc, 'container')
-        require(doc['Config']['Labels']['com.docker.compose.service'] == service)
+        with self.phase('container-discovery'):
+            identifiers = self.owned('container', service, timeout=timeout / 2)
+            require(len(identifiers) == 1)
+        with self.phase('container-inspect'):
+            documents = decoded(self.docker('container', 'inspect', identifiers[0], timeout=timeout / 2))
+            require(isinstance(documents, list) and len(documents) == 1 and isinstance(documents[0], dict))
+            doc = documents[0]
+        with self.phase('ownership'):
+            self.ownership(doc, 'container')
+            require(doc['Config']['Labels']['com.docker.compose.service'] == service)
         return doc
 
     def preflight(self):
@@ -279,21 +311,26 @@ class DisposableRuntime:
             existing = self.docker(kind, 'ls', '--format', '{{.Name}}').decode().splitlines()
             require(not names.intersection(existing))
         require(not self.docker('ps', '-aq', '--filter', 'label=com.docker.compose.project=' + self.artifact.project).strip())
-        self.compose('config', '--quiet')
+        with self.phase('compose-preflight'):
+            self.compose('config', '--quiet')
 
     def start(self, evidence):
-        self.preflight()
+        with self.phase('resource-preflight'):
+            self.preflight()
         # Mark before the first mutation: even partial command failures clean up.
         self.active = True
         proxy = self.artifact.model['networks'].get('proxy')
         if proxy:
-            self.docker('network', 'create', '--internal',
+            with self.phase('network-create'):
+                self.docker('network', 'create', '--internal',
                         '--label', LABEL + '.test-session=' + self.session,
                         '--label', LABEL + '.application=' + self.application.id,
                         '--label', LABEL + '.managed=true',
                         '--label', 'com.docker.compose.project=' + self.artifact.project, proxy['name'])
         for name in startup_order(self.application):
-            self.compose('up', '--detach', '--no-build', '--pull', 'never', '--no-deps', name)
+            self.diagnostics['componentIndex'] = list(self.components).index(name)
+            with self.phase('compose-up'):
+                self.compose('up', '--detach', '--no-build', '--pull', 'never', '--no-deps', name)
             self.healthy(name, evidence[name])
 
     def ip(self, doc):
@@ -305,31 +342,67 @@ class DisposableRuntime:
 
     def healthy(self, name, evidence):
         component = self.components[name]
+        self.diagnostics['componentIndex'] = list(self.components).index(name)
+        self.diagnostics.update(probes=0, consecutive=0, containerState='unknown',
+                                dockerHealth='unknown', httpReadiness='not-probed',
+                                exitCode='unknown', oomKilled='unknown')
         initial = self.inspect(name)
+        with self.phase('container-identity'):
+            container_id = initial['Id']
+            require(isinstance(container_id, str) and bool(container_id))
         runtime = self
         class Probe:
             document = initial
             def probe(self, component, container_id, *, timeout, follow_redirects):
+                runtime.diagnostics['probes'] += 1
                 require(follow_redirects is False)
                 doc = runtime.inspect(name, timeout=timeout / 2)
-                require(doc['Id'] == container_id)
-                require(runtime_matches(doc, runtime.artifact, name, evidence))
+                with runtime.phase('container-identity'):
+                    require(doc['Id'] == container_id)
+                with runtime.phase('runtime-contract'):
+                    require(runtime_matches(doc, runtime.artifact, name, evidence))
                 self.document = doc
-                health = doc['State'].get('Health', {}).get('Status')
-                require(health in (None, 'starting', 'healthy'))
-                if not doc['State']['Running']:
-                    return ProbeResult(False)
+                with runtime.phase('container-state'):
+                    state = doc['State']
+                    running = state['Running']
+                    require(type(running) is bool)
+                    status = state.get('Status')
+                    runtime.diagnostics['containerState'] = status if status in (
+                        'created', 'running', 'paused', 'restarting', 'removing', 'exited', 'dead'
+                    ) else 'running' if running else 'not-running'
+                    exit_code, oom = state.get('ExitCode'), state.get('OOMKilled')
+                    runtime.diagnostics['exitCode'] = exit_code if type(exit_code) is int and 0 <= exit_code <= 255 else 'unknown'
+                    runtime.diagnostics['oomKilled'] = oom if type(oom) is bool else 'unknown'
+                    if not running:
+                        runtime.fail('container-not-running')
+                with runtime.phase('docker-health'):
+                    health = state.get('Health', {}).get('Status')
+                    require(health in (None, 'starting', 'healthy', 'unhealthy'))
+                    runtime.diagnostics['dockerHealth'] = health or 'absent'
+                    if health == 'unhealthy':
+                        runtime.fail('docker-health-unhealthy')
                 status = None
                 if component['type'] == 'http' and health != 'starting':
-                    ingress = runtime.application.spec.get('ingress') or {}
-                    good = request(runtime.ip(doc), component['port'], component['health']['path'],
-                                   ingress.get('hostname', name), timeout=timeout / 2)
+                    with runtime.phase('http-readiness'):
+                        ingress = runtime.application.spec.get('ingress') or {}
+                        # Address/response bounds remain fatal contract checks.
+                        ip = runtime.ip(doc)
+                        try:
+                            good = request(ip, component['port'], component['health']['path'],
+                                           ingress.get('hostname', name), timeout=timeout / 2)
+                        except (OSError, http.client.HTTPException) as error:
+                            runtime.diagnostics['httpReadiness'] = 'timeout' if isinstance(error, TimeoutError) else 'unavailable'
+                            return ProbeResult(True)
+                        runtime.diagnostics['httpReadiness'] = 'ready' if good else 'not-ready'
                     status = 200 if good else 503
                 return ProbeResult(True, http_status=status, health=health or 'unknown')
         probe = Probe()
-        result = verify_readiness(component, initial['Id'], probe,
+        result = verify_readiness(component, container_id, probe,
                                   ReadinessPolicy(deadline=120, interval=2, successes=2, probe_timeout=5))
-        require(result.status == 'verified')
+        self.diagnostics.update(probes=result.probes, consecutive=result.consecutive)
+        with self.phase('readiness'):
+            if result.status != 'verified':
+                self.fail('readiness-timeout' if result.reason == 'readiness-deadline' else 'readiness-failed')
         return probe.document
 
     def security(self, doc, name):
@@ -465,6 +538,11 @@ def accept(application, release, artifact, directory, session, gh_binary, report
         runtime.restart(evidence)
         report['runtimeSecurity'] = 'passed'
     finally:
+        # Preserve the failure diagnosis even if cleanup itself fails.
+        if hasattr(runtime, 'diagnostics'):
+            report['runtime'] = runtime.diagnostics
+            if 'errorCode' in runtime.diagnostics:
+                report['errorCodes'] = [runtime.diagnostics['errorCode']]
         report['cleanup'] = 'failed'
         runtime.cleanup()
         report['cleanup'] = 'passed'

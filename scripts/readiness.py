@@ -9,6 +9,10 @@ import time
 from typing import Protocol
 
 
+class ReadinessContractError(Exception):
+    """Fatal adapter contract failure; never convert to transient unknown evidence."""
+
+
 @dataclass(frozen=True)
 class ReadinessPolicy:
     deadline: float = 60
@@ -39,6 +43,7 @@ class ProbeAdapter(Protocol):
 
         Do not follow redirects, exec curl/wget, publish ports, or return body/logs.
         Unknown/timeouts return unknown evidence. Container identity must be pinned.
+        Raise ReadinessContractError for fatal identity/security contract violations.
         """
         ...
 
@@ -66,6 +71,8 @@ def verify_readiness(component, container_id, adapter, policy=ReadinessPolicy(),
         try:
             result = adapter.probe(component, container_id, timeout=min(policy.probe_timeout, remaining),
                                    follow_redirects=False)
+        except ReadinessContractError:
+            raise
         except Exception:
             result = ProbeResult(None)
         if clock() >= end:
