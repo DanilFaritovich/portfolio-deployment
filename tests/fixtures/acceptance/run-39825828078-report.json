@@ -1,0 +1,42 @@
+{
+  "application": "project-router",
+  "components": {
+    "web": {
+      "attestations": [
+        {
+          "predicateType": "https://slsa.dev/provenance/v1",
+          "verifiedOutputSha256": "71cdbe4e0e081bf90929c6867021cfd1cfef545288a3c7f6427b2885e002b7d2"
+        },
+        {
+          "predicateType": "https://github.com/DanilFaritovich/project-router/attestations/build-origin/v1",
+          "verifiedOutputSha256": "3dd3d66d9db59d2f489f14edfb872d78228470828fce81c67638228657f88684"
+        }
+      ],
+      "image": "ghcr.io/danilfaritovich/project-router@sha256:a393d592331cd556650695f57db74075359d9223c9ebbda080f1a372e9d64853",
+      "mapping": {
+        "blobs": {
+          "sha256:115af1631e16774d114aa857130086e0a32711720895195c52d0b30ce68df102": 15921,
+          "sha256:a393d592331cd556650695f57db74075359d9223c9ebbda080f1a372e9d64853": 856,
+          "sha256:e24e8a7d68f341199ae90ffba8e15d225c9ce38b7a45ebd547ec918136ce72da": 2566
+        },
+        "config": "sha256:115af1631e16774d114aa857130086e0a32711720895195c52d0b30ce68df102",
+        "manifest": "sha256:e24e8a7d68f341199ae90ffba8e15d225c9ce38b7a45ebd547ec918136ce72da"
+      },
+      "signerSha": "526c765f33932e163392dd1d512de4aa2f2a5260",
+      "signerWorkflow": ".github/workflows/publish.yml",
+      "sourceRef": "refs/heads/main",
+      "sourceRepository": "DanilFaritovich/project-router",
+      "sourceSha": "526c765f33932e163392dd1d512de4aa2f2a5260"
+    }
+  },
+  "composeSha256": "c7356abe0e9256874c131cb760670273668e048d0faaf4eb33bf370d3799fb1a",
+  "githubCli": {
+    "archiveSha256": "bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386",
+    "version": "2.102.0"
+  },
+  "managerSha": "eab7dade7b03161bd893caf9e0b5f12ca8a06248",
+  "productionAdmission": false,
+  "result": "failed",
+  "schema": "portfolio.isolated-acceptance/v1",
+  "stage": "pull-engine-binding"
+}

@@ -13,6 +13,8 @@ import yaml
 from scripts import application_acceptance as a
 from scripts.acceptance_contract import candidate_model
 from scripts.compose import LABEL
+from scripts.docker_discovery import ImageEvidence
+from scripts.production_integration.artifacts import EngineBindingError, bind_engine_image
 from scripts.gateway import desired_routes
 from scripts.planning_inputs import build_desired_state
 from scripts.validate_registry import RegistryValidationError, validate_registry
@@ -288,6 +290,160 @@ def fixture_evidence(app):
     return {c['name']: SimpleNamespace(reference=c['image'], manifest_digest='sha256:' + 'c' * 64,
             image_id='sha256:' + 'd' * 64, defaults_json=json.dumps({'Healthcheck': {'Test': ['CMD', '/health']}}))
             for c in app.spec['components']}
+
+
+def binding_fixture():
+    proof = ImageEvidence('ghcr.io/fixtures/app@sha256:' + 'a' * 64,
+                          'sha256:' + 'b' * 64, 'linux/amd64', 'sha256:' + 'c' * 64,
+                          True, a.encode({'User': '101:101', 'Cmd': ['/app'],
+                                          'Healthcheck': {'Test': ['CMD', '/health']}}))
+    inspected = {'Id': proof.image_id, 'RepoDigests': [proof.reference], 'Os': 'linux',
+                 'Architecture': 'amd64', 'Config': json.loads(proof.defaults_json)}
+    return proof, inspected
+
+
+def test_retained_first_run_cannot_identify_failing_substep():
+    # Exact sanitized artifact 12446746614; ZIP SHA256 verified before retention.
+    report = json.loads((ROOT / 'tests/fixtures/acceptance/run-39825828078-report.json').read_text())
+    assert report['stage'] == 'pull-engine-binding' and report['result'] == 'failed'
+    assert report['productionAdmission'] is False
+    record = report['components']['web']
+    assert len(record['attestations']) == 2
+    assert record['image'].split('@')[1] != record['mapping']['manifest'] != record['mapping']['config']
+    assert 'engine' not in record and 'errorCodes' not in report
+
+
+@pytest.mark.parametrize('change,code', [
+    ('id', 'engine-image-id-mismatch'), ('repo', 'engine-repo-digests-mismatch'),
+    ('platform', 'engine-platform-mismatch'), ('config', 'engine-config-mismatch'),
+    ('all', None),
+])
+def test_binding_classifies_every_failed_check_without_values(change, code):
+    proof, inspected = binding_fixture()
+    if change in ('id', 'all'): inspected['Id'] = proof.manifest_digest
+    if change in ('repo', 'all'): inspected['RepoDigests'] = ['private-value']
+    if change in ('platform', 'all'): inspected['Architecture'] = 'private-value'
+    if change in ('config', 'all'):
+        inspected['Config'].update(User='0', Env=['SECRET=private-value'], Labels={'private-value': 'secret'},
+                                   **{'private-value': 'secret'})
+    with pytest.raises(EngineBindingError) as caught:
+        bind_engine_image(proof, inspected)
+    error = caught.value
+    if code:
+        assert error.codes == (code,)
+    else:
+        assert len(error.codes) == 4 and error.checks['imageIdMatchesManifest']
+    if change in ('config', 'all'):
+        assert error.checks['configDifferingFields'] == ['User', 'Env', 'Labels']
+        assert error.checks['configOtherFieldsDiffer']
+    assert 'private-value' not in json.dumps(error.checks) + str(error)
+
+
+@pytest.mark.parametrize('digests,accepted,manifest_present', [
+    ('requested', True, False), ('both', True, True), ('manifest', False, True),
+    ('foreign', False, False), ('empty', False, False), ('null', False, False),
+    ('string', False, False),
+])
+def test_index_and_platform_repo_digests_are_not_interchangeable(digests, accepted, manifest_present):
+    proof, inspected = binding_fixture()
+    manifest_ref = proof.reference.split('@')[0] + '@' + proof.manifest_digest
+    inspected['RepoDigests'] = {'requested': [proof.reference], 'both': [proof.reference, manifest_ref],
+        'manifest': [manifest_ref], 'foreign': ['ghcr.io/foreign/app@' + proof.reference.split('@')[1]],
+        'empty': [], 'null': None, 'string': proof.reference}[digests]
+    if accepted:
+        assert bind_engine_image(proof, inspected) == proof
+    else:
+        with pytest.raises(EngineBindingError) as caught:
+            bind_engine_image(proof, inspected)
+        assert caught.value.codes == ('engine-repo-digests-mismatch',)
+        assert caught.value.checks['repoDigestsContainPlatformManifest'] is manifest_present
+
+
+@pytest.mark.parametrize('field,value', [
+    ('Entrypoint', None), ('Labels', None), ('Volumes', None), ('WorkingDir', ''),
+    ('AttachStdout', False), ('Env', []), ('ArgsEscaped', False),
+])
+def test_engine_config_representation_differences_remain_fail_closed(field, value):
+    # Synthetic API shapes, NOT captured inspect from the failed runner. OCI 1.1.1
+    # permits absent/null optional fields; Moby serializes typed config structs.
+    # Until real Engine evidence is retained, do not guess a normalization fix.
+    proof, inspected = binding_fixture()
+    inspected['Config'][field] = value
+    with pytest.raises(EngineBindingError) as caught:
+        bind_engine_image(proof, inspected)
+    assert caught.value.codes == ('engine-config-mismatch',)
+    assert caught.value.checks['configDifferingFields'] == [field]
+    assert caught.value.checks['configNullOrOmittedOnly'] is (value is None)
+
+
+@pytest.mark.parametrize('failure,stage,code', [
+    ('pull', 'docker-pull', 'docker-pull-failed'),
+    ('inspect', 'docker-image-inspect', 'docker-image-inspect-failed'),
+    ('parse', 'docker-image-inspect', 'docker-image-inspect-invalid'),
+    ('shape', 'docker-image-inspect', 'docker-image-inspect-invalid'),
+    ('binding', 'engine-identity-binding', 'engine-image-id-mismatch'),
+    ('unexpected', 'engine-identity-binding', 'engine-binding-failed'),
+])
+def test_pull_inspect_binding_failures_stop_before_runtime(tmp_path, monkeypatch, failure, stage, code):
+    app, release, artifact = load_synthetic(tmp_path)
+    evidence, calls, command = mock_verification(monkeypatch, app)
+    proof, inspected = binding_fixture()
+    inspected['Id'] = 'wrong' if failure == 'binding' else proof.image_id
+    # Keep signed preflight mocks, but exercise the real binding boundary.
+    monkeypatch.setattr(a, 'bind_engine_image', bind_engine_image)
+    for item in evidence.values():
+        item.image_id = proof.image_id
+        item.defaults_json = proof.defaults_json
+    def fail_command(args, **kwargs):
+        if args[:2] == ['docker', 'pull'] and failure == 'pull':
+            raise TimeoutError('SECRET=private-value')
+        if args[:3] == ['docker', 'image', 'inspect']:
+            calls.append(args)
+            if failure == 'inspect': raise RuntimeError('SECRET=private-value')
+            if failure == 'parse': return b'private-value'
+            if failure == 'shape': return b'[{}, {}]'
+            inspected['RepoDigests'] = [args[-1]]
+            return json.dumps([inspected]).encode()
+        return command(args, **kwargs)
+    monkeypatch.setattr(a, 'command', fail_command)
+    if failure == 'unexpected':
+        def broken(*args): raise ValueError('SECRET=private-value')
+        monkeypatch.setattr(a, 'bind_engine_image', broken)
+    def no_runtime(*args): pytest.fail('runtime must not be constructed')
+    monkeypatch.setattr(a, 'DisposableRuntime', no_runtime)
+    report = {'productionAdmission': False}
+    with pytest.raises(a.AcceptanceError):
+        a.accept(app, release, artifact, tmp_path, SESSION, '/verified/gh', report)
+    assert report['stage'] == stage and report['errorCodes'] == [code]
+    engines = [record['engine'] for record in report['components'].values() if 'engine' in record]
+    assert len(engines) == 1
+    engine = engines[0]
+    assert list(engine.values()).count('failed') == 1
+    if failure == 'pull': assert engine['inspect'] == engine['binding'] == 'pending'
+    elif stage == 'docker-image-inspect': assert engine['pull'] == 'passed' and engine['binding'] == 'pending'
+    else: assert engine['pull'] == engine['inspect'] == 'passed'
+    assert 'private-value' not in json.dumps(report)
+    assert 'cleanup' not in report
+
+
+def test_main_persists_only_safe_diagnostics(tmp_path, monkeypatch):
+    app, release, artifact = project(tmp_path)
+    monkeypatch.setattr(a, 'ROOT', tmp_path)
+    for key, value in environment().items(): monkeypatch.setenv(key, value)
+    monkeypatch.setattr(a, 'candidate_model', lambda *args: (app, release, artifact))
+    monkeypatch.setattr(a, 'provision_gh', lambda *args: '/verified/gh')
+    def fail(*args, **kwargs): raise RuntimeError('SECRET=private-value')
+    monkeypatch.setattr(a, 'command', fail)
+    def accept(app, release, artifact, directory, session, gh, report):
+        report['components'] = {'web': {}}
+        a.pull_and_bind(binding_fixture()[0], report['components']['web'], report)
+    monkeypatch.setattr(a, 'accept', accept)
+    assert a.main() == 1
+    raw = (tmp_path / 'acceptance-evidence/report.json').read_text()
+    report = json.loads(raw)
+    assert report['result'] == 'failed' and report['productionAdmission'] is False
+    assert report['errorCodes'] == ['docker-pull-failed'] and report['stage'] == 'docker-pull'
+    assert 'private-value' not in raw and 'RuntimeError' not in raw
 
 
 def mock_verification(monkeypatch, app):
