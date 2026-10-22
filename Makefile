@@ -140,3 +140,16 @@ e2e-review-failed-builder:
 
 e2e-close-failed-builder:
 	@$(PYTHON) -m scripts.e2e.cli close-failed-builder
+
+# Stage 09.2: local prerequisites/report are offline; inspect requires a terminal.
+.PHONY: production-check production-inspect production-report
+PRODUCTION_INVENTORY ?= ../portfolio-server-infrastructure/inventories/production.yml
+export PRODUCTION_INVENTORY
+production-check:
+	@$(PYTHON) -m scripts.production.cli check
+
+production-inspect:
+	@$(PYTHON) -m scripts.production.cli inspect
+
+production-report:
+	@$(PYTHON) -m scripts.production.cli report
