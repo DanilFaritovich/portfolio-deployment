@@ -652,3 +652,18 @@ independent issuer and bounded window; it yields no executor capability. Issuanc
 nonce consumption and real dispatch remain 09.4B work. CLI/CI configure no trust
 issuer or production write port. Compose version acceptance and synthetic tests
 do not prove actual image/runtime compatibility, DNS, ACME or production readiness.
+
+## Isolated ProjectRouter release acceptance
+
+The disabled exact-digest [candidate](docs/candidates/project-router.yaml) remains
+outside the real registry. A separate dispatch-only
+[GitHub-hosted acceptance workflow](.github/workflows/project-router-acceptance.yml)
+uses `scripts/project_router_acceptance.py`, shared OCI byte verification, normal
+admission validation and the existing Compose renderer's test-session identities.
+It verifies signed producer evidence and runs bounded disposable image/security/HTTP
+checks without production networks, gateway, executor lifecycle or admission
+authority. `verify_artifact` retains its separate full production source gate.
+The sanitized receipt is not a trusted release collector or OperationCandidate
+approval. Real acceptance is pending an explicitly triggered run after review;
+[acceptance and remaining blockers](docs/project-router-acceptance.md) describe
+the boundary. Ordinary offline CI never starts this workflow or Docker.

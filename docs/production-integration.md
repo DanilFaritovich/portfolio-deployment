@@ -231,3 +231,14 @@ its exact independently approved identity and full contract. The handoff specifi
 migration, storage budgets, TLS/first-release recovery and missing privileged
 mechanism. Read-only CLI/CI and real registry/template activation boundaries remain
 unchanged. See [ADR 0001](adr/0001-production-execution.md).
+
+## ProjectRouter v1.0.0 acceptance preparation
+
+A later scoped task prepared an exact-digest disabled
+[candidate](candidates/project-router.yaml) outside the real registry and a
+separate manual GitHub-hosted image acceptance workflow. Owner-reported release
+and attestation results update the historical context above; manager-side live
+byte/runtime verification and complete production admission remain pending.
+The workflow was not run during implementation. See the
+[acceptance handoff](project-router-acceptance.md) for exact release identity,
+reviewed trigger, evidence limits and remaining production gates.
