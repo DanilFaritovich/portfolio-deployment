@@ -139,8 +139,9 @@ Stage 09.4B production admission/authorization and later stages remain separate.
 
 [Dedicated acceptance](caddy-runtime-acceptance.md) pins official Caddy 2.11.7 for
 linux/amd64, reuses existing production contracts and adds isolated GitHub-hosted
-runtime scenarios. Offline checks, disposable Docker evidence and unperformed
-production rollout are tracked separately. ProjectRouter isolated acceptance run
+runtime scenarios. All 17 real cases and cleanup passed in run 39844325743.
+Offline checks, disposable Docker evidence and unperformed production rollout
+are tracked separately. ProjectRouter isolated acceptance run
 39837965499 and main Offline CI run 39839861288 are confirmed successful, superseding
 earlier pending-run notes. Caddy build-origin signature verification remains a
 production blocker; Stage 09.4B rollout and Stages 09.5–09.6 remain separately scoped.

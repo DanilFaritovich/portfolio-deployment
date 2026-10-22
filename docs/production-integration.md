@@ -257,3 +257,7 @@ renderer and image contract with temporary paths and no published host ports.
 Application OCI admission remains GHCR-only; a pure registry-independent mapper is
 shared with the official gateway fixture verifier. No production attestor, validation/
 reload transport, operator approval or write authority is installed by acceptance.
+
+Caddy [real acceptance run 39844325743](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39844325743)
+passed all 17 isolated cases and cleanup (Caddy 2.11.7 / Engine 28.0.4 / Compose
+2.38.2). This supplies disposable runtime evidence only; no production gate is bypassed.

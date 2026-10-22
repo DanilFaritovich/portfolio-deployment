@@ -716,7 +716,8 @@ uses internal networking and runs an exact HTTP-only fixture with loopback admin
 Official validation also checks the existing bootstrap and full generated candidate
 without activation. Process capabilities, read-only paths, restart/persistence,
 peer reachability/admin denial, negative create-only configurations and cleanup
-after partial failure have offline coverage and a separate real-run evidence gate.
+after partial failure have offline coverage and passed 17/17 real Docker cases
+in run 39844325743 (Caddy 2.11.7 / Engine 28.0.4 / Compose 2.38.2), including cleanup.
 No fixture receipt can satisfy production trust, release verification or approval.
 
 Confirmed prior evidence: ProjectRouter acceptance run 39837965499 and main Offline

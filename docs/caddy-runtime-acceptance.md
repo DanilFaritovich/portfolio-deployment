@@ -61,14 +61,14 @@ Only the [dedicated PR workflow](../.github/workflows/caddy-integration.yml) is
 supported. It uses a fresh GitHub-hosted Ubuntu 24.04 x64 runner, `contents: read`,
 no production credentials and a non-persisted checkout token. No self-hosted,
 workstation, arbitrary socket or remote Docker endpoint is accepted. Required
-runner metadata, exact local socket, authorization and empty daemon container
+runner metadata, root test-process identity, exact local socket, authorization and empty daemon container
 inventory are checked before resource creation. Runner metadata is an execution
 guard, not an authenticated production host attestor; do not spoof it locally.
 
 Within that disposable runner only:
 
 ```sh
-make caddy-integration-test PYTHON=python CADDY_TEST_ENDPOINT=unix:///var/run/docker.sock CADDY_TEST_AUTHORIZE=disposable-caddy-integration
+sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS,RUNNER_ARCH,GITHUB_EVENT_NAME,GITHUB_REPOSITORY make caddy-integration-test PYTHON="$(command -v python)" CADDY_TEST_ENDPOINT=unix:///var/run/docker.sock CADDY_TEST_AUTHORIZE=disposable-caddy-integration
 ```
 
 `scripts/caddy_integration.py` reuses `CaddyRuntime.render()`, `inspect_caddy_contract`,
@@ -79,6 +79,13 @@ projection substitutes temporary paths/project/network identities and removes
 host port publication. The internal bridge prevents external connectivity. Test
 containers have no Docker socket. Data/config are private temporary bind directories;
 no existing volumes, production names, host ports or public domain are used.
+The root test process creates these temporary directories as UID/GID 0:0, mode
+0700, matching the official image user. With all other capabilities dropped,
+container root cannot traverse private binds owned by the unprivileged runner.
+The workflow uses narrowly preserved runner metadata with sudo only inside the
+ephemeral VM; Docker access already grants host administrative authority there.
+No host permission workaround, world-readable storage or extra container capability
+is introduced. This is not a production execution mechanism.
 
 The executable fixture uses the existing production loopback admin renderer plus
 an exact HTTP-only response on container port 80, with `auto_https off` and no
@@ -114,9 +121,41 @@ exception text. It always reports `productionAdmission: false` and the provenanc
 blocker. A failed cleanup fails acceptance. The workflow retains the sanitized
 report for 30 days; preserve an external audit copy before artifact expiry.
 
-Offline regressions and required Make checks passed during preparation. Real
-Docker acceptance is pending the first PR workflow run; update this section only
-with its actual result. Existing confirmed ProjectRouter acceptance is separate:
+The first real binding diagnosis is retained in
+[run 39843536752](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39843536752).
+Only proven equivalent representations were corrected: exact official `caddy@digest`
+RepoDigests spelling versus `docker.io/library/caddy@digest`, missing OCI User
+versus Engine empty string, and missing Entrypoint versus null. Config ID, digest,
+platform and all non-default user/command/entrypoint/security values stay strict.
+These projections follow [Moby's typed Config](https://github.com/moby/moby/blob/v28.0.4/api/types/container/config.go)
+and [OCI optional configuration](https://github.com/opencontainers/image-spec/blob/v1.1.1/config.md).
+No general empty map/list equivalence or foreign repository aliasing was added.
+
+**Verified offline:** 60 targeted Caddy unit/regression tests, 184 production
+integration tests and the full `make check` with **1555 passed**; `make fix`,
+workflow validation and `git diff --check` also passed.
+
+**Verified on real disposable Docker:** [Caddy acceptance run 39844325743](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39844325743)
+completed successfully at manager source
+`6a32adf59f77f0bfdc77500e4a4f27ea1ec35349`: **17/17 cases**, cleanup passed,
+Caddy 2.11.7, Engine 28.0.4, Compose 2.38.2. The
+[sanitized receipt](../tests/fixtures/caddy/run-39844325743-report.json) records
+`realDocker: true`, no runtime mismatch codes and private storage ownership match.
+It includes the real positive/negative runtime and partial-failure cleanup checks
+listed above. Earlier failed runs remain failures, including
+[39843911664](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39843911664),
+which exposed runner-owned 0700 test binds incompatible with Caddy's root UID
+after DAC_OVERRIDE was dropped; correcting test-directory ownership preserved
+the private mode and original runtime policy. No runtime incompatibility remains
+within the tested HTTP-only projection.
+
+**Not verified on production:** no host contact/deployment, public port binding,
+production storage, TLS/ACME or active-gateway attestation/reload.
+
+**Blocked before Stage 09.4B rollout:** authenticated Caddy provenance and all
+independent production execution, evidence and operator approval prerequisites.
+
+Existing confirmed ProjectRouter acceptance is separate:
 [run 39837965499](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39837965499)
 passed at manager revision `6b4173d7c0d51439041a59bd12cc6a6a4d3b161d`.
 [main Offline CI 39839861288](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39839861288)

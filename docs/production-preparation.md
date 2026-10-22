@@ -292,3 +292,7 @@ and provides a separate explicitly authorized disposable runner harness, with no
 host ports/production TLS. Offline, real-Docker and production results are separate.
 Unsigned/unverified Caddy provenance, actual production wiring/attestors, full actual
 candidate validation and operator bootstrap/rollout approval remain blockers.
+
+Caddy [real acceptance run 39844325743](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39844325743)
+passed all 17 isolated cases and cleanup (Caddy 2.11.7 / Engine 28.0.4 / Compose
+2.38.2). This supplies disposable runtime evidence only; no production gate is bypassed.
