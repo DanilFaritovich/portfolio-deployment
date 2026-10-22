@@ -131,7 +131,7 @@ def verify_artifact(reference, allowed_repository, blobs, source, verifier=None,
 
 
 class EngineBindingError(DockerError):
-    """Only fixed codes and booleans; never Engine values or arbitrary keys."""
+    """Only fixed codes and structural categories; never arbitrary Config data."""
     def __init__(self, codes, checks):
         super().__init__('engine-artifact-mapping-mismatch')
         self.codes = codes
@@ -147,10 +147,80 @@ CONFIG_FIELDS = ('User', 'Env', 'Entrypoint', 'Cmd', 'WorkingDir', 'ExposedPorts
                  'StdinOnce', 'Image', 'NetworkDisabled', 'MacAddress')
 
 
+def normalize_engine_config(config):
+    """Compare a bounded image Config projection, never container Config.
+
+    Moby's container.Config uses non-omitempty strings/bools and nil map/slice
+    fields: https://github.com/moby/moby/blob/v27.5.1/api/types/container/config.go
+    encoding/json materializes absent strings/bools as Go zero values and nil
+    maps/slices as null. Only the 11 fields absent from the authenticated config
+    in run 39828163158 are normalized. No empty map/list equivalence is assumed.
+    OCI 1.1.1 config.md permits null for optional properties; all other fields
+    retain exact presence, JSON type and value, including User and Healthcheck.
+
+    Unknown fields/types fail closed even if both sides contain them. This is
+    intentionally narrower than every representation accepted by Moby.
+    """
+    if not isinstance(config, dict) or config.keys() - set(CONFIG_FIELDS):
+        raise ValueError('unsupported-image-config')
+    strings = {'User', 'WorkingDir', 'StopSignal', 'Hostname', 'Domainname', 'Image', 'MacAddress'}
+    arrays = {'Env', 'Entrypoint', 'Cmd', 'Shell', 'OnBuild'}
+    booleans = {'ArgsEscaped', 'AttachStdin', 'AttachStdout', 'AttachStderr',
+                'Tty', 'OpenStdin', 'StdinOnce', 'NetworkDisabled'}
+    for key, value in config.items():
+        if value is None:
+            continue  # Preserve null, except the two explicitly listed below.
+        valid = False
+        if key in strings:
+            valid = isinstance(value, str)
+        elif key in arrays:
+            valid = isinstance(value, list) and all(isinstance(v, str) for v in value)
+        elif key in booleans:
+            valid = type(value) is bool
+        elif key in {'Volumes', 'ExposedPorts', 'Labels'}:
+            valid = isinstance(value, dict) and all(
+                isinstance(k, str) and (isinstance(v, str) if key == 'Labels' else type(v) is dict and not v)
+                for k, v in value.items())
+        elif key == 'StopTimeout':
+            valid = type(value) is int
+        elif key == 'Healthcheck':
+            valid = isinstance(value, dict) and all(
+                (k == 'Test' and isinstance(v, list) and all(isinstance(arg, str) for arg in v)) or
+                (k in {'Interval', 'Timeout', 'StartPeriod', 'StartInterval', 'Retries'} and type(v) is int)
+                for k, v in value.items())
+        if not valid:
+            raise ValueError('unsupported-image-config')
+    result = dict(config)
+    # These are image metadata defaults, never permission to ignore nonzero data.
+    defaults = {'Hostname': '', 'Domainname': '', 'Image': '',
+                'AttachStdin': False, 'AttachStdout': False, 'AttachStderr': False,
+                'Tty': False, 'OpenStdin': False, 'StdinOnce': False,
+                'Volumes': None, 'OnBuild': None}
+    for key, default in defaults.items():
+        if key in result and encode(result[key]) == encode(default):
+            del result[key]
+    return result
+
+
+def config_shape(config, key):
+    """Fixed structural categories only: no values, sizes or nested keys."""
+    if key not in config:
+        return 'absent'
+    value = config[key]
+    if value is None:
+        return 'null'
+    if type(value) is bool:
+        return 'true' if value else 'false'
+    for kind, name in ((str, 'string'), (list, 'array'), (dict, 'object')):
+        if isinstance(value, kind):
+            return name if value else 'empty-' + name
+    return 'other'
+
+
 def bind_engine_image(evidence, inspected):
     """Registry verification plus fresh Engine evidence, never RepoDigests alone.
 
-    Preserve strict binding while diagnosing representation differences. A config
+    Preserve strict binding with bounded representation compatibility. A config
     digest authenticates raw registry bytes; inspect Config is an API projection,
     not those bytes. No diagnostic observation grants identity or runtime trust.
     """
@@ -161,6 +231,10 @@ def bind_engine_image(evidence, inspected):
     manifest_ref = evidence.reference.split('@')[0] + '@' + evidence.manifest_digest
     config = inspected.get('Config')
     expected = parse_snapshot(evidence.defaults_json.encode())
+    try:
+        config_matches = encode(normalize_engine_config(config)) == encode(normalize_engine_config(expected))
+    except ValueError:
+        config_matches = False
     checks = {
         'imageIdMatchesConfig': inspected.get('Id') == evidence.image_id,
         'imageIdMatchesManifest': inspected.get('Id') == evidence.manifest_digest,
@@ -169,11 +243,10 @@ def bind_engine_image(evidence, inspected):
         'repoDigestsContainRequested': valid_digests and evidence.reference in digests,
         'repoDigestsContainPlatformManifest': valid_digests and manifest_ref in digests,
         'platformMatches': inspected.get('Os') == 'linux' and inspected.get('Architecture') == 'amd64',
-        'configMatches': encode(config or {}) == evidence.defaults_json,
+        'configMatches': config_matches,
     }
     if isinstance(config, dict) and isinstance(expected, dict):
-        # Missing and null remain distinct here. This describes the difference;
-        # it deliberately does not normalize or change the binding decision.
+        # Keep PR #19's raw differences; describe shapes before normalization.
         missing = object()
         differing = {k for k in config.keys() | expected.keys()
                      if encode(config.get(k, None)) != encode(expected.get(k, None)) or
@@ -182,6 +255,9 @@ def bind_engine_image(evidence, inspected):
         checks['configOtherFieldsDiffer'] = bool(differing - set(CONFIG_FIELDS))
         checks['configNullOrOmittedOnly'] = bool(differing) and all(
             config.get(k) is None and expected.get(k) is None for k in differing)
+        checks['configDifferingShapes'] = {
+            k: {'oci': config_shape(expected, k), 'engine': config_shape(config, k)}
+            for k in CONFIG_FIELDS if k in differing}
     codes = tuple(code for key, code in (
         ('imageIdMatchesConfig', 'engine-image-id-mismatch'),
         ('repoDigestsContainRequested', 'engine-repo-digests-mismatch'),

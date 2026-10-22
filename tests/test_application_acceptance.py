@@ -1,5 +1,6 @@
 """Offline acceptance orchestration and failure boundaries; no Docker daemon."""
 import copy
+from dataclasses import replace
 import hashlib
 import io
 import json
@@ -14,7 +15,7 @@ from scripts import application_acceptance as a
 from scripts.acceptance_contract import candidate_model
 from scripts.compose import LABEL
 from scripts.docker_discovery import ImageEvidence
-from scripts.production_integration.artifacts import EngineBindingError, bind_engine_image
+from scripts.production_integration.artifacts import EngineBindingError, bind_engine_image, normalize_engine_config
 from scripts.gateway import desired_routes
 from scripts.planning_inputs import build_desired_state
 from scripts.validate_registry import RegistryValidationError, validate_registry
@@ -360,13 +361,11 @@ def test_index_and_platform_repo_digests_are_not_interchangeable(digests, accept
 
 
 @pytest.mark.parametrize('field,value', [
-    ('Entrypoint', None), ('Labels', None), ('Volumes', None), ('WorkingDir', ''),
-    ('AttachStdout', False), ('Env', []), ('ArgsEscaped', False),
+    ('Entrypoint', None), ('Labels', None), ('Volumes', {}), ('WorkingDir', ''),
+    ('AttachStdout', True), ('Env', []), ('ArgsEscaped', False),
 ])
 def test_engine_config_representation_differences_remain_fail_closed(field, value):
-    # Synthetic API shapes, NOT captured inspect from the failed runner. OCI 1.1.1
-    # permits absent/null optional fields; Moby serializes typed config structs.
-    # Until real Engine evidence is retained, do not guess a normalization fix.
+    # PR #19's conservative cases outside the explicitly supported projection.
     proof, inspected = binding_fixture()
     inspected['Config'][field] = value
     with pytest.raises(EngineBindingError) as caught:
@@ -374,6 +373,178 @@ def test_engine_config_representation_differences_remain_fail_closed(field, valu
     assert caught.value.codes == ('engine-config-mismatch',)
     assert caught.value.checks['configDifferingFields'] == [field]
     assert caught.value.checks['configNullOrOmittedOnly'] is (value is None)
+
+
+ENGINE_PROJECTION_DEFAULTS = {
+    'Volumes': None, 'OnBuild': None, 'Hostname': '', 'Domainname': '',
+    'AttachStdin': False, 'AttachStdout': False, 'AttachStderr': False,
+    'Tty': False, 'OpenStdin': False, 'StdinOnce': False, 'Image': '',
+}
+
+
+def test_retained_second_run_and_authenticated_oci_structure():
+    report = json.loads((ROOT / 'tests/fixtures/acceptance/run-39828163158-report.json').read_text())
+    structure = json.loads((ROOT / 'tests/fixtures/acceptance/run-39828163158-oci-config-shapes.json').read_text())
+    web = report['components']['web']
+    checks = web['engine']['checks']
+    assert web['mapping']['config'] == structure['configDigest']
+    assert report['errorCodes'] == ['engine-config-mismatch']
+    assert checks['imageIdMatchesConfig'] and checks['repoDigestsContainRequested'] and checks['platformMatches']
+    assert set(checks['configDifferingFields']) == set(ENGINE_PROJECTION_DEFAULTS)
+    assert all(structure['shapes'][k] == 'absent' for k in ENGINE_PROJECTION_DEFAULTS)
+    assert not checks['configOtherFieldsDiffer'] and not checks['configNullOrOmittedOnly']
+    # The historical Engine values were NOT retained. Model only Moby's documented
+    # zero-value projection; never relabel this synthetic Config as captured inspect.
+    proof, inspected = binding_fixture()
+    inspected['Config'].update(ENGINE_PROJECTION_DEFAULTS)
+    assert bind_engine_image(proof, inspected) == proof
+
+
+@pytest.mark.parametrize('field,value', ENGINE_PROJECTION_DEFAULTS.items())
+@pytest.mark.parametrize('reverse', [False, True])
+def test_only_documented_image_projection_defaults_are_equivalent(field, value, reverse):
+    proof, inspected = binding_fixture()
+    baseline = copy.deepcopy(inspected['Config'])
+    projected = {**baseline, field: value}
+    if reverse:
+        proof = replace(proof, defaults_json=a.encode(projected))
+    else:
+        inspected['Config'] = projected
+    assert bind_engine_image(proof, inspected) == proof
+    assert normalize_engine_config(projected) == baseline
+    assert projected == {**baseline, field: value}  # No mutation of authenticated defaults.
+
+
+@pytest.mark.parametrize('field,value', [
+    ('User', '0'), ('Entrypoint', ['/other']), ('Cmd', ['/other']), ('Env', ['SECRET=private-value']),
+    ('WorkingDir', '/other'), ('Healthcheck', {'Test': ['NONE']}),
+    ('Healthcheck', {'Test': ['CMD', '/health'], 'Interval': 123}),
+    ('Volumes', {'/data': {}}), ('ExposedPorts', {'80/tcp': {}}),
+    ('Labels', {'secret-label': 'private-value'}), ('StopSignal', 'SIGKILL'),
+    ('ArgsEscaped', True), ('Shell', ['/bin/sh']), ('StopTimeout', 0),
+    ('OnBuild', ['RUN private-value']), ('Hostname', 'private-value'), ('Domainname', 'private-value'),
+    ('Image', 'private-value'), ('AttachStdin', True), ('AttachStdout', True), ('AttachStderr', True),
+    ('Tty', True), ('OpenStdin', True), ('StdinOnce', True),
+    ('NetworkDisabled', True), ('MacAddress', 'private-value'),
+])
+def test_projection_never_hides_meaningful_image_changes(field, value):
+    proof, inspected = binding_fixture()
+    inspected['Config'].update(ENGINE_PROJECTION_DEFAULTS)
+    inspected['Config'][field] = value
+    with pytest.raises(EngineBindingError) as caught:
+        bind_engine_image(proof, inspected)
+    assert caught.value.codes == ('engine-config-mismatch',)
+    assert field in caught.value.checks['configDifferingFields']
+    assert 'private-value' not in json.dumps(caught.value.checks)
+
+
+@pytest.mark.parametrize('field,before,after', [
+    ('User', '101:101', '101'), ('Entrypoint', ['/app'], []), ('Cmd', ['/app'], []),
+    ('Env', ['A=1', 'B=2'], ['B=2', 'A=1']), ('Env', ['A=1'], ['A=2']),
+    ('Healthcheck', {'Test': ['CMD', '/health'], 'Timeout': 100}, {'Test': ['CMD', '/health'], 'Timeout': 101}),
+    ('Volumes', {'/data': {}}, {}), ('ExposedPorts', {'80/tcp': {}}, {}),
+    ('OnBuild', ['RUN /build'], None), ('StopTimeout', 10, 0),
+])
+def test_config_removals_and_runtime_changes_are_strict(field, before, after):
+    proof, inspected = binding_fixture()
+    proof = replace(proof, defaults_json=a.encode({**inspected['Config'], field: before}))
+    inspected['Config'].update(ENGINE_PROJECTION_DEFAULTS)
+    inspected['Config'][field] = after
+    with pytest.raises(EngineBindingError):
+        bind_engine_image(proof, inspected)
+
+
+@pytest.mark.parametrize('field,value', [
+    ('Volumes', {}), ('OnBuild', []), ('Hostname', None), ('AttachStdin', None),
+    ('Volumes', []), ('OnBuild', {}), ('Tty', 0), ('Image', False),
+    ('User', []), ('Entrypoint', '/app'), ('Cmd', [1]), ('Env', {}),
+    ('Healthcheck', []), ('Healthcheck', {'Test': '/health'}),
+    ('Healthcheck', {'Retries': True}), ('Healthcheck', {'private-value': 1}),
+    ('Volumes', {'/data': None}), ('ExposedPorts', {'80/tcp': True}),
+    ('Labels', {'secret': 123}), ('StopTimeout', False), ('private-value', None),
+])
+def test_unsupported_config_representations_block(field, value):
+    proof, inspected = binding_fixture()
+    inspected['Config'][field] = value
+    with pytest.raises(EngineBindingError) as caught:
+        bind_engine_image(proof, inspected)
+    assert caught.value.codes == ('engine-config-mismatch',)
+    assert 'private-value' not in json.dumps(caught.value.checks)
+
+
+@pytest.mark.parametrize('config', [None, [], '', False, {'User': []}, {'Volumes': []},
+    {'Tty': 0}, {'private-value': 'secret'}, {'Healthcheck': {'private-value': 'secret'}}])
+def test_even_identical_unsupported_configs_block(config):
+    proof, inspected = binding_fixture()
+    proof = replace(proof, defaults_json=a.encode(config))
+    inspected['Config'] = config
+    with pytest.raises(EngineBindingError):
+        bind_engine_image(proof, inspected)
+
+
+@pytest.mark.parametrize('change,code', [
+    ('id', 'engine-image-id-mismatch'), ('repo', 'engine-repo-digests-mismatch'),
+    ('platform', 'engine-platform-mismatch'),
+])
+def test_projection_preserves_identity_guards(change, code):
+    proof, inspected = binding_fixture()
+    inspected['Config'].update(ENGINE_PROJECTION_DEFAULTS)
+    if change == 'id': inspected['Id'] = proof.manifest_digest
+    if change == 'repo': inspected['RepoDigests'] = [proof.reference.split('@')[0] + '@' + proof.manifest_digest]
+    if change == 'platform': inspected['Os'] = 'windows'
+    with pytest.raises(EngineBindingError) as caught:
+        bind_engine_image(proof, inspected)
+    assert caught.value.codes == (code,)
+    assert caught.value.checks['configMatches']
+
+
+def test_structural_diagnostics_are_bounded_and_never_copy_config_data(tmp_path, monkeypatch):
+    proof, inspected = binding_fixture()
+    inspected['Config'].update(ENGINE_PROJECTION_DEFAULTS)
+    inspected['Config'].update(User='private-user', Env=['SECRET=private-env'],
+        Labels={'private-label': 'private-value'}, Healthcheck={'Test': ['CMD', 'private-command']},
+        **{'private-field': 'private-value'})
+    monkeypatch.setattr(a, 'command', lambda *args, **kwargs: json.dumps([inspected]).encode())
+    report, record = {}, {}
+    with pytest.raises(a.AcceptanceError):
+        a.pull_and_bind(proof, record, report)
+    path = tmp_path / 'report.json'
+    path.write_text(json.dumps({'record': record, 'report': report}))
+    raw = path.read_text()
+    assert 'private-' not in raw and 'SECRET=' not in raw
+    checks = record['engine']['checks']
+    assert checks['configDifferingShapes']['Volumes'] == {'oci': 'absent', 'engine': 'null'}
+    assert checks['configDifferingShapes']['AttachStdout'] == {'oci': 'absent', 'engine': 'false'}
+    assert checks['configDifferingShapes']['Image'] == {'oci': 'absent', 'engine': 'empty-string'}
+    assert checks['configDifferingShapes']['Env'] == {'oci': 'absent', 'engine': 'array'}
+    assert checks['configOtherFieldsDiffer']
+
+
+@pytest.mark.parametrize('change', ['', 'User', 'Entrypoint', 'Cmd', 'Env', 'WorkingDir',
+    'Healthcheck', 'Volumes', 'ExposedPorts', 'image-id', 'image-ref', 'privileged', 'caps', 'rootfs'])
+def test_projected_binding_then_runtime_still_enforces_defaults_and_security(tmp_path, change):
+    app, release, artifact = project(tmp_path)
+    service = artifact.model['services']['web']
+    proof = ImageEvidence(service['image'], 'sha256:' + 'b' * 64, 'linux/amd64', 'sha256:' + 'c' * 64,
+        True, a.encode({'User': service['user'], 'Entrypoint': ['/app'], 'Cmd': ['serve'],
+            'Env': ['APP=1'], 'WorkingDir': '/app', 'Healthcheck': {'Test': ['CMD', '/health']}}))
+    image_inspect = {'Id': proof.image_id, 'RepoDigests': [proof.reference], 'Os': 'linux',
+        'Architecture': 'amd64', 'Config': {**json.loads(proof.defaults_json), **ENGINE_PROJECTION_DEFAULTS}}
+    assert bind_engine_image(proof, image_inspect) == proof
+    runtime = a.DisposableRuntime(app, artifact, tmp_path, SESSION)
+    document = MockDocker(runtime, {'web': proof}).document('web')
+    document['Config'].update({k: v for k, v in ENGINE_PROJECTION_DEFAULTS.items() if k != 'Image'})
+    if change in {'User', 'WorkingDir'}: document['Config'][change] = 'private-value'
+    if change in {'Entrypoint', 'Cmd', 'Env'}: document['Config'][change] = ['private-value']
+    if change == 'Healthcheck': document['Config'][change] = {'Test': ['NONE']}
+    if change == 'Volumes': document['Config'][change] = {'/data': {}}
+    if change == 'ExposedPorts': document['Config'][change] = {'80/tcp': {}}
+    if change == 'image-id': document['Image'] = proof.manifest_digest
+    if change == 'image-ref': document['Config']['Image'] = 'other-image'
+    if change == 'privileged': document['HostConfig']['Privileged'] = True
+    if change == 'caps': document['HostConfig']['CapAdd'] = ['SYS_ADMIN']
+    if change == 'rootfs': document['HostConfig']['ReadonlyRootfs'] = False
+    assert a.runtime_matches(document, artifact, 'web', proof) is (not change)
 
 
 @pytest.mark.parametrize('failure,stage,code', [
