@@ -153,3 +153,15 @@ production-inspect:
 
 production-report:
 	@$(PYTHON) -m scripts.production.cli report
+
+# Stage 09.3: saved-input previews only; no SSH, socket, downloads or apply.
+.PHONY: production-plan production-preflight production-integration-check
+export PRODUCTION_CONTRACT
+production-preflight:
+	@$(PYTHON) -c 'import os,sys; from scripts.production_integration.cli import main; sys.exit(main(["preflight","--contract",os.environ.get("PRODUCTION_CONTRACT","")]))'
+
+production-plan:
+	@$(PYTHON) -c 'import os,sys; from scripts.production_integration.cli import main; sys.exit(main(["plan","--contract",os.environ.get("PRODUCTION_CONTRACT",""),"--root",os.environ["REGISTRY_ROOT"],"--git-revision",os.environ.get("GIT_REVISION",""),"--observed",os.environ.get("OBSERVED","")]))'
+
+production-integration-check:
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_production_integration.py tests/test_production_ports.py

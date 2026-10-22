@@ -44,15 +44,15 @@ The manager is authoritative for its generated resource names. The different
 producer alias is a consumer-side translation, not a dependency on changing the
 producer repository. No second production Compose file is introduced here.
 
-**Remaining runtime blocker for 09.3:** current manager Compose does not yet
-project the producer's `read_only`, bounded `/tmp` tmpfs, capability drop,
-`no-new-privileges` and restart policy. Before production execution, implement an
-explicit, validated runtime-security contract and renderer support with tests;
-verify actual UID/GID 101:101, no writable application filesystem and necessary
-writes to `/tmp`. Preserve the image healthcheck. Do not hardcode these settings
-for unrelated/stateful applications or bypass the manager by running producer Compose.
-Resource limits need measured host/workload sizing. This stage does not claim
-production-ready runtime packaging or add production transport code.
+**Stage 09.3 runtime integration:** the manager now projects the explicit closed
+`portfolio.runtime/v1` per-component contract, including read-only root, bounded
+`/tmp`, UID/GID, capability drop, no-new-privileges and restart policy. The
+[inactive template](templates/project-router.yaml) selects the ProjectRouter
+settings. Image healthcheck is preserved, and inspected effective security changes
+participate in drift detection. Synthetic tests do not prove exact-image runtime
+compatibility; separately authorized isolated verification remains a blocker.
+See [the production operator contract](production-integration.md) for implemented
+ports, source/artifact gates, Caddy storage and remaining Stage 09.4 prerequisites.
 
 ## Inactive registration and admission enforcement
 
@@ -198,3 +198,15 @@ Do not request SSH private keys, tokens, secret values or TLS private material.
 Ready for 09.2 means contracts, inactive template, narrow admission, offline tests
 and a defined diagnostics scope are available. Host access, DNS/TLS, trusted release
 artifacts, protected-source controls and production acceptance remain unverified.
+
+## Stage 09.3 acceptance and handoff
+
+Production integration components and the same-engine fake-adapter rehearsal pass
+1055 offline tests. Real registry/admission contents are unchanged; no production
+digest is asserted and ProjectRouter remains inactive. Source/protected-main,
+exact-SHA CI/publish, provenance, build-origin and host operation gates fail closed
+without independently trusted evidence. Production write/activation interfaces are
+blocked; no SSH/VDS inspection, production image transfer or deployment occurred.
+[Stage 09.4 operator prerequisites](production-integration.md#lifecycle-and-stage-094-boundary)
+remain required. Automated CD is separately planned as Stage 09.6 after safe manual
+rollout/rollback, and is not implemented or authorized by Stage 09.3.

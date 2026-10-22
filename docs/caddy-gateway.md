@@ -216,3 +216,14 @@ headers/client-IP chains, firewall behavior and gateway runtime privileges remai
 open production design decisions. Caddy alone guarantees neither application zero
 downtime nor high availability. No Docker/Caddy/VPS production mutations occur in
 this stage; offline success establishes none of those live prerequisites.
+
+## Stage 09.3 integration
+
+Stage 09.3 adds [managed runtime and gateway contracts](production-integration.md#networking-caddy-ownership-and-storage)
+over these route/candidate models. The controller preserves unrelated routes,
+requires readiness and host lock, skips identical routing, validates the full
+candidate and preserves prior owned configuration before compare/reload. Fake
+ports test validation/activation failure; live transports are not configured.
+Pinned Caddy image/version, persistent certificate/config storage and exact proxy
+IPAM/ownership require operator approval. No public admin API, socket, DNS/TLS
+operation or production activation was added.

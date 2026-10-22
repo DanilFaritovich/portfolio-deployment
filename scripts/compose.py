@@ -54,6 +54,9 @@ def render_compose(application, *, test_session=None):
     for c in spec["components"]:
         service = {"image": c["image"], "platform": c["platform"],
                    "networks": {"private": {}}, "labels": labels(application.id, c["name"])}
+        if "runtimeSecurity" in c:
+            from scripts.runtime_security import projection
+            service.update(projection(c["runtimeSecurity"]))
         if test_session:
             service["labels"][f"{LABEL}.test-session"] = test_session
         if c["dependsOn"]:

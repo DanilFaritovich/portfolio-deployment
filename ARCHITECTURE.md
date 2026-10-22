@@ -16,6 +16,9 @@ Stage 08 offline CI is merged into `develop`. Stage 09.1 adds offline production
 contracts/security and narrow ProjectRouter admission; the real registry remains
 empty pending a verified origin-bound digest. Stage 09.2 adds an offline-tested
 read-only inspection layer; no real VDS connection or inspection is verified.
+Stage 09.3 adds offline-tested production integration ports, runtime security and
+a fake-adapter lifecycle rehearsal. Production write transports and source/operation
+authorization remain blocked pending separately scoped Stage 09.4.
 
 Python CLI, Docker Engine/Compose v2, GHCR, Git and Caddy are selected technologies.
 There is no daemon, database server, Kubernetes or production deployment trigger.
@@ -133,7 +136,8 @@ project/service/alias remain `portfolio-project-router` / `web` /
 `project-router-web`, on external `portfolio-proxy`; the producer's bare alias is
 translated at this boundary. The disabled template stays outside the registry
 until reviewed digest substitution. No production executor or trigger is added.
-Manager runtime hardening matching the producer image is an explicit 09.3 blocker;
+Stage 09.3 adds an explicit per-component runtime-security projection; compatibility
+of the exact published producer image with that projection still requires evidence;
 complete observations, protected-source exact-SHA CI, verified OCI/origin evidence
 and manual first-deployment authorization are independent gates before mutation.
 
@@ -562,3 +566,45 @@ or prerequisites. Existing SSH trust is not proof of its initial independent
 verification. Actual diagnostics require separate authorization and report review
 before 09.3. See the [operator guide](docs/production-inspection.md) for exact
 bounds, permissions, trust handoff, statuses and retained production blockers.
+
+## Stage 09.3 production integration boundary
+
+[Operator contract and architecture](docs/production-integration.md) describes the
+new `scripts/production_integration/` ports, independent of Stage 09.2 diagnostics.
+The local Engine read adapter reuses Stage 05 bounded commands and verifies approved
+host/daemon identity. Fresh runtime/gateway/readiness ports compose through
+`CompositeStateProvider`, corroborate actual images/resources/runtime and repeat
+inventory/identity checks. Incomplete, stale, conflicting or unverified evidence
+cannot become complete state. There is no source promotion from inspection or LKG.
+
+`portfolio.runtime/v1` is a closed optional per-component security contract shared
+by desired/observed schemas. Compose renders user, root filesystem, bounded tmpfs,
+capability drop, no-new-privileges and restart policy deterministically, preserving
+image healthcheck. Effective runtime comparison and existing plan/runtime identity
+include these settings. Legacy fixtures remain compatible; production previews
+require explicit security. ProjectRouter's inactive template selects 101:101,
+read-only root and bounded `/tmp`; actual-image compatibility remains unverified.
+
+OCI verification hashes supplied registry bytes, maps index to unique linux/amd64
+manifest and config ID, and binds fresh Engine inspection. Source/protected-main,
+exact-SHA CI/publish, provenance and build-origin verification is an injected trusted
+port with no success-producing default. Missing evidence blocks operation. Caddy
+runtime Compose is pinned and separate from applications, exposes TCP 80/443 only,
+keeps admin on container loopback and persists certificate/config storage under
+explicit operator paths. Exact proxy ownership, network ID and IPAM are required.
+
+The production gateway controller retains unrelated routes, validates full candidates,
+preserves previous config before compare/reload and skips reload for identical
+routing. Its live write/validation/LKG transports are not configured. The rehearsal
+reuses `execute` and `DeploymentLifecycle`, host flock, readiness, SQLite journal,
+atomic application LKG and constrained rollback/recovery with fake ports. Inherited
+test-only lifecycle and production write blockers remain intact. No second engine,
+journal, live apply CLI or deployment trigger exists. 1055 offline tests passed;
+no production runtime, SSH, GHCR download or TLS operation was performed.
+
+`production-preflight` and `production-plan` consume explicit saved inputs and
+always return blocked previews without authorization. Stage 09.4 must supply and
+review actual identities/permissions, paths/budgets/subnets, gateway ownership,
+protected-main source/artifact/origin evidence, trusted live transports and operation
+approval. Stage 09.6 automated digest proposal/CD remains separately planned after
+manual rollout/rollback acceptance.
