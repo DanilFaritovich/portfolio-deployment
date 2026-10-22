@@ -242,3 +242,18 @@ byte/runtime verification and complete production admission remain pending.
 The workflow was not run during implementation. See the
 [acceptance handoff](project-router-acceptance.md) for exact release identity,
 reviewed trigger, evidence limits and remaining production gates.
+
+## Stage 09.4B.1 runtime acceptance update
+
+ProjectRouter isolated acceptance [39837965499](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39837965499)
+and manager main Offline CI [39839861288](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39839861288)
+are now confirmed passed. This supersedes the pending isolated-acceptance status
+in historical preparation sections, without granting production admission.
+
+The [Caddy runtime acceptance guide](caddy-runtime-acceptance.md) records official
+2.11.7 index/amd64 manifest/config mapping, image defaults, provenance limitations
+and the separate disposable real-Docker workflow. It reuses the existing runtime
+renderer and image contract with temporary paths and no published host ports.
+Application OCI admission remains GHCR-only; a pure registry-independent mapper is
+shared with the official gateway fixture verifier. No production attestor, validation/
+reload transport, operator approval or write authority is installed by acceptance.

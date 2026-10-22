@@ -47,10 +47,15 @@ def verify_oci_bytes(reference, allowed_repository, blobs):
     Shared by isolated acceptance and the production verifier. Callers must never
     treat this result as production source admission.
     """
-    if not re.fullmatch(re.escape(allowed_repository) + r'@sha256:[0-9a-f]{64}', reference):
-        raise DockerError('artifact-repository-or-digest-invalid')
     if not allowed_repository.startswith('ghcr.io/'):
         raise DockerError('artifact-registry-not-admitted')
+    return map_oci_bytes(reference, allowed_repository, blobs)
+
+
+def map_oci_bytes(reference, repository, blobs):
+    """Registry-independent byte mapper; grants no admission or source trust."""
+    if not re.fullmatch(re.escape(repository) + r'@sha256:[0-9a-f]{64}', reference):
+        raise DockerError('artifact-repository-or-digest-invalid')
     def descriptor_valid(descriptor, media_types, *, bounded=True):
         return (isinstance(descriptor, dict) and descriptor.get('mediaType') in media_types and
                 isinstance(descriptor.get('digest'), str) and

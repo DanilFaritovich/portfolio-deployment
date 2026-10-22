@@ -278,3 +278,17 @@ byte/runtime verification and complete production admission remain pending.
 The workflow was not run during implementation. See the
 [acceptance handoff](project-router-acceptance.md) for exact release identity,
 reviewed trigger, evidence limits and remaining production gates.
+
+## Stage 09.4B.1 acceptance evidence update
+
+ProjectRouter's [isolated acceptance run 39837965499](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39837965499)
+is confirmed successful, as is [main Offline CI 39839861288](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39839861288)
+at `65af84bd0de23af9cf9ae40b2c0c411e1fbe2c36`. Earlier pending-run statements above
+are historical preparation status. The candidate remains disabled, with its original
+digest and unchanged admission policy. This success does not mint production trust.
+
+[Caddy acceptance](caddy-runtime-acceptance.md) now pins official 2.11.7 amd64 bytes
+and provides a separate explicitly authorized disposable runner harness, with no
+host ports/production TLS. Offline, real-Docker and production results are separate.
+Unsigned/unverified Caddy provenance, actual production wiring/attestors, full actual
+candidate validation and operator bootstrap/rollout approval remain blockers.
