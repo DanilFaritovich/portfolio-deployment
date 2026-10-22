@@ -22,7 +22,7 @@ import urllib.request
 
 from scripts.compose import LABEL, startup_order
 from scripts.acceptance_contract import AcceptanceError, AcceptanceBlocked, require, candidate_model
-from scripts.docker_discovery import DockerResource, container_runtime
+from scripts.docker_discovery import DockerResource, container_runtime_verification
 from scripts.planning_inputs import parse_snapshot
 from scripts.production_integration.artifacts import (
     INDEX_TYPES, EngineBindingError, bind_engine_image, blob_digest, verify_oci_bytes,
@@ -171,11 +171,15 @@ def verified_statement(raw, image, expectation):
     return matches[0]
 
 
-def runtime_matches(document, artifact, service, evidence):
+def runtime_verification(document, artifact, service, evidence):
     facts = {'config': document['Config'], 'host': document['HostConfig'], 'imageId': document['Image'],
              'networks': document['NetworkSettings']['Networks'], 'mounts': document['Mounts']}
     resource = DockerResource('container', document['Id'], document['Name'].lstrip('/'), encode(facts))
-    return container_runtime(resource, artifact, service, evidence)
+    return container_runtime_verification(resource, artifact, service, evidence)
+
+
+def runtime_matches(document, artifact, service, evidence):
+    return runtime_verification(document, artifact, service, evidence).matched
 
 
 def request(ip, port, path, hostname, timeout=5):
@@ -359,8 +363,6 @@ class DisposableRuntime:
                 doc = runtime.inspect(name, timeout=timeout / 2)
                 with runtime.phase('container-identity'):
                     require(doc['Id'] == container_id)
-                with runtime.phase('runtime-contract'):
-                    require(runtime_matches(doc, runtime.artifact, name, evidence))
                 self.document = doc
                 with runtime.phase('container-state'):
                     state = doc['State']
@@ -375,6 +377,10 @@ class DisposableRuntime:
                     runtime.diagnostics['oomKilled'] = oom if type(oom) is bool else 'unknown'
                     if not running:
                         runtime.fail('container-not-running')
+                with runtime.phase('runtime-contract'):
+                    verification = runtime_verification(doc, runtime.artifact, name, evidence)
+                    runtime.diagnostics['contract'] = verification.diagnostic()
+                    require(verification.matched)
                 with runtime.phase('docker-health'):
                     health = state.get('Health', {}).get('Status')
                     require(health in (None, 'starting', 'healthy', 'unhealthy'))

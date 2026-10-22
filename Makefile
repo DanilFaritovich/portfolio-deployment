@@ -171,3 +171,10 @@ production-integration-check:
 .PHONY: acceptance-check
 acceptance-check:
 	@$(PYTHON) -m scripts.acceptance_contract
+
+# Real Engine on an explicitly authorized, empty disposable local daemon only.
+# Never part of offline check or application acceptance; never publishes ports.
+.PHONY: runtime-integration-test
+export RUNTIME_TEST_ENDPOINT RUNTIME_TEST_AUTHORIZE
+runtime-integration-test:
+	@$(PYTHON) -c 'import os,sys; from scripts.runtime_integration import main; sys.exit(main(["--endpoint",os.environ.get("RUNTIME_TEST_ENDPOINT",""),"--authorize",os.environ.get("RUNTIME_TEST_AUTHORIZE","")]))'

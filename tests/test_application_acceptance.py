@@ -732,7 +732,8 @@ class MockDocker:
         networks = {r.artifact.model['networks'][key]['name']: {
             'Aliases': [name] + options.get('aliases', []), 'IPAddress': '172.22.0.' + str(2 + list(r.components).index(name))}
             for key, options in service['networks'].items()}
-        mounts = [{'Type': 'tmpfs', 'Destination': k} for k in host['Tmpfs']]
+        # Legacy Compose tmpfs lives in HostConfig.Tmpfs, not inspect.Mounts.
+        mounts = []
         mounts += [{'Type': 'volume', 'Name': r.artifact.model['volumes'][m['source']]['name'],
                     'Destination': m['target'], 'RW': True} for m in service.get('volumes', [])]
         return {'Id': name + '-id', 'Name': name, 'Image': proof.image_id,
@@ -1082,3 +1083,35 @@ def test_accept_preserves_runtime_diagnosis_even_when_cleanup_fails(tmp_path, mo
     assert bool(engines[0].docs) is cleanup_fails
     if not cleanup_fails:
         assert not engines[0].networks and not engines[0].volumes
+
+
+def test_exited_container_classified_before_runtime_network_loss(tmp_path, monkeypatch):
+    app, release, artifact = project(tmp_path)
+    evidence = fixture_evidence(app)
+    runtime = a.DisposableRuntime(app, artifact, tmp_path, SESSION)
+    engine = MockDocker(runtime, evidence)
+    doc = engine.document('web')
+    doc['State'].update(Running=False, Status='exited', ExitCode=1, OOMKilled=False)
+    doc['NetworkSettings']['Networks'] = {}
+    doc['HostConfig']['Privileged'] = True
+    monkeypatch.setattr(runtime, 'inspect', lambda *args, **kwargs: doc)
+    with pytest.raises(a.RuntimeFailure):
+        runtime.healthy('web', evidence['web'])
+    assert runtime.diagnostics['errorCode'] == 'container-not-running'
+    assert runtime.diagnostics['containerState'] == 'exited'
+    assert runtime.diagnostics['exitCode'] == 1
+    assert 'runtime-contract' not in runtime.diagnostics['steps']
+
+
+def test_acceptance_contract_diagnostic_uses_shared_result(tmp_path, monkeypatch):
+    app, release, artifact = project(tmp_path)
+    evidence = fixture_evidence(app)
+    for proof in evidence.values(): proof.verified = True
+    runtime = a.DisposableRuntime(app, artifact, tmp_path, SESSION)
+    doc = MockDocker(runtime, evidence).document('web')
+    doc['HostConfig']['SecurityOpt'] = ['private-value']
+    monkeypatch.setattr(runtime, 'inspect', lambda *args, **kwargs: doc)
+    with pytest.raises(a.RuntimeFailure): runtime.healthy('web', evidence['web'])
+    assert runtime.diagnostics['contract'] == a.runtime_verification(doc, artifact, 'web', evidence['web']).diagnostic()
+    assert {'group': 'security', 'field': 'SecurityOpt', 'code': 'runtime-field-mismatch'} in runtime.diagnostics['contract']['mismatches']
+    assert 'private-value' not in json.dumps(runtime.diagnostics)
