@@ -12,7 +12,7 @@ import time
 from scripts.compose import LABEL, ComposeArtifact
 from scripts.gateway import make_route
 from scripts.docker_adapter import DockerError
-from scripts.production_integration.artifacts import blob_digest, map_oci_bytes, bind_engine_image
+from scripts.production_integration.artifacts import blob_digest, map_oci_bytes, bind_engine_image, EngineBindingError
 from scripts.production_integration.caddy_image import inspect_caddy_contract
 from scripts.production_integration.caddy_runtime import verify_caddy_runtime
 from scripts.production_integration.gateway import content
@@ -130,8 +130,19 @@ class CaddyHarness(Harness):
                              'composeVersion': self.docker('compose', 'version', '--short').decode().strip()}
         self.stage = 'image-binding'
         inspect_caddy_contract(self.runtime, self.evidence)
+        self.stage = 'image-pull'
         self.docker('pull', '--platform', 'linux/amd64', self.evidence.reference)
-        bind_engine_image(self.evidence, self.inspect('image', self.evidence.reference))
+        self.stage = 'image-inspection'
+        image = self.inspect('image', self.evidence.reference)
+        self.stage = 'image-binding'
+        try:
+            bind_engine_image(self.evidence, image)
+        except EngineBindingError as error:
+            self.observations['bindingCodes'] = list(error.codes)
+            self.observations['bindingChecks'] = error.checks
+            self.observations['shortNameRepoDigestPresent'] = ('caddy@' + self.lock['index']) in (image.get('RepoDigests') or [])
+            raise
+        self.stage = 'binary-version'
         version = self.docker('run', '--rm', '--network', 'none', '--read-only', '--cap-drop', 'ALL',
             '--cap-add', 'NET_BIND_SERVICE', '--security-opt', 'no-new-privileges:true',
             '--label', LABEL + '.test-session=' + self.session, self.evidence.reference, 'caddy', 'version').decode().split()
