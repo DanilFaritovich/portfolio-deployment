@@ -18,9 +18,13 @@ empty pending a verified origin-bound digest. Stage 09.2 adds an offline-tested
 read-only inspection layer; no real VDS connection or inspection is verified.
 Stage 09.3 adds offline-tested production integration ports, runtime security and
 a fake-adapter lifecycle rehearsal. Production write transports and source/operation
-authorization remain blocked pending separately scoped Stage 09.4.
+authorization remain blocked. Stage 09.4A adds offline first-host bootstrap,
+explicit source trust, canonical production lock/storage, release evidence and
+operator candidate/approval review contracts. Stage 09.4B remains the separately
+authorized first rollout; no production apply is exposed.
 
-Python CLI, Docker Engine/Compose v2, GHCR, Git and Caddy are selected technologies.
+Python CLI, Docker Engine/Compose (supported v2 and explicitly reviewed 5.6.0),
+GHCR, Git and Caddy are selected technologies.
 There is no daemon, database server, Kubernetes or production deployment trigger.
 The local durable journal uses standard-library SQLite schema v1. Ordinary live apply is unavailable: Docker-only
 discovery cannot establish full Stage 03 registry/gateway evidence. See the
@@ -608,3 +612,43 @@ review actual identities/permissions, paths/budgets/subnets, gateway ownership,
 protected-main source/artifact/origin evidence, trusted live transports and operation
 approval. Stage 09.6 automated digest proposal/CD remains separately planned after
 manual rollout/rollback acceptance.
+
+## Stage 09.4A preparation boundary
+
+[ADR 0001](docs/adr/0001-production-execution.md) recommends a host-local one-shot
+execution process behind a separately provisioned privileged boundary. Inspection,
+planning and mutation authority stay separate; existing administrative `sudo -n`
+reads do not grant deployment rights. No Docker group/socket/sudoers change or
+privileged implementation is supplied. The managed inventory remains authoritative
+for future approved host access. No VDS contact occurred in this stage.
+
+Production sources require explicit expected host/daemon/source bindings and an
+installed authenticated attestor in addition to fresh complete sampling rounds.
+The read-only Engine adapter admits fixed argv, canonical local socket and bounded
+execution. A numeric private HTTP status transport is implemented without DNS,
+redirects, body logging or unbounded reads. Active gateway reads require their own
+attestor; exact empty managed config is valid, absent/foreign gateway is not.
+
+`bootstrap.py` plans manager infrastructure from independently attested empty
+state or a fully verified existing proxy. It rejects ownership/IPAM/listener and
+storage conflicts and separates manager bootstrap from readiness-gated application
+route activation. Proposals bind the observed baseline and never authorize writes.
+An absent prior application LKG explicitly means no release rollback is available.
+
+The canonical production lock is `/srv/portfolio/locks/host.lock`, acquired through
+the existing Stage 05 flock primitive after protected parent/ownership/mode checks.
+Journal operations require an issued live lease with a matching inode;
+ProductionGateway defaults to canonical-lease verification. Injectable disposable
+test locks remain separate; production fallback/migration is forbidden. The
+[operator guide](docs/production-preparation.md) defines storage budgets, private
+paths, backups, migration and first-release recovery limitations.
+
+ReleaseVerifier validates protected-main/check/publication/provenance/origin and
+candidate relationships only through an authenticated collector; unconfigured
+collectors block. The existing OCI byte verifier remains the artifact mapper.
+OperationCandidate binds host/daemon, both SHAs, image and manifest/policy/plan/
+gateway/runtime/network/storage/recovery hashes. Approval review requires an
+independent issuer and bounded window; it yields no executor capability. Issuance,
+nonce consumption and real dispatch remain 09.4B work. CLI/CI configure no trust
+issuer or production write port. Compose version acceptance and synthetic tests
+do not prove actual image/runtime compatibility, DNS, ACME or production readiness.

@@ -5,6 +5,7 @@ import json
 import re
 
 from scripts.compose import LABEL
+from scripts.compose_version import supported_compose
 from scripts.production import InspectionError
 
 DOCKER = 'env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/docker --config /nonexistent --host unix:///var/run/docker.sock '
@@ -70,7 +71,11 @@ def normalize(name, raw):
             if not re.fullmatch(r'v2\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?', value):
                 raise ValueError
             return {'value': value}
-        if name in ('architecture', 'hostname', 'machine_id', 'engine', 'daemon', 'compose'):
+        if name == 'compose':
+            if not supported_compose(text):
+                raise ValueError
+            return {'value': text}
+        if name in ('architecture', 'hostname', 'machine_id', 'engine', 'daemon'):
             value = json.loads(text) if name in ('engine', 'daemon') else text
             value = token(value)
             if name == 'machine_id' and not re.fullmatch(r'[0-9a-f]{32}', value):
@@ -78,8 +83,6 @@ def normalize(name, raw):
             if name == 'engine' and not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?', value):
                 raise ValueError
             if name == 'daemon' and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9:-]{7,127}', value):
-                raise ValueError
-            if name == 'compose' and not re.fullmatch(r'v?2\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?', value):
                 raise ValueError
             return {'value': value}
         if name in ('cpu', 'memory'):

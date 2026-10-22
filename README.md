@@ -3,7 +3,7 @@
 [Русская версия](README.ru.md)
 
 Central Docker/GitOps deployment platform for independently built portfolio
-applications on a single Ubuntu VPS. **Current status: Stage 09.3 — production integration components implemented and tested offline (1055 tests).**
+applications on a single Ubuntu VPS. **Current status: Stage 09.4A — production deployment preparation implemented and checked offline (1120 tests).**
 Stage 08 is merged into `develop`; Stage 07 real local VM E2E passed 15/15 scenarios.
 Registry/admission, offline planning and retained Caddy previews are implemented;
 Stage 04 PR #4, Stage 05 PR #5 and Stage 06 PR #6 are merged into `develop`. Stage 05 adds deterministic Compose,
@@ -16,6 +16,17 @@ Production deployment remains **Planned**: full registry/gateway observations ar
 not available from Docker alone. No production apply interface exists. The real
 registry remains empty pending a verified origin-bound digest; admission reserves ProjectRouter.
 The separate Stage 05 local smoke was not performed.
+
+[Stage 09.4A preparation](docs/production-preparation.md) and
+[execution ADR](docs/adr/0001-production-execution.md) add shared Compose v2/5.6.0
+policy, authenticated source bindings, canonical production lock/storage, an
+offline first-host bootstrap proposal and source/artifact/approval contracts.
+Recommended execution is host-local behind a separately provisioned privileged
+boundary; no sudo fallback or production apply exists. Both protected-main source
+proofs, installed trust/execution mechanisms and isolated exact-image runtime
+acceptance remain blockers. Stage 09.4B — First Authorized ProjectRouter Rollout —
+requires separate approval; Stages 09.5/09.6 remain Planned. Operator observations
+are not trusted planner state. No VDS connection or mutation occurred in 09.4A.
 
 [Stage 09.1 contracts and security](docs/production-contracts.md) defines
 `project-router` → `project-router-web:8080` on `portfolio-proxy`, readiness `/en/`,

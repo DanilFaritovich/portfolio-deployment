@@ -469,7 +469,7 @@ def test_real_adapter_compose_version_accepts_ubuntu_and_requires_v2(monkeypatch
         adapter.prerequisites()
         assert len(calls) == 2
     else:
-        with pytest.raises(DockerError, match="compose-v2-required"):
+        with pytest.raises(DockerError, match="compose-version-unsupported"):
             adapter.prerequisites()
         assert len(calls) == 1
 

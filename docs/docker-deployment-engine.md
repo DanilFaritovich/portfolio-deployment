@@ -331,3 +331,7 @@ resources in a target Compose project block preflight. A separately approved
 local Engine read adapter verifies host/daemon identity and reuses bounded
 inventory commands. Its write boundary remains closed; smoke/E2E restrictions
 are unchanged. No production apply interface is introduced.
+
+## Stage 09.4A preparation
+
+Stage 05 prerequisites and local syntax validation now share the reviewed Compose version policy: supported stable v2 and explicit 5.6.0, optional `v`, no unknown major or unreviewed v5 release. Production uses the canonical `/srv/portfolio/locks/host.lock`; injectable disposable test paths remain local-only. See [production preparation](production-preparation.md) for the migration and privileged execution boundary.

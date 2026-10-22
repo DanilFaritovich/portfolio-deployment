@@ -227,3 +227,7 @@ ports test validation/activation failure; live transports are not configured.
 Pinned Caddy image/version, persistent certificate/config storage and exact proxy
 IPAM/ownership require operator approval. No public admin API, socket, DNS/TLS
 operation or production activation was added.
+
+## Stage 09.4A preparation
+
+Exact empty managed configuration is supported without invented routes, provided active runtime/channel attestation succeeds. Absent/foreign Caddy remains blocked. Production runtime binds only TCP 80/443 and refuses implicit creation of bind-source paths. Official image defaults are checked separately from actual runtime evidence; no synthetic Compose model proves compatibility. See [production preparation](production-preparation.md) for image, TLS, storage, LKG and bootstrap prerequisites.

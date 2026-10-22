@@ -13,6 +13,7 @@ import tempfile
 import time
 
 from scripts.compose import ComposeArtifact
+from scripts.compose_version import supported_compose
 from scripts.planning_inputs import parse_snapshot
 
 MAX_OUTPUT = 1024 * 1024
@@ -22,6 +23,17 @@ class DockerError(RuntimeError):
     def __init__(self, code, unknown=False):
         self.code, self.unknown = code, unknown
         super().__init__(code)
+
+
+def command_failure(returncode, errors):
+    """Closed classification only; raw Docker diagnostics never leave transport."""
+    if b'permission denied' in errors.lower():
+        return DockerError('docker-permission-denied')
+    return DockerError('docker-command-failed', returncode < 0 or returncode >= 128 or
+                      any(token in errors.lower() for token in
+                          (b'cannot connect', b'connection refused', b'error during connect',
+                           b'eof', b'connection reset', b'context deadline', b'broken pipe',
+                           b'i/o timeout', b'transport is closing')))
 
 
 def run_bounded(argv, *, timeout=20, cwd=None):
@@ -55,11 +67,7 @@ def run_bounded(argv, *, timeout=20, cwd=None):
                                 errors.extend(chunk)
                     process.wait(timeout=max(0.001, deadline - time.monotonic()))
                 if process.returncode:
-                    raise DockerError("docker-command-failed", process.returncode < 0 or process.returncode >= 128 or
-                                      any(token in errors.lower() for token in
-                                      (b"cannot connect", b"connection refused", b"error during connect",
-                                       b"eof", b"connection reset", b"context deadline", b"broken pipe",
-                                       b"i/o timeout", b"transport is closing")))
+                    raise command_failure(process.returncode, errors)
                 return bytes(data)
             except BaseException:
                 process.kill()
@@ -158,8 +166,8 @@ class LocalDockerAdapter:
     def prerequisites(self):
         try:
             version = self._run(["compose", "version", "--short"]).decode("ascii").strip()
-            if not re.fullmatch(r"v?2\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.~-]+)?", version):
-                raise DockerError("compose-v2-required")
+            if not supported_compose(version):
+                raise DockerError("compose-version-unsupported")
             server = json.loads(self._run(["version", "--format", "{{json .Server}}"]))
             if server.get("Os") != "linux" or server.get("Arch") != "amd64":
                 raise DockerError("unsupported-daemon-platform")
@@ -196,8 +204,8 @@ def official_validate(artifact):
             path.write_text(artifact.to_json())
             try:
                 version = run_bounded([binary, "compose", "version", "--short"], cwd=directory).decode("ascii").strip()
-                if not re.fullmatch(r"v?2\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.~-]+)?", version):
-                    return {"status": "not-performed", "reason": "compose-v2-required"}
+                if not supported_compose(version):
+                    return {"status": "not-performed", "reason": "compose-version-unsupported"}
             except (DockerError, UnicodeError):
                 return {"status": "not-performed", "reason": "compose-v2-unavailable"}
             run_bounded([binary, "--host", "unix:///nonexistent/pd-no-daemon.sock", "compose",

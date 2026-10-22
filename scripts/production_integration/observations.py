@@ -45,10 +45,11 @@ class ProductionStateReader:
     claimed across independent processes.
     """
     def __init__(self, desired_reader, docker, runtime, gateway, readiness, resolve_image,
-                 proxy_contract, *, clock=time.monotonic):
+                 proxy_contract, *, clock=time.monotonic, source_trust=None):
         self.desired_reader, self.docker = desired_reader, docker
         self.ports = {'runtime': runtime, 'gateway': gateway, 'readiness': readiness}
         self.resolve_image, self.proxy_contract, self.clock = resolve_image, proxy_contract, clock
+        self.source_trust = source_trust
 
     def provider(self):
         return CompositeStateProvider(self, clock=self.clock)
@@ -57,6 +58,7 @@ class ProductionStateReader:
         from scripts.production_integration.runtime import validate_proxy
         start, round_id = self.clock(), uuid.uuid4().hex
         identity = self.docker.identity()
+        require(self.source_trust is not None, 'production-source-trust-unconfigured')
         desired = self.desired_reader()  # re-admission, not a cached desired object
         results = {name: port.collect(round_id) for name, port in self.ports.items()}
         now = self.clock()
@@ -65,6 +67,7 @@ class ProductionStateReader:
                     result.round_id == round_id and result.complete is True and result.verified is True and
                     result.error is None and start <= result.captured_at <= now and now - result.captured_at <= 5,
                     'production-source-incomplete-or-unverified')
+            self.source_trust.verify(name, identity, self.ports[name], result)
         observed = load_observed_state(results['runtime'].payload)
         require(observed.document['scope'] == {'kind': 'registry', 'complete': True, 'trusted': True},
                 'production-runtime-scope-incomplete')

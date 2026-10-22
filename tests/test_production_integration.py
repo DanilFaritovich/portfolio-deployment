@@ -233,7 +233,7 @@ def test_gateway_retains_routes_and_image_only_no_reload(router):
     from scripts.gateway import desired_routes, GatewayRoute
     d=DesiredState(REVISION,(router,)); doc=observation(d)
     target=desired_routes(d)
-    port=GatewayPort(target); g=ProductionGateway(port)
+    port=GatewayPort(target); g=ProductionGateway(port, lease_verifier=lambda lease: None)
     assert not g.activate(d,load_observed_state(doc),router.id,ready=True,lease=LockLease())
     assert not port.calls
     doc['applications'][0]['route'].update(existence='absent',configuration=None)
@@ -252,7 +252,7 @@ def test_gateway_retains_routes_and_image_only_no_reload(router):
     # Disabled active apps are intentionally retained by Stage04 but Stage03 may
     # block deactivation: exercise unrelated retention via an enabled stable app.
     spec['enabled']=True; unrelated=replace(unrelated,spec_json=encode(spec)); d=replace(d,applications=(router,unrelated))
-    assert ProductionGateway(port).activate(d,load_observed_state(doc),router.id,ready=True,lease=LockLease())
+    assert ProductionGateway(port, lease_verifier=lambda lease: None).activate(d,load_observed_state(doc),router.id,ready=True,lease=LockLease())
     assert port.calls==['validate','lkg','reload'] and port.lkg==content((other,))
     assert other in port.routes and 'admin 127.0.0.1:2019' in content(port.routes)
 
@@ -264,7 +264,7 @@ def test_gateway_failure_keeps_lkg(router,failure):
     doc['applications'][0]['route']['configuration']['hostname']='old.example.test'
     old=(make_route(router.id,doc['applications'][0]['route']['configuration']),)
     port=GatewayPort(old); port.target=desired_routes(d); port.fail=failure
-    with pytest.raises(DockerError): ProductionGateway(port).activate(d,load_observed_state(doc),router.id,ready=True,lease=LockLease())
+    with pytest.raises(DockerError): ProductionGateway(port, lease_verifier=lambda lease: None).activate(d,load_observed_state(doc),router.id,ready=True,lease=LockLease())
     assert port.routes==old
     if failure=='validate': assert port.calls==['validate']
     else: assert port.lkg==content(old)
@@ -273,7 +273,7 @@ def test_gateway_failure_keeps_lkg(router,failure):
 def test_gateway_readiness_and_lock_gate(router):
     d=DesiredState(REVISION,(router,)); port=GatewayPort(())
     for ready,lease in ((False,LockLease()),(True,None),(True,LockLease(False))):
-        with pytest.raises(DockerError): ProductionGateway(port).activate(d,load_observed_state(empty()),router.id,ready=ready,lease=lease)
+        with pytest.raises(DockerError): ProductionGateway(port, lease_verifier=lambda lease: None).activate(d,load_observed_state(empty()),router.id,ready=ready,lease=lease)
     assert not port.calls
 
 
@@ -364,7 +364,7 @@ def test_engine_inventory_reuses_bounded_read_commands(monkeypatch):
     adapter=ProductionDockerAdapter(EngineContract('unix:///var/run/docker.sock','daemon','a'*32,True),lambda:'a'*32)
     adapter.binary='/usr/bin/docker'; monkeypatch.setattr(adapter,'identity',lambda:('a'*32,'daemon'))
     assert adapter.inventory('container')==()
-    assert calls[0][1:]==['--host','unix:///var/run/docker.sock','container','ls','--all','--quiet','--no-trunc']
+    assert calls[0][1:]==['--host','unix:///run/docker.sock','container','ls','--all','--quiet','--no-trunc']
     with pytest.raises(DockerError): adapter._run(['compose','up'])
     assert len(calls)==1
 
@@ -386,7 +386,13 @@ def reader_fixture(router,monkeypatch):
     class Engine:
         def identity(self): return 'a'*32,'daemon'
     ports=[Port('runtime-v1',doc),Port('gateway-v1',desired_routes(d)),Port('readiness-v1',{r.identifier:'healthy'})]
-    reader=ProductionStateReader(lambda:d,Engine(),*ports,lambda ref,raw:image,pc,clock=lambda:0)
+    from scripts.production_integration.trust import SourceTrust, SourceBinding, SourceAttestation
+    class Attestor:
+        def verify(self, binding, port, result):
+            return SourceAttestation(binding, result)  # test-only authenticated channel
+    trust = SourceTrust(tuple(SourceBinding(name, 'a'*32, 'daemon', port.identity)
+                              for name, port in zip(('runtime', 'gateway', 'readiness'), ports)), Attestor())
+    reader=ProductionStateReader(lambda:d,Engine(),*ports,lambda ref,raw:image,pc,clock=lambda:0,source_trust=trust)
     return reader,ports,docker
 
 

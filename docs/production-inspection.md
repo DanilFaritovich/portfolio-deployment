@@ -120,7 +120,7 @@ Static commands collect only:
   `/`, `/var`, `/opt`, hostname and machine ID. Other filesystems and a custom
   Docker data root are not exhaustively verified.
 - Engine version and daemon ID from the current user's rootful local Docker API,
-  Compose v2 version, all containers (including stopped), project labels, network
+  supported Compose version, all containers (including stopped), project labels, network
   names/drivers/subnets and volume names/drivers. Each resource includes only the
   manager's managed/application/component labels and the Compose project label.
   Full inspect objects, container environment, mounts, commands, logs, volume
@@ -218,3 +218,19 @@ report still cannot become complete fresh planner evidence; a passing local
 `production-check` is not server readiness. Fresh source ports, exact artifact and
 origin evidence, approved identities/paths/subnets and separately authorized
 Stage 09.4 operations remain necessary. No real SSH inspection was performed.
+
+## Stage 09.4A compatibility clarification
+
+The shared Compose policy now accepts stable v2 versions (including Ubuntu build
+suffixes) and explicitly reviewed `5.6.0`, with or without `v`. Other v5 releases,
+unknown majors and prereleases require separate review. Inspection normalization
+and Stage 05 prerequisites use the same policy; report schema accepts its version
+syntax. Version parsing is not proof of Compose/image runtime compatibility.
+
+The operator's 2026-10-22 manual observations reported Engine 29.9.0, Compose 5.6.0,
+Docker access only through administrative `sudo -n`, active UFW and an empty host.
+The previous 9 passed / 2 blocked / 6 unknown report is not a trusted live snapshot.
+`docker-permission-denied` means missing permission, not absent Engine; the missing
+host Caddy binary is expected for container-managed Caddy. Codex did not reconnect
+to the VDS. No sudo mode was added to inspection. See
+[09.4A handoff](production-preparation.md) for full operator evidence and blockers.

@@ -48,6 +48,22 @@ class ExecutionResult:
 @dataclass
 class LockLease:
     active: bool = True
+    fd: int | None = None
+    path: str | None = None
+
+
+_ACTIVE_LEASES = {}
+
+
+def owns_host_lock(lease):
+    record = _ACTIVE_LEASES.get(id(lease))
+    if record is None or record != (lease, lease.fd, lease.path) or lease.active is not True:
+        return False
+    try:
+        actual, expected = os.fstat(lease.fd), os.lstat(lease.path)
+        return (actual.st_dev, actual.st_ino) == (expected.st_dev, expected.st_ino)
+    except (OSError, TypeError):
+        return False
 
 
 @contextmanager
@@ -79,10 +95,12 @@ def host_lock(directory="/tmp/portfolio-deployment-locks"):
         if isinstance(error, DockerError):
             raise
         raise DockerError("host-lock-unavailable") from None
-    lease = LockLease()
+    lease = LockLease(fd=fd, path=str(path / 'host.lock'))
+    _ACTIVE_LEASES[id(lease)] = (lease, fd, lease.path)
     try:
         yield lease
     finally:
+        _ACTIVE_LEASES.pop(id(lease), None)
         lease.active = False
         os.close(fd)
 

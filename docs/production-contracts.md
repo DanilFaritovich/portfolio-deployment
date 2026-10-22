@@ -210,3 +210,17 @@ blocked; no SSH/VDS inspection, production image transfer or deployment occurred
 [Stage 09.4 operator prerequisites](production-integration.md#lifecycle-and-stage-094-boundary)
 remain required. Automated CD is separately planned as Stage 09.6 after safe manual
 rollout/rollback, and is not implemented or authorized by Stage 09.3.
+
+## Stage 09.4A preparation and Stage 09.4B boundary
+
+[Preparation/operator handoff](production-preparation.md) and
+[execution ADR](adr/0001-production-execution.md) now define first-host bootstrap,
+Compose 5.6.0 support, canonical lock/storage, authenticated source bindings,
+release evidence and exact-candidate approval review. These mechanisms remain
+offline: no active manifest, production digest selection or production apply.
+Both repositories need protected-main evidence; authenticated collectors,
+privileged installation and exact-image runtime tests remain blockers. The
+2026-10-22 GitHub reads and operator-reported server observations are documented
+with their limits in the handoff. Do not promote develop publication evidence or
+`VITE_SITE_ORIGIN` runtime environment into origin-bound release evidence.
+09.4B is the separate first authorized rollout; 09.5 and 09.6 remain future tasks.

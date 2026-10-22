@@ -3,7 +3,7 @@
 [English version](README.md)
 
 Централизованная платформа Docker/GitOps-деплоя независимо собираемых портфолио-
-приложений на одном Ubuntu VPS. **Текущее состояние: Stage 09.3 — компоненты production integration реализованы и проверены офлайн (1055 тестов).**
+приложений на одном Ubuntu VPS. **Текущее состояние: Stage 09.4A — подготовка production deployment реализована и проверена офлайн (1120 тестов).**
 Stage 08 смержен в `develop`; реальный локальный VM E2E Stage 07 пройден: 15/15 сценариев.
 Реализованы registry/admission, offline-планирование и retained Caddy previews;
 PR #4 Stage 04, PR #5 Stage 05 и PR #6 Stage 06 смержены в `develop`. Stage 05 добавляет детерминированный Compose,
@@ -15,6 +15,18 @@ disposable Ubuntu VM и test-only readers/probes; локальная приём�
 Production-деплой остаётся **Planned**: Docker не даёт полный registry/gateway
 snapshot Stage 03. Production apply интерфейса нет. Реальный реестр пуст до
 подтверждения digest с нужным origin; admission резервирует ProjectRouter. Отдельный локальный smoke Stage 05 не запускался.
+
+[Подготовка Stage 09.4A](docs/production-preparation.md) и
+[execution ADR](docs/adr/0001-production-execution.md) добавляют общую policy
+Compose v2/5.6.0, authenticated source bindings, канонические production lock/storage,
+офлайн-план первой установки и source/artifact/approval contracts.
+Рекомендуется локальное исполнение на VDS через отдельно подготавливаемую
+privileged boundary; sudo fallback и production apply отсутствуют. Protected-main
+evidence обоих репозиториев, доверенные execution/trust mechanisms и изолированные
+runtime-тесты точных images остаются blockers. Stage 09.4B — First Authorized
+ProjectRouter Rollout — требует отдельного разрешения; Stages 09.5/09.6 остаются
+Planned. Наблюдения оператора не являются trusted planner state. Подключений к VDS
+и mutations в 09.4A не было; полный offline check: 1120 tests passed.
 
 [Контракты и безопасность Stage 09.1](docs/production-contracts.md) фиксируют
 `project-router` → `project-router-web:8080` в `portfolio-proxy`, readiness `/en/`,
