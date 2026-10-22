@@ -24,7 +24,7 @@ from scripts.acceptance_contract import AcceptanceError, AcceptanceBlocked, requ
 from scripts.docker_discovery import DockerResource, container_runtime
 from scripts.planning_inputs import parse_snapshot
 from scripts.production_integration.artifacts import (
-    INDEX_TYPES, bind_engine_image, blob_digest, verify_oci_bytes,
+    INDEX_TYPES, EngineBindingError, bind_engine_image, blob_digest, verify_oci_bytes,
 )
 from scripts.reconciliation import encode
 from scripts.readiness import ProbeResult, ReadinessPolicy, verify_readiness
@@ -389,6 +389,40 @@ class DisposableRuntime:
         require(not any(self.owned(kind) for kind in ('container', 'network', 'volume')))
 
 
+def pull_and_bind(proof, record, report):
+    """Stop before runtime on any failure; persist only locally selected codes."""
+    engine = record['engine'] = {'pull': 'pending', 'inspect': 'pending', 'binding': 'pending'}
+    for step, stage, code in (
+        ('pull', 'docker-pull', 'docker-pull-failed'),
+        ('inspect', 'docker-image-inspect', 'docker-image-inspect-failed'),
+        ('binding', 'engine-identity-binding', 'engine-binding-failed'),
+    ):
+        report['stage'] = stage
+        engine[step] = 'running'
+        codes = (code,)
+        try:
+            if step == 'pull':
+                command(['docker', 'pull', '--quiet', '--platform', 'linux/amd64', proof.reference], timeout=180)
+            elif step == 'inspect':
+                raw = command(['docker', 'image', 'inspect', proof.reference])
+                codes = ('docker-image-inspect-invalid',)
+                documents = decoded(raw)
+                require(isinstance(documents, list) and len(documents) == 1 and isinstance(documents[0], dict))
+                inspected = documents[0]
+            else:
+                bind_engine_image(proof, inspected)
+        except EngineBindingError as error:
+            engine[step] = 'failed'
+            engine['checks'] = error.checks
+            report['errorCodes'] = list(error.codes)
+            raise AcceptanceError() from None
+        except Exception:
+            engine[step] = 'failed'
+            report['errorCodes'] = list(codes)
+            raise AcceptanceError() from None
+        engine[step] = 'passed'
+
+
 def accept(application, release, artifact, directory, session, gh_binary, report):
     evidence = {}
     report['components'] = {}
@@ -419,11 +453,8 @@ def accept(application, release, artifact, directory, session, gh_binary, report
             record['attestations'].append({'predicateType': expectation['predicateType'],
                                            'verifiedOutputSha256': hashlib.sha256(raw).hexdigest()})
         evidence[name] = proof
-    report['stage'] = 'pull-engine-binding'
     for name, proof in evidence.items():
-        command(['docker', 'pull', '--quiet', '--platform', 'linux/amd64', proof.reference], timeout=180)
-        inspected = decoded(command(['docker', 'image', 'inspect', proof.reference]))[0]
-        bind_engine_image(proof, inspected)
+        pull_and_bind(proof, report['components'][name], report)
     runtime = DisposableRuntime(application, artifact, directory, session)
     try:
         report['stage'] = 'runtime-start'

@@ -130,10 +130,64 @@ def verify_artifact(reference, allowed_repository, blobs, source, verifier=None,
     return evidence
 
 
+class EngineBindingError(DockerError):
+    """Only fixed codes and booleans; never Engine values or arbitrary keys."""
+    def __init__(self, codes, checks):
+        super().__init__('engine-artifact-mapping-mismatch')
+        self.codes = codes
+        self.checks = checks
+
+
+# Field names are allowlisted: image labels, env entries and unknown config keys
+# can contain private data. Never copy those names or any values into reports.
+CONFIG_FIELDS = ('User', 'Env', 'Entrypoint', 'Cmd', 'WorkingDir', 'ExposedPorts',
+                 'Volumes', 'Labels', 'StopSignal', 'Healthcheck', 'ArgsEscaped',
+                 'Shell', 'OnBuild', 'StopTimeout', 'Hostname', 'Domainname',
+                 'AttachStdin', 'AttachStdout', 'AttachStderr', 'Tty', 'OpenStdin',
+                 'StdinOnce', 'Image', 'NetworkDisabled', 'MacAddress')
+
+
 def bind_engine_image(evidence, inspected):
-    """Registry verification plus fresh Engine evidence, never RepoDigests alone."""
-    if (inspected.get('Id') != evidence.image_id or evidence.reference not in inspected.get('RepoDigests', []) or
-        inspected.get('Os') != 'linux' or inspected.get('Architecture') != 'amd64' or
-        encode(inspected.get('Config') or {}) != evidence.defaults_json):
-        raise DockerError('engine-artifact-mapping-mismatch')
+    """Registry verification plus fresh Engine evidence, never RepoDigests alone.
+
+    Preserve strict binding while diagnosing representation differences. A config
+    digest authenticates raw registry bytes; inspect Config is an API projection,
+    not those bytes. No diagnostic observation grants identity or runtime trust.
+    """
+    if not isinstance(inspected, dict):
+        raise EngineBindingError(('engine-inspect-invalid',), {})
+    digests = inspected.get('RepoDigests')
+    valid_digests = isinstance(digests, list) and all(isinstance(d, str) for d in digests)
+    manifest_ref = evidence.reference.split('@')[0] + '@' + evidence.manifest_digest
+    config = inspected.get('Config')
+    expected = parse_snapshot(evidence.defaults_json.encode())
+    checks = {
+        'imageIdMatchesConfig': inspected.get('Id') == evidence.image_id,
+        'imageIdMatchesManifest': inspected.get('Id') == evidence.manifest_digest,
+        'imageIdMatchesRequestedDigest': inspected.get('Id') == evidence.reference.split('@')[1],
+        'repoDigestsValid': valid_digests,
+        'repoDigestsContainRequested': valid_digests and evidence.reference in digests,
+        'repoDigestsContainPlatformManifest': valid_digests and manifest_ref in digests,
+        'platformMatches': inspected.get('Os') == 'linux' and inspected.get('Architecture') == 'amd64',
+        'configMatches': encode(config or {}) == evidence.defaults_json,
+    }
+    if isinstance(config, dict) and isinstance(expected, dict):
+        # Missing and null remain distinct here. This describes the difference;
+        # it deliberately does not normalize or change the binding decision.
+        missing = object()
+        differing = {k for k in config.keys() | expected.keys()
+                     if encode(config.get(k, None)) != encode(expected.get(k, None)) or
+                     (config.get(k, missing) is missing) != (expected.get(k, missing) is missing)}
+        checks['configDifferingFields'] = [k for k in CONFIG_FIELDS if k in differing]
+        checks['configOtherFieldsDiffer'] = bool(differing - set(CONFIG_FIELDS))
+        checks['configNullOrOmittedOnly'] = bool(differing) and all(
+            config.get(k) is None and expected.get(k) is None for k in differing)
+    codes = tuple(code for key, code in (
+        ('imageIdMatchesConfig', 'engine-image-id-mismatch'),
+        ('repoDigestsContainRequested', 'engine-repo-digests-mismatch'),
+        ('platformMatches', 'engine-platform-mismatch'),
+        ('configMatches', 'engine-config-mismatch'),
+    ) if not checks[key])
+    if codes:
+        raise EngineBindingError(codes, checks)
     return evidence
