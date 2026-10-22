@@ -18,7 +18,7 @@ snapshot Stage 03. Production apply интерфейса нет. Реальны�
 
 [Подготовка Stage 09.4A](docs/production-preparation.md) и
 [execution ADR](docs/adr/0001-production-execution.md) добавляют общую policy
-Compose v2/5.6.0, authenticated source bindings, канонические production lock/storage,
+стабильного Compose plugin >= 2 с отдельными проверками CLI/конфигурации, authenticated source bindings, канонические production lock/storage,
 офлайн-план первой установки и source/artifact/approval contracts.
 Рекомендуется локальное исполнение на VDS через отдельно подготавливаемую
 privileged boundary; sudo fallback и production apply отсутствуют. Protected-main

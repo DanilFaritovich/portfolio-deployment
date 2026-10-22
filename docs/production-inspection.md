@@ -221,11 +221,16 @@ Stage 09.4 operations remain necessary. No real SSH inspection was performed.
 
 ## Stage 09.4A compatibility clarification
 
-The shared Compose policy now accepts stable v2 versions (including Ubuntu build
-suffixes) and explicitly reviewed `5.6.0`, with or without `v`. Other v5 releases,
-unknown majors and prereleases require separate review. Inspection normalization
-and Stage 05 prerequisites use the same policy; report schema accepts its version
-syntax. Version parsing is not proof of Compose/image runtime compatibility.
+The shared Compose policy accepts stable plugin versions >= 2 (including future
+major/minor/patch versions and Ubuntu build suffixes), with or without `v`. Legacy
+v1, prereleases and malformed versions are rejected. Inspection normalization,
+Stage 05 prerequisites and official validation use the same policy. A separate
+read-only `compose_cli` probe checks required plugin options using the shared
+capability policy; unavailable or incomplete evidence prevents readiness. Syntax
+of the actual rendered configuration is checked by `config -q` before `up` and
+during official validation. Inspection does not upload or validate application
+configurations. Version parsing and CLI help are not proof of image/runtime
+compatibility.
 
 The operator's 2026-10-22 manual observations reported Engine 29.9.0, Compose 5.6.0,
 Docker access only through administrative `sudo -n`, active UFW and an empty host.

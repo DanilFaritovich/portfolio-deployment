@@ -215,7 +215,7 @@ rollout/rollback, and is not implemented or authorized by Stage 09.3.
 
 [Preparation/operator handoff](production-preparation.md) and
 [execution ADR](adr/0001-production-execution.md) now define first-host bootstrap,
-Compose 5.6.0 support, canonical lock/storage, authenticated source bindings,
+Stable Compose plugin >= 2 with separate CLI/configuration checks, canonical lock/storage, authenticated source bindings,
 release evidence and exact-candidate approval review. These mechanisms remain
 offline: no active manifest, production digest selection or production apply.
 Both repositories need protected-main evidence; authenticated collectors,

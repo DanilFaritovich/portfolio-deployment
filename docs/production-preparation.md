@@ -13,7 +13,7 @@ readiness, journal/LKG and recovery; there is no second deployment engine.
 
 | Component | Preparation behavior / boundary |
 | --- | --- |
-| `compose_version.supported_compose` | Shared v2 stable release line (including Ubuntu build suffix), plus explicitly reviewed 5.6.0; optional `v`; rejects prereleases and other v5 releases/majors |
+| `compose_version.supported_compose` | Stable plugin versions >= 2, including future major/minor/patch versions and Ubuntu build suffixes; optional `v`; rejects v1, prereleases and malformed versions. Required CLI options are checked independently through plugin help; each actual artifact must pass `config -q` before `up` |
 | `docker.ProductionDockerAdapter` | Fixed local Engine endpoint, machine/daemon checks, exact inventory/inspect argv and bounded deadlines/output; never sudo; all writes blocked |
 | `trust.SourceTrust` | Expected host, daemon and per-source identities plus installed authenticated attestor over exact source payload/round; no trust from source booleans |
 | `observations.ProductionStateReader` | Existing complete-source/Engine corroboration through CompositeStateProvider; now fails before promotion if source trust is unconfigured or mismatched |
@@ -168,7 +168,7 @@ and exact version. `inspect_caddy_contract` rejects incompatible entrypoint/CMD,
 user, working directory or XDG/version defaults, but **always retains isolated
 runtime, provenance and official-validation blockers**. Verify effective startup,
 root/file capabilities under no-new-privileges, writable paths/permissions,
-restart and storage persistence using that exact image and Compose 5.6.0 in an
+restart and storage persistence using that exact image and the selected Compose plugin in an
 isolated environment. No Caddy runtime test or production pull was performed here.
 
 TLS prerequisites: independently verify authoritative A/AAAA (remove or repair
@@ -248,7 +248,7 @@ not implemented. No approval comes from merge, CI, a fixture or `verified: true`
 - Fresh authenticated complete observations, reviewed host/VPN/Docker IPAM and
   resource absence/ownership, configured runtime/readiness/active-gateway attestors.
 - Protected-main source/artifact/provenance/origin evidence for both repositories,
-  selected Caddy digest/version, isolated Compose 5.6.0/Caddy/ProjectRouter runtime
+  selected Caddy digest/version, isolated selected-Compose/Caddy/ProjectRouter runtime
   acceptance and official complete-candidate validation.
 - Reviewed DNS/ACME/public-port/certificate/backup prerequisites, restore drill,
   console access, explicit first-release no-rollback containment plan and budgets.

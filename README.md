@@ -18,8 +18,8 @@ registry remains empty pending a verified origin-bound digest; admission reserve
 The separate Stage 05 local smoke was not performed.
 
 [Stage 09.4A preparation](docs/production-preparation.md) and
-[execution ADR](docs/adr/0001-production-execution.md) add shared Compose v2/5.6.0
-policy, authenticated source bindings, canonical production lock/storage, an
+[execution ADR](docs/adr/0001-production-execution.md) add shared stable Compose plugin >= 2 policy with separate CLI/configuration checks,
+authenticated source bindings, canonical production lock/storage, an
 offline first-host bootstrap proposal and source/artifact/approval contracts.
 Recommended execution is host-local behind a separately provisioned privileged
 boundary; no sudo fallback or production apply exists. Both protected-main source

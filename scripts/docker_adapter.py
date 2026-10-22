@@ -13,7 +13,7 @@ import tempfile
 import time
 
 from scripts.compose import ComposeArtifact
-from scripts.compose_version import supported_compose
+from scripts.compose_version import CLI_REQUIREMENTS, supported_compose, supported_compose_cli
 from scripts.planning_inputs import parse_snapshot
 
 MAX_OUTPUT = 1024 * 1024
@@ -168,6 +168,9 @@ class LocalDockerAdapter:
             version = self._run(["compose", "version", "--short"]).decode("ascii").strip()
             if not supported_compose(version):
                 raise DockerError("compose-version-unsupported")
+            if not supported_compose_cli([self._run(list(args)).decode("utf-8")
+                                          for args, _ in CLI_REQUIREMENTS]):
+                raise DockerError("compose-capabilities-unsupported")
             server = json.loads(self._run(["version", "--format", "{{json .Server}}"]))
             if server.get("Os") != "linux" or server.get("Arch") != "amd64":
                 raise DockerError("unsupported-daemon-platform")
@@ -186,6 +189,8 @@ class LocalDockerAdapter:
         with tempfile.TemporaryDirectory(prefix="pd-compose-") as directory:
             path = Path(directory) / "compose.json"
             path.write_text(artifact.to_json())
+            self._run(["compose", "--project-name", artifact.project, "--project-directory", directory,
+                       "--env-file", "/dev/null", "--file", str(path), "config", "-q"], cwd=directory)
             self._run(["compose", "--project-name", artifact.project, "--project-directory", directory,
                        "--env-file", "/dev/null", "--file", str(path), "up", "-d", "--no-deps",
                        "--no-build", "--pull", "never", service], timeout=60, cwd=directory)
@@ -207,11 +212,16 @@ def official_validate(artifact):
                 if not supported_compose(version):
                     return {"status": "not-performed", "reason": "compose-version-unsupported"}
             except (DockerError, UnicodeError):
-                return {"status": "not-performed", "reason": "compose-v2-unavailable"}
+                return {"status": "not-performed", "reason": "compose-plugin-unavailable"}
+            if not supported_compose_cli([run_bounded([binary, *args], cwd=directory).decode("utf-8")
+                                          for args, _ in CLI_REQUIREMENTS]):
+                return {"status": "failed", "reason": "compose-capabilities-unsupported"}
             run_bounded([binary, "--host", "unix:///nonexistent/pd-no-daemon.sock", "compose",
                          "--project-name", artifact.project, "--project-directory", directory,
                          "--env-file", "/dev/null", "--file", str(path), "config", "-q"], cwd=directory)
         return {"status": "passed", "reason": "syntax-only"}
+    except UnicodeError:
+        return {"status": "failed", "reason": "compose-capabilities-unsupported"}
     except DockerError as error:
         return {"status": "not-performed" if error.code == "docker-unavailable" else "failed",
                 "reason": error.code}

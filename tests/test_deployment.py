@@ -330,7 +330,8 @@ def test_command_adapter_selection_no_shell_and_sanitized_environment(app, tmp_p
     artifact = compose.render_compose(app, test_session=SESSION)
     monkeypatch.setattr(adapter, "prerequisites", lambda: None)
     adapter.up(artifact, "backend")
-    argv, kw = calls[0]
+    assert calls[0][0][-2:] == ["config", "-q"]
+    argv, kw = calls[1]
     assert argv[-7:] == ["up", "-d", "--no-deps", "--no-build", "--pull", "never", "backend"]
     assert argv[1:3] == ["--host", "unix://" + str(path)]
     assert "--project-name" in argv and "--file" in argv and kw["timeout"] == 60
@@ -440,13 +441,14 @@ def test_public_mock_adapter_is_offline(app, tmp_path):
     assert [call[1] for call in adapter.calls] == ["backend", "worker"]
 
 
-@pytest.mark.parametrize("version", [b"2.40.0", b"v2.40.3", b"2.40.3+ds1-0ubuntu1~24.04.1"])
+@pytest.mark.parametrize("version", [b"2.40.0", b"v2.40.3", b"2.40.3+ds1-0ubuntu1~24.04.1", b"5.6.0", b"v5.6.1", b"5.7.0", b"6.0.0"])
 def test_official_syntax_validation_uses_no_daemon(app, monkeypatch, version):
     calls = []
     monkeypatch.setattr(docker_adapter.shutil, "which", lambda _: "/usr/bin/docker")
     def run(argv, **kwargs):
         calls.append(argv)
-        return version if "version" in argv else b""
+        from test_compose_version import cli_reply
+        return version if "version" in argv else cli_reply(argv[1:]) if "--help" in argv else b""
     monkeypatch.setattr(docker_adapter, "run_bounded", run)
     assert docker_adapter.official_validate(compose.render_compose(app))["status"] == "passed"
     assert calls[-1][-2:] == ["config", "-q"]
@@ -457,17 +459,18 @@ def test_official_syntax_validation_uses_no_daemon(app, monkeypatch, version):
 
 @pytest.mark.parametrize("version,accepted", [(b"2.40.3+ds1-0ubuntu1~24.04.1", True),
                                                (b"v2.40.3", True), (b"1.29.2", False),
-                                               (b"3.0.0", False), (b"2.40.3\nuntrusted", False)])
-def test_real_adapter_compose_version_accepts_ubuntu_and_requires_v2(monkeypatch, version, accepted):
+                                               (b"3.0.0", True), (b"2.40.3\nuntrusted", False)])
+def test_real_adapter_compose_version_accepts_ubuntu_and_requires_modern_plugin(monkeypatch, version, accepted):
     adapter = object.__new__(docker_adapter.LocalDockerAdapter)
     calls = []
     def run(args):
         calls.append(args)
-        return version if args == ["compose", "version", "--short"] else b'{"Os":"linux","Arch":"amd64"}'
+        from test_compose_version import cli_reply
+        return version if args == ["compose", "version", "--short"] else cli_reply(args) if "--help" in args else b'{"Os":"linux","Arch":"amd64"}'
     monkeypatch.setattr(adapter, "_run", run)
     if accepted:
         adapter.prerequisites()
-        assert len(calls) == 2
+        assert len(calls) == 5
     else:
         with pytest.raises(DockerError, match="compose-version-unsupported"):
             adapter.prerequisites()
@@ -735,3 +738,47 @@ def test_blocked_preview_preserves_proposal(root, app, capsys, case, reason):
         assert proposal["action"] == "update-component"
     elif case.startswith("create"):
         assert proposal["action"] == "create"
+
+
+@pytest.mark.parametrize('gate', ['help-missing', 'help-failed', 'syntax'])
+def test_compose_incompatibility_blocks_before_up(app, monkeypatch, gate):
+    from test_compose_version import cli_reply
+    adapter = object.__new__(docker_adapter.LocalDockerAdapter)
+    adapter.scope = type('Scope', (), {'session': SESSION, 'validate': lambda self: None})()
+    calls = []
+    def run(args, **kwargs):
+        calls.append(args)
+        if args == ['compose', 'version', '--short']:
+            return b'6.0.0'
+        if '--help' in args:
+            if gate == 'help-failed':
+                raise DockerError('docker-command-failed')
+            reply = cli_reply(args)
+            return reply.replace(b'--no-build', b'--unsupported') if gate == 'help-missing' else reply
+        if 'config' in args:
+            raise DockerError('docker-command-failed')
+        return b'{"Os":"linux","Arch":"amd64"}'
+    monkeypatch.setattr(adapter, '_run', run)
+    artifact = compose.render_compose(app, test_session=SESSION)
+    with pytest.raises(DockerError):
+        adapter.up(artifact, 'backend')
+    assert not any('up' in args and '--help' not in args for args in calls)
+    if gate == 'syntax':
+        assert calls[-1][-2:] == ['config', '-q']
+
+
+@pytest.mark.parametrize('gate', ['help-missing', 'help-failed', 'syntax'])
+def test_official_validation_fails_closed_on_capabilities_or_syntax(app, monkeypatch, gate):
+    from test_compose_version import cli_reply
+    monkeypatch.setattr(docker_adapter.shutil, 'which', lambda _: '/usr/bin/docker')
+    def run(argv, **kwargs):
+        if 'version' in argv:
+            return b'5.7.0'
+        if '--help' in argv:
+            if gate == 'help-failed':
+                raise DockerError('docker-command-failed')
+            reply = cli_reply(argv[1:])
+            return reply.replace(b'--no-build', b'--unsupported') if gate == 'help-missing' else reply
+        raise DockerError('docker-command-failed')
+    monkeypatch.setattr(docker_adapter, 'run_bounded', run)
+    assert docker_adapter.official_validate(compose.render_compose(app))['status'] == 'failed'

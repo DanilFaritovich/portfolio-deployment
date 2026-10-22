@@ -37,18 +37,19 @@ def no_real_transports(monkeypatch):
     monkeypatch.setattr(subprocess, 'Popen', forbidden)
 
 
-@pytest.mark.parametrize('version', ['5.6.0', 'v5.6.0', '2.35.0', 'v2.40.3', '2.40.3+ds1-0ubuntu1~24.04.1'])
+@pytest.mark.parametrize('version', ['5.6.0', 'v5.6.0', '5.6.1', 'v5.7.0', '6.0.0', 'v6.2.1', '2.35.0', 'v2.40.3', '2.40.3+ds1-0ubuntu1~24.04.1'])
 def test_shared_compose_policy_and_preflight(version):
     assert supported_compose(version)
     assert normalize('compose', version.encode()) == {'value': version}
     adapter = object.__new__(LocalDockerAdapter)
-    adapter._run = lambda args: version.encode() if args[0] == 'compose' else b'{"Os":"linux","Arch":"amd64"}'
+    from test_compose_version import cli_reply
+    adapter._run = lambda args: cli_reply(args) if '--help' in args else version.encode() if args[0] == 'compose' else b'{"Os":"linux","Arch":"amd64"}'
     adapter.prerequisites()
 
 
-@pytest.mark.parametrize('version', ['1.29.2', '3.0.0', '4.0.0', '5.5.0', '5.6.1', '6.0.0',
+@pytest.mark.parametrize('version', ['1.29.2', '0.0.0', '6.0.0-rc1',
                                      '5.6.0-rc1', '2.40.0-rc1', 'v05.6.0', '5.6.0\nanything', '5.6', ''])
-def test_unreviewed_compose_versions_rejected(version):
+def test_invalid_compose_versions_rejected(version):
     assert not supported_compose(version)
 
 

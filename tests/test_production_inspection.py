@@ -61,12 +61,14 @@ def resource(name='foreign', **extra):
 
 
 def responses():
+    from test_compose_version import HELP, HELP_SEPARATOR
     return {
         'os': b'ID=ubuntu\nVERSION_ID="24.04"\n', 'architecture': b'x86_64\n',
         'cpu': b'2\n', 'memory': b'4000000\n',
         'disk': b'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/vda1 40000000 1000 39000000 1% /\n',
         'hostname': b'synthetic-vds\n', 'machine_id': b'a' * 32 + b'\n',
         'engine': b'"28.0.1"\n', 'daemon': b'"SYNTHETIC-DAEMON-ID"\n', 'compose': b'v2.35.0\n',
+        'compose_cli': (HELP_SEPARATOR + HELP_SEPARATOR.join(HELP)).encode(),
         'containers': b'', 'networks': b'NETWORKS\n', 'volumes': b'',
         'listeners': b'LISTEN 0 128 0.0.0.0:2244 0.0.0.0:*\n',
         'caddy': b'v2.10.2 h1:synthetic\n',
@@ -512,3 +514,20 @@ def test_inspect_blocks_unsafe_storage_before_ssh(config,monkeypatch):
     config[0].chmod(0o777)
     monkeypatch.setattr(cli,'SSHTransport',Mock(side_effect=AssertionError('SSH forbidden')))
     assert cli.main(['inspect']) == 2
+
+
+@pytest.mark.parametrize('version', [b'2.0.0', b'v5.6.0', b'5.6.1', b'v5.7.0', b'6.0.0', b'v6.3.1'])
+def test_modern_compose_versions_roundtrip_report_schema(config, version):
+    result = report(config, {'compose': version})
+    validate(result)
+    assert check(result, 'compose')['status'] == 'passed'
+    assert check(result, 'compose_cli')['status'] == 'passed'
+
+
+@pytest.mark.parametrize('reply', [b'', Reply(1, b'', b'unavailable')])
+def test_compose_cli_failure_remains_blocker(config, reply):
+    result = report(config, {'compose_cli': reply})
+    validate(result)
+    assert check(result, 'compose')['status'] == 'passed'
+    assert check(result, 'compose_cli')['status'] in ('unknown', 'blocked')
+    assert any(value.startswith('compose_cli:') for value in result['blockers'])

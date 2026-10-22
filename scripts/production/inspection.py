@@ -45,7 +45,7 @@ def inspect(target, transport, trusted_fingerprints=()):
                 if reply.code:
                     item['reason'] = ('docker-permission-denied' if name in ('engine', 'daemon', 'containers', 'networks', 'volumes')
                                       and b'permission denied' in reply.stderr.lower() else 'command-not-installed' if reply.code == 127 else 'probe-unavailable-or-denied')
-                    if name in ('engine', 'daemon', 'compose'):
+                    if name in ('engine', 'daemon', 'compose', 'compose_cli'):
                         item['status'] = 'blocked'
                 else:
                     item['details'] = normalize(name, reply.stdout)

@@ -23,7 +23,7 @@ explicit source trust, canonical production lock/storage, release evidence and
 operator candidate/approval review contracts. Stage 09.4B remains the separately
 authorized first rollout; no production apply is exposed.
 
-Python CLI, Docker Engine/Compose (supported v2 and explicitly reviewed 5.6.0),
+Python CLI, Docker Engine/Compose (stable plugin versions >= 2, with separate CLI/configuration gates),
 GHCR, Git and Caddy are selected technologies.
 There is no daemon, database server, Kubernetes or production deployment trigger.
 The local durable journal uses standard-library SQLite schema v1. Ordinary live apply is unavailable: Docker-only
