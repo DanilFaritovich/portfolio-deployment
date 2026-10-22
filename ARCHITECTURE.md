@@ -653,17 +653,29 @@ nonce consumption and real dispatch remain 09.4B work. CLI/CI configure no trust
 issuer or production write port. Compose version acceptance and synthetic tests
 do not prove actual image/runtime compatibility, DNS, ACME or production readiness.
 
-## Isolated ProjectRouter release acceptance
+## Universal isolated application acceptance
 
-The disabled exact-digest [candidate](docs/candidates/project-router.yaml) remains
-outside the real registry. A separate dispatch-only
-[GitHub-hosted acceptance workflow](.github/workflows/project-router-acceptance.yml)
-uses `scripts/project_router_acceptance.py`, shared OCI byte verification, normal
-admission validation and the existing Compose renderer's test-session identities.
-It verifies signed producer evidence and runs bounded disposable image/security/HTTP
-checks without production networks, gateway, executor lifecycle or admission
-authority. `verify_artifact` retains its separate full production source gate.
-The sanitized receipt is not a trusted release collector or OperationCandidate
-approval. Real acceptance is pending an explicitly triggered run after review;
-[acceptance and remaining blockers](docs/project-router-acceptance.md) describe
-the boundary. Ordinary offline CI never starts this workflow or Docker.
+The [dispatch-only GitHub-hosted workflow](.github/workflows/application-acceptance.yml)
+selects a reviewed Application by ID on protected develop/main. One YAML contains
+manifest v1 plus optional versioned `release` expectations; separate admission
+`acceptance` constrains signer workflows/refs, predicates and exact runtime security.
+`scripts/acceptance_contract.py` reuses complete registry/schema/admission validation
+and checks candidates together with existing registry entries for global collisions.
+`scripts/application_acceptance.py` reuses OCI byte verification, Engine binding,
+Compose test-session rendering, shared readiness gates and runtime inspection.
+Adding supported applications requires declarations and security review, with no
+per-application runner/workflow or engine change. No daemon/production trigger is added.
+
+All image/source signatures are verified before pulls. Session-isolated Compose
+startup follows readiness-gated dependencies; checks cover HTTP/worker readiness,
+internal DNS/TCP, PID security, mounts/ports, restart and owned-resource cleanup.
+Persistent storage requires explicit disposable test-volume consent and collision-free
+preflight. Unsupported secrets/config and unavailable capabilities fail closed.
+Producer business/UI/PDF/SEO tests remain in application CI. ProjectRouter's exact
+v1.0.0 candidate stays disabled outside the registry with signed origin expectations.
+
+The bounded sanitized report always has `productionAdmission: false` and is not
+accepted by the separate full production source/release verifier or operation gate.
+Offline CI validates declarations and mocks; no real universal acceptance or
+production operation was run in this task. See [adding applications](docs/application-acceptance.md)
+and [ProjectRouter's remaining blockers](docs/project-router-acceptance.md).

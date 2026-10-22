@@ -123,3 +123,14 @@ handoff. Operator-reported 2026-10-22 diagnostics are not fresh trusted planner
 state. GitHub metadata still reports both main branches unprotected; producer main
 lacks the audited deployment code. Missing evidence/mechanisms stay blocked.
 Stages 09.5 and 09.6 retain their independent acceptance/authorization boundaries.
+
+## Universal application acceptance
+
+The specialized ProjectRouter acceptance from PR #16 is replaced with one manual
+ID-selected workflow and a shared runner, using manifest `release` metadata and
+independent admission `acceptance` constraints. HTTP/worker, multiple components,
+readiness-gated dependencies, restart, runtime security and explicitly disposable
+test volumes are covered offline. See [how to add applications](application-acceptance.md).
+ProjectRouter remains disabled outside the active registry with its exact v1.0.0
+identity and signed build-origin contract. Real universal acceptance was not run;
+Stage 09.4B production admission/authorization and later stages remain separate.

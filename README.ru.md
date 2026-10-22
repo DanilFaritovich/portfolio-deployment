@@ -67,6 +67,14 @@ protected-main exact-SHA source/artifact/origin evidence, trusted live transport
 и разрешения операции. Stage 09.6 automated digest-update PR/CD запланирован после
 безопасного ручного rollout/rollback; автоматический CD здесь не реализован.
 
+[Как добавить новое приложение в Portfolio Deployment](docs/application-acceptance.md):
+добавить один валидируемый YAML с release metadata и пройти независимое
+admission/security-ревью. Один ручной workflow **Application isolated acceptance**
+проверяет подписи образов, readiness/security, зависимости, restart и очистку своих
+ресурсов для HTTP/worker-компонентов. `make acceptance-check` проверяет неактивные
+декларации offline. Бизнес-тесты остаются в CI приложения; реальная приёмка и
+production admission требуют отдельных review/разрешений. Универсальная приёмка не запускалась.
+
 ## Назначение и архитектура
 
 Целевая цепочка: CI приложения → immutable-образ в GHCR → утверждённое desired

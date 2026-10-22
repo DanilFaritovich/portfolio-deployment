@@ -1,10 +1,14 @@
-name: ProjectRouter isolated acceptance
+name: Application isolated acceptance
 
 on:
   workflow_dispatch:
     inputs:
+      application:
+        description: Reviewed application ID (no image or command overrides)
+        required: true
+        type: string
       confirmation:
-        description: 'Type project-router-v1.0.0-isolated to authorize disposable runner acceptance'
+        description: 'Type isolated-acceptance to authorize disposable runner acceptance'
         required: true
         type: string
 
@@ -12,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: project-router-isolated-${{ github.ref }}
+  group: application-isolated-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -21,7 +25,7 @@ jobs:
       github.repository == 'DanilFaritovich/portfolio-deployment' &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') &&
       github.ref_protected &&
-      inputs.confirmation == 'project-router-v1.0.0-isolated'
+      inputs.confirmation == 'isolated-acceptance'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -43,14 +47,15 @@ jobs:
       - name: Accept exact immutable image with verified GitHub CLI in isolation
         env:
           GH_TOKEN: ${{ github.token }}
+          ACCEPTANCE_APPLICATION: ${{ inputs.application }}
           ACCEPTANCE_CONFIRM: ${{ inputs.confirmation }}
           ACCEPTANCE_REF_PROTECTED: ${{ github.ref_protected }}
-        run: python -m scripts.project_router_acceptance
+        run: python -m scripts.application_acceptance
       - name: Preserve bounded sanitized evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: project-router-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          name: application-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
           path: acceptance-evidence/report.json
           if-no-files-found: warn
           retention-days: 30
