@@ -766,3 +766,14 @@ def test_missing_lkg_pointer_is_incomplete_journal(worker, tmp_path):
     with pytest.raises(JournalError, match="incomplete-last-known-good"):
         with locked_journal(tmp_path / "j", lock_directory=tmp_path / "l"):
             pass
+
+
+def test_readiness_contract_errors_are_fatal_not_unknown():
+    from scripts.readiness import ReadinessContractError
+    clock = Clock()
+    class Fatal:
+        def probe(self, *args, **kwargs):
+            raise ReadinessContractError('private detail')
+    with pytest.raises(ReadinessContractError):
+        verify_readiness({'type': 'http'}, 'id', Fatal(), POLICY, clock=clock.now, sleep=clock.sleep)
+    assert clock.value == 0
