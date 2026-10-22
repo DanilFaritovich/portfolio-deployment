@@ -110,6 +110,21 @@ def preflight_resources(application, artifact, observation):
             declared = {m["mountPath"] for m in c["volumeMounts"]}
             if not set(json.loads(image.defaults_json)["Volumes"]) <= declared:
                 reasons.add("image-anonymous-volume-forbidden")
+    for c in spec["components"]:
+        if "runtimeSecurity" in c:
+            image = images.get(c["image"])
+            health = json.loads(image.defaults_json).get("Healthcheck") if image else None
+            if not isinstance(health, dict) or not health.get("Test") or health["Test"][0] == "NONE":
+                reasons.add("required-image-healthcheck-unavailable")
+            if any(m["mountPath"] == "/tmp" for m in c["volumeMounts"]) and c["runtimeSecurity"]["tmpfs"]:
+                reasons.add("runtime-tmpfs-volume-overlap")
+    for r in observation.resources:
+        if r.kind in ("network", "volume") and r.facts["labels"].get("com.docker.compose.project") == artifact.project:
+            section = "networks" if r.kind == "network" else "volumes"
+            key = r.facts["labels"].get(f"com.docker.compose.{r.kind}")
+            expected = model.get(section, {}).get(key)
+            if not expected or expected["name"] != r.name or not owned_resource(r, expected.get("labels", {}), artifact.project, key):
+                reasons.add("project-foreign-resource")
     for kind, section in (("network", "networks"), ("volume", "volumes")):
         for key, expected in model.get(section, {}).items():
             found = [r for r in observation.resources if r.kind == kind and r.name == expected["name"]]

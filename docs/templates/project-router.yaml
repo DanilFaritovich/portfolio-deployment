@@ -16,6 +16,18 @@ spec:
     health:
       strategy: http
       path: /en/
+    runtimeSecurity:
+      apiVersion: portfolio.runtime/v1
+      readOnlyRootFilesystem: true
+      user: '101:101'
+      capDrop: [ALL]
+      noNewPrivileges: true
+      restart: unless-stopped
+      imageHealthcheck: preserve
+      tmpfs:
+      - target: /tmp
+        sizeBytes: 16777216
+        mode: '1777'
     port: 8080
   storage:
     type: stateless

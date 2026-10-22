@@ -90,7 +90,9 @@ def discover(adapter, references, *, resolve_image=image_evidence):
                 else:
                     facts = {"labels": raw.get("Labels") or {}, "driver": raw.get("Driver"),
                              "internal": raw.get("Internal"), "options": raw.get("Options") or {},
-                             "scope": raw.get("Scope"), "containers": raw.get("Containers") or {}}
+                             "scope": raw.get("Scope"), "containers": raw.get("Containers") or {},
+                             "ipam": raw.get("IPAM"), "attachable": raw.get("Attachable"),
+                             "ingress": raw.get("Ingress"), "enableIPv6": raw.get("EnableIPv6")}
                 resources.append(DockerResource(kind, identifier, name, encode(facts)))
         for reference in sorted(set(references)):
             if time.monotonic() >= deadline:
@@ -129,7 +131,7 @@ def container_runtime(resource, artifact, service, image):
         return False
     empty_defaults = {"Cmd": [], "Entrypoint": [], "Env": [], "ExposedPorts": {}, "Volumes": {}}
     for key in ("Cmd", "Entrypoint", "Env", "User", "WorkingDir", "Healthcheck", "ExposedPorts", "Volumes"):
-        actual, expected = config.get(key), defaults.get(key)
+        actual, expected = config.get(key), wanted.get("user", defaults.get(key)) if key == "User" else defaults.get(key)
         if key in empty_defaults:
             empty = empty_defaults[key]
             if actual is None:
@@ -142,8 +144,7 @@ def container_runtime(resource, artifact, service, image):
         host.get("Binds") or host.get("CapAdd") or host.get("Devices") or host.get("DeviceRequests") or
         host.get("PidMode") or host.get("IpcMode") not in (None, "", "private") or
         host.get("NetworkMode") in ("host", "none") or host.get("VolumesFrom") or
-        host.get("ExtraHosts") or host.get("Links") or host.get("SecurityOpt") or host.get("UsernsMode") or
-        host.get("ReadonlyRootfs") or host.get("CapDrop") or host.get("Sysctls")):
+        host.get("ExtraHosts") or host.get("Links") or host.get("UsernsMode") or host.get("Sysctls")):
         return False
     if host.get("NetworkMode") not in (None, "", model["networks"]["private"]["name"]):
         return False
@@ -151,7 +152,8 @@ def container_runtime(resource, artifact, service, image):
                                         "Memory", "MemoryReservation", "MemorySwap", "Ulimits",
                                         "Dns", "DnsSearch", "DnsOptions", "GroupAdd", "Init", "AutoRemove")):
         return False
-    if host.get("RestartPolicy", {}).get("Name") not in (None, "", "no"):
+    from scripts.runtime_security import matches
+    if not matches(host, wanted):
         return False
     if host.get("Runtime") not in (None, "", "runc") or host.get("PidsLimit") not in (None, 0):
         return False
@@ -166,7 +168,10 @@ def container_runtime(resource, artifact, service, image):
             return False
     mounts = {(m.get("Name"), m.get("Destination"), m.get("RW")) for m in f["mounts"] if m.get("Type") == "volume"}
     expected = {(model["volumes"][m["source"]]["name"], m["target"], True) for m in wanted.get("volumes", [])}
-    return len(f["mounts"]) == len(mounts) and mounts == expected
+    tmpfs = [m for m in f["mounts"] if m.get("Type") == "tmpfs"]
+    return (len(f["mounts"]) == len(mounts) + len(tmpfs) and mounts == expected and
+            {m.get("Destination") for m in tmpfs} == set((host.get("Tmpfs") or {})) and
+            len(tmpfs) == len(host.get("Tmpfs") or {}))
 
 
 class LocalStateProvider:
