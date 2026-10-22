@@ -1,6 +1,9 @@
 """Offline acceptance boundaries; no registry, Docker or workflow dispatch."""
+import hashlib
+import io
 import json
 from pathlib import Path
+import tarfile
 
 import pytest
 import yaml
@@ -90,8 +93,11 @@ def test_origin_binding_rejects_mismatch(field, value):
         a.verify_origin(statement)
 
 
-def test_attestation_signature_command_and_subject():
-    cmd = a.attestation_command(a.ORIGIN_TYPE)
+@pytest.mark.parametrize('predicate', [a.SLSA_TYPE, a.ORIGIN_TYPE])
+def test_attestation_signature_command_and_subject(predicate):
+    cmd = a.attestation_command(predicate, '/verified/gh')
+    assert cmd[0] == '/verified/gh'
+    assert cmd[cmd.index('--predicate-type') + 1] == predicate
     for flag, value in (('--source-digest', a.SOURCE), ('--signer-digest', a.SOURCE),
                         ('--source-ref', 'refs/heads/main'), ('--repo', a.PRODUCER),
                         ('--signer-workflow', 'github.com/' + a.PRODUCER + '/.github/workflows/publish.yml')):
@@ -107,6 +113,57 @@ def test_attestation_signature_command_and_subject():
     statement['subject'][0]['digest']['sha256'] = 'a' * 64
     with pytest.raises(a.AcceptanceError):
         a.verified_statement(json.dumps(result).encode(), a.ORIGIN_TYPE)
+
+
+@pytest.mark.parametrize('version', [
+    b'gh version 2.101.0 (2026-09-01)', b'gh version 2.99.0 (2026-09-01)',
+    b'gh version 2.102.0-rc1 (2026-09-01)', b'gh version 2.102.1 (2026-09-01)',
+    b'gh version unknown', b'', b'gh version 2.102.0',
+])
+def test_gh_version_fails_closed(version):
+    with pytest.raises(a.AcceptanceError):
+        a.verify_gh_version(version)
+
+
+def gh_archive(kind='file'):
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode='w:gz') as archive:
+        member = tarfile.TarInfo(a.GH_ARCHIVE.removesuffix('.tar.gz') + '/bin/gh')
+        member.size = 3
+        if kind == 'symlink':
+            member.type = tarfile.SYMTYPE
+            member.linkname = '/usr/bin/gh'
+        archive.addfile(member, io.BytesIO(b'bin'))
+    return raw.getvalue()
+
+
+@pytest.mark.parametrize('failure', ['', 'checksum', 'missing-checksum', 'download', 'version', 'symlink'])
+def test_gh_provision_checks_integrity_before_execution(tmp_path, monkeypatch, failure):
+    raw = gh_archive('symlink' if failure == 'symlink' else 'file')
+    monkeypatch.setattr(a, 'GH_ARCHIVE_SHA256', None if failure == 'missing-checksum' else hashlib.sha256(raw).hexdigest())
+    calls = []
+    def command(args, **kwargs):
+        calls.append(args)
+        assert not kwargs.get('gh')  # No token during download or version probe.
+        if args[0] == 'curl':
+            assert args[-1] == 'https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_amd64.tar.gz'
+            assert args[args.index('--proto-redir') + 1] == '=https'
+            if failure == 'download':
+                raise a.AcceptanceError()
+            return raw + b'tampered' if failure == 'checksum' else raw
+        assert args == [str(tmp_path / 'gh'), '--version']
+        assert (tmp_path / 'gh').read_bytes() == b'bin'
+        version = '2.101.0' if failure == 'version' else '2.102.0'
+        return ('gh version ' + version + ' (2026-09-30)\nhttps://github.com/cli/cli/releases/tag/v' + version + '\n').encode()
+    monkeypatch.setattr(a, 'command', command)
+    if failure:
+        with pytest.raises(a.AcceptanceError):
+            a.provision_gh(tmp_path)
+        if failure != 'version':
+            assert len(calls) == 1 and not (tmp_path / 'gh').exists()
+    else:
+        assert a.provision_gh(tmp_path) == str(tmp_path / 'gh')
+        assert (tmp_path / 'gh').stat().st_mode & 0o777 == 0o500
 
 
 def test_http_acceptance_fails_closed_and_bounds_paths(monkeypatch):
@@ -191,17 +248,24 @@ def test_http_success_checks_assets_and_pdf_bytes(monkeypatch):
     assert all(set(r) == {'path', 'status', 'sha256', 'bytes'} for r in records)
 
 
-def test_failed_signature_cannot_pull_or_start(tmp_path, monkeypatch):
+@pytest.mark.parametrize('failed_predicate', [a.SLSA_TYPE, a.ORIGIN_TYPE])
+def test_failed_signature_cannot_pull_or_start(tmp_path, monkeypatch, failed_predicate):
     for k, v in environment().items():
         monkeypatch.setenv(k, v)
     monkeypatch.setattr(a, 'ROOT', tmp_path)
+    monkeypatch.setattr(a, 'provision_gh', lambda directory: '/verified/gh')
     monkeypatch.setattr(a, 'candidate_model', lambda *args: type('Artifact', (), {'sha256': 'a' * 64})())
     evidence = type('Evidence', (), {'manifest_digest': a.DIGEST, 'image_id': 'sha256:' + 'b' * 64})()
     monkeypatch.setattr(a, 'registry_blobs', lambda: ({a.DIGEST: b'{}'}, evidence))
     calls = []
     def command(args, **kwargs):
         calls.append(args)
-        assert args[:3] == ['gh', 'attestation', 'verify']
+        assert args[:3] == ['/verified/gh', 'attestation', 'verify']
+        predicate = args[args.index('--predicate-type') + 1]
+        if predicate != failed_predicate:
+            statement = origin_statement()
+            statement['predicateType'] = predicate
+            return json.dumps([{'verificationResult': {'statement': statement}}]).encode()
         raise a.AcceptanceError('private diagnostic must not appear')
     monkeypatch.setattr(a, 'command', command)
     assert a.main() == 1
@@ -209,7 +273,33 @@ def test_failed_signature_cannot_pull_or_start(tmp_path, monkeypatch):
     assert report['result'] == 'failed' and report['stage'] == 'signed-attestations'
     assert report['productionAdmission'] is False
     assert 'private diagnostic' not in json.dumps(report)
-    assert len(calls) == 1
+    assert len(calls) == (1 if failed_predicate == a.SLSA_TYPE else 2)
+
+
+@pytest.mark.parametrize('failure', ['checksum', 'version', 'download'])
+def test_gh_failure_blocks_attestations_registry_and_docker(tmp_path, monkeypatch, failure):
+    for k, v in environment().items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(a, 'ROOT', tmp_path)
+    raw = gh_archive()
+    monkeypatch.setattr(a, 'GH_ARCHIVE_SHA256', hashlib.sha256(raw).hexdigest())
+    def forbidden(*args, **kwargs):
+        pytest.fail('CLI integrity failure must precede candidate/registry/Docker access')
+    monkeypatch.setattr(a, 'registry_blobs', forbidden)
+    monkeypatch.setattr(a, 'candidate_model', forbidden)
+    def command(args, **kwargs):
+        if args[0] == 'curl':
+            if failure == 'download':
+                raise OSError('private download diagnostic')
+            return b'corrupt' if failure == 'checksum' else raw
+        assert args[1:] == ['--version'] and not kwargs.get('gh')
+        return b'gh version 2.101.0 (2026-09-01)'
+    monkeypatch.setattr(a, 'command', command)
+    assert a.main() == 1
+    report = json.loads((tmp_path / 'acceptance-evidence/report.json').read_text())
+    assert report['stage'] == 'github-cli-integrity' and report['result'] == 'failed'
+    assert 'attestations' not in report and report['productionAdmission'] is False
+    assert 'private download diagnostic' not in json.dumps(report)
 
 
 def test_gate_failure_preserves_preexisting_evidence(tmp_path, monkeypatch):

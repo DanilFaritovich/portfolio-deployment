@@ -38,7 +38,9 @@ jobs:
           python-version: '3.12.12'
       - name: Provision offline validator dependencies
         run: python -m pip install --quiet -r requirements-dev.txt
-      - name: Accept exact immutable image in isolation
+      # The entry point downloads gh 2.102.0, checks the pinned archive SHA-256
+      # before execution, and rejects unsupported versions before attestations.
+      - name: Accept exact immutable image with verified GitHub CLI in isolation
         env:
           GH_TOKEN: ${{ github.token }}
           ACCEPTANCE_CONFIRM: ${{ inputs.confirmation }}

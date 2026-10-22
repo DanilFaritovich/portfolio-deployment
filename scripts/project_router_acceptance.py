@@ -6,6 +6,7 @@ The Compose renderer's test-session mode provides isolated resource identities.
 import hashlib
 import http.client
 import ipaddress
+import io
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ import re
 import secrets
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import time
 import urllib.parse
@@ -36,6 +38,12 @@ ORIGIN = 'https://danil-miftakhov.dev'
 ORIGIN_TYPE = 'https://github.com/' + PRODUCER + '/attestations/build-origin/v1'
 SLSA_TYPE = 'https://slsa.dev/provenance/v1'
 LIMIT = 1024 * 1024
+# Official cli/cli v2.102.0 release checksums; never trust runner PATH or a
+# checksum downloaded beside the archive at runtime. GHSA-wjmr-j3rp-mh2g.
+GH_VERSION = '2.102.0'
+GH_MINIMUM = (2, 102, 0)
+GH_ARCHIVE = 'gh_' + GH_VERSION + '_linux_amd64.tar.gz'
+GH_ARCHIVE_SHA256 = 'bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386'
 
 
 class AcceptanceError(Exception):
@@ -118,8 +126,42 @@ def registry_blobs():
     return blobs, verify_oci_bytes(IMAGE, REPOSITORY, blobs)
 
 
-def attestation_command(predicate):
-    return ['gh', 'attestation', 'verify', 'oci://' + IMAGE, '--repo', PRODUCER,
+def verify_gh_version(raw):
+    lines = raw.decode('ascii').splitlines()
+    require(bool(lines))
+    match = re.fullmatch(r'gh version ([0-9]+\.[0-9]+\.[0-9]+) \([0-9]{4}-[0-9]{2}-[0-9]{2}\)', lines[0])
+    require(match is not None)
+    version = match.group(1)
+    require(tuple(map(int, version.split('.'))) >= GH_MINIMUM and version == GH_VERSION)
+
+
+def provision_gh(directory):
+    """Authenticate archive before parsing/executing; no installed-gh fallback."""
+    url = 'https://github.com/cli/cli/releases/download/v' + GH_VERSION + '/' + GH_ARCHIVE
+    raw = command(['curl', '--fail', '--silent', '--show-error', '--location',
+                   '--proto', '=https', '--proto-redir', '=https', '--max-time', '120',
+                   '--max-filesize', str(32 * LIMIT), url], timeout=130, limit=32 * LIMIT)
+    require(hashlib.sha256(raw).hexdigest() == GH_ARCHIVE_SHA256)
+    # Read only the exact regular-file member: never extract paths, links or
+    # archive-supplied permissions. The enclosing temporary directory is private.
+    member_name = GH_ARCHIVE.removesuffix('.tar.gz') + '/bin/gh'
+    with tarfile.open(fileobj=io.BytesIO(raw), mode='r:gz') as archive:
+        members = [m for m in archive.getmembers() if m.name == member_name]
+        require(len(members) == 1 and members[0].isfile() and 0 < members[0].size <= 128 * LIMIT)
+        with archive.extractfile(members[0]) as source:
+            binary = source.read(128 * LIMIT + 1)
+        require(len(binary) == members[0].size)
+    path = directory / 'gh'
+    with path.open('xb') as target:
+        target.write(binary)
+    path.chmod(0o500)
+    verify_gh_version(command([str(path), '--version'], limit=4096))
+    return str(path)
+
+
+def attestation_command(predicate, gh_binary):
+    require(Path(gh_binary).is_absolute())
+    return [gh_binary, 'attestation', 'verify', 'oci://' + IMAGE, '--repo', PRODUCER,
             '--signer-workflow', 'github.com/' + PRODUCER + '/.github/workflows/publish.yml',
             '--signer-digest', SOURCE, '--source-digest', SOURCE, '--source-ref', 'refs/heads/main',
             '--deny-self-hosted-runners', '--predicate-type', predicate, '--format', 'json', '--limit', '10']
@@ -318,6 +360,9 @@ def main():
             config.mkdir(mode=0o700)
             os.environ['ACCEPTANCE_DOCKER_CONFIG'] = str(config)
             report['managerSha'] = os.environ['GITHUB_SHA']
+            report['stage'] = 'github-cli-integrity'
+            gh_binary = provision_gh(directory)
+            report['githubCli'] = {'version': GH_VERSION, 'archiveSha256': GH_ARCHIVE_SHA256}
             report['stage'] = 'candidate'
             session = secrets.token_hex(8)
             artifact = candidate_model(directory / 'registry-root', report['managerSha'], session)
@@ -329,7 +374,7 @@ def main():
             report['stage'] = 'signed-attestations'
             report['attestations'] = {}
             for predicate in (SLSA_TYPE, ORIGIN_TYPE):
-                raw = command(attestation_command(predicate), timeout=180, gh=True)
+                raw = command(attestation_command(predicate, gh_binary), timeout=180, gh=True)
                 statement = verified_statement(raw, predicate)
                 if predicate == ORIGIN_TYPE:
                     verify_origin(statement)
