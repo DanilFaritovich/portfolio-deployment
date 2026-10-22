@@ -15,6 +15,15 @@ def verify_caddy_runtime(runtime, artifact, evidence, doc):
     inspect_caddy_contract(runtime, evidence)
     try:
         wanted = artifact.model['services']['caddy']
+        baseline = runtime.render().model['services']['caddy']
+        invariant_keys = ('image', 'platform', 'restart', 'read_only', 'cap_drop', 'cap_add', 'security_opt', 'command')
+        if (any(wanted.get(k) != baseline[k] for k in invariant_keys) or
+            wanted.get('ports') not in ([], baseline['ports']) or
+            {(m['target'], m.get('read_only', False)) for m in wanted['volumes']} !=
+                {(m['target'], m.get('read_only', False)) for m in baseline['volumes']} or
+            len(wanted['volumes']) != 3 or
+            any(wanted.get('labels', {}).get(k) != v for k, v in baseline['labels'].items())):
+            return ('caddy-runtime-expectation-invalid',)
         config, host = doc['Config'], doc['HostConfig']
         defaults = json.loads(evidence.defaults_json)
         codes = []

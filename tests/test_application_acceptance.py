@@ -361,7 +361,7 @@ def test_index_and_platform_repo_digests_are_not_interchangeable(digests, accept
 
 
 @pytest.mark.parametrize('field,value', [
-    ('Entrypoint', None), ('Labels', None), ('Volumes', {}), ('WorkingDir', ''),
+    ('Labels', None), ('Volumes', {}), ('WorkingDir', ''),
     ('AttachStdout', True), ('Env', []), ('ArgsEscaped', False),
 ])
 def test_engine_config_representation_differences_remain_fail_closed(field, value):

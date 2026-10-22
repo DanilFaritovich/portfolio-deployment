@@ -12,8 +12,8 @@ import time
 from scripts.compose import LABEL, ComposeArtifact
 from scripts.gateway import make_route
 from scripts.docker_adapter import DockerError
-from scripts.production_integration.artifacts import blob_digest, map_oci_bytes, bind_engine_image, EngineBindingError
-from scripts.production_integration.caddy_image import inspect_caddy_contract
+from scripts.production_integration.artifacts import blob_digest, map_oci_bytes, EngineBindingError
+from scripts.production_integration.caddy_image import inspect_caddy_contract, bind_caddy_engine
 from scripts.production_integration.caddy_runtime import verify_caddy_runtime
 from scripts.production_integration.gateway import content
 from scripts.production_integration.runtime import CaddyRuntime, RuntimePaths
@@ -136,7 +136,7 @@ class CaddyHarness(Harness):
         image = self.inspect('image', self.evidence.reference)
         self.stage = 'image-binding'
         try:
-            bind_engine_image(self.evidence, image)
+            bind_caddy_engine(self.runtime, self.evidence, image)
         except EngineBindingError as error:
             self.observations['bindingCodes'] = list(error.codes)
             self.observations['bindingChecks'] = error.checks

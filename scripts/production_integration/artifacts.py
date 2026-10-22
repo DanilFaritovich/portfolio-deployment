@@ -158,10 +158,10 @@ def normalize_engine_config(config):
     Moby's container.Config uses non-omitempty strings/bools and nil map/slice
     fields: https://github.com/moby/moby/blob/v27.5.1/api/types/container/config.go
     encoding/json materializes absent strings/bools as Go zero values and nil
-    maps/slices as null. Only the 11 fields absent from the authenticated config
-    in run 39828163158 are normalized. No empty map/list equivalence is assumed.
+    maps/slices as null. The 11 fields observed in run 39828163158 plus empty User and null
+    Entrypoint from Caddy run 39843536752 are normalized. No empty map/list equivalence is assumed.
     OCI 1.1.1 config.md permits null for optional properties; all other fields
-    retain exact presence, JSON type and value, including User and Healthcheck.
+    retain exact presence, JSON type and value, including nonempty User and Healthcheck.
 
     Unknown fields/types fail closed even if both sides contain them. This is
     intentionally narrower than every representation accepted by Moby.
@@ -174,7 +174,7 @@ def normalize_engine_config(config):
                 'Tty', 'OpenStdin', 'StdinOnce', 'NetworkDisabled'}
     for key, value in config.items():
         if value is None:
-            continue  # Preserve null, except the two explicitly listed below.
+            continue  # Preserve null, except the explicit defaults listed below.
         valid = False
         if key in strings:
             valid = isinstance(value, str)
@@ -200,7 +200,7 @@ def normalize_engine_config(config):
     defaults = {'Hostname': '', 'Domainname': '', 'Image': '',
                 'AttachStdin': False, 'AttachStdout': False, 'AttachStderr': False,
                 'Tty': False, 'OpenStdin': False, 'StdinOnce': False,
-                'Volumes': None, 'OnBuild': None}
+                'Volumes': None, 'OnBuild': None, 'User': '', 'Entrypoint': None}
     for key, default in defaults.items():
         if key in result and encode(result[key]) == encode(default):
             del result[key]

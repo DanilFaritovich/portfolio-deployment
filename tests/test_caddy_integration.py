@@ -219,3 +219,43 @@ def test_available_provenance_is_linked_but_not_trusted():
     assert statement['predicate']['builder'] == lock['availableAttestation']['builderClaim']
     assert lock['availableAttestation']['signatureVerified'] is False
     assert lock['provenance'] == 'unverified-production-blocker'
+
+@pytest.mark.parametrize('key,value', [('read_only', False), ('cap_drop', []),
+    ('security_opt', []), ('cap_add', ['SYS_ADMIN']), ('command', ['sh']),
+    ('ports', ['2019:2019/tcp'])])
+def test_weakened_expected_artifact_never_weakens_policy(tmp_path, key, value):
+    runtime, artifact, evidence = setup_runtime(tmp_path)
+    doc = engine_document(artifact, evidence)
+    model = artifact.model
+    model['services']['caddy'][key] = value
+    weak = replace(artifact, model_json=json.dumps(model))
+    assert verify_caddy_runtime(runtime, weak, evidence, doc) == ('caddy-runtime-expectation-invalid',)
+
+
+def test_observed_caddy_engine_projection_and_official_alias(tmp_path):
+    from scripts.production_integration.caddy_image import bind_caddy_engine
+    from scripts.production_integration.artifacts import normalize_engine_config
+    runtime, _, evidence = setup_runtime(tmp_path)
+    report = json.loads((c.FIXTURES / 'run-39843536752-report.json').read_bytes())
+    checks = report['observations']['bindingChecks']
+    assert checks['imageIdMatchesConfig'] and checks['platformMatches']
+    assert report['observations']['shortNameRepoDigestPresent'] is True
+    assert checks['configDifferingShapes']['User'] == {'engine': 'empty-string', 'oci': 'absent'}
+    assert checks['configDifferingShapes']['Entrypoint'] == {'engine': 'null', 'oci': 'absent'}
+    assert not checks['configOtherFieldsDiffer']
+    config = json.loads(evidence.defaults_json)
+    # Synthetic API projection corroborated by retained structural diagnostics.
+    projected = {**config, 'User': '', 'Entrypoint': None}
+    assert normalize_engine_config(config) == normalize_engine_config(projected)
+    inspected = {'Id': evidence.image_id, 'RepoDigests': ['caddy@' + runtime.image.split('@')[1]],
+                 'Os': 'linux', 'Architecture': 'amd64', 'Config': projected}
+    before = deepcopy(inspected)
+    assert bind_caddy_engine(runtime, evidence, inspected) == evidence
+    assert inspected == before  # No mutation of independently collected evidence.
+    for reference in ('caddy@sha256:' + '0' * 64, 'foreign/caddy@' + runtime.image.split('@')[1],
+                      'caddy:2.11.7', 'library/caddy@' + runtime.image.split('@')[1]):
+        with pytest.raises(DockerError):
+            bind_caddy_engine(runtime, evidence, {**inspected, 'RepoDigests': [reference]})
+    for key, value in (('User', '0'), ('User', None), ('Entrypoint', []), ('Entrypoint', ['sh'])):
+        with pytest.raises(DockerError):
+            bind_caddy_engine(runtime, evidence, {**inspected, 'Config': {**projected, key: value}})
