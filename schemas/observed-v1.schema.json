@@ -1,0 +1,622 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "portfolio.observed/v1"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "registry"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "trusted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "complete",
+        "trusted"
+      ]
+    },
+    "applications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+            "maxLength": 32
+          },
+          "existence": {
+            "enum": [
+              "absent",
+              "present",
+              "unknown"
+            ]
+          },
+          "owner": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "manager": {
+                "enum": [
+                  "portfolio-deployment",
+                  "foreign",
+                  "ambiguous"
+                ]
+              },
+              "application": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                "maxLength": 32
+              }
+            },
+            "required": [
+              "manager",
+              "application"
+            ]
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                  "maxLength": 32
+                },
+                "existence": {
+                  "enum": [
+                    "absent",
+                    "present",
+                    "unknown"
+                  ]
+                },
+                "owner": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "manager": {
+                      "enum": [
+                        "portfolio-deployment",
+                        "foreign",
+                        "ambiguous"
+                      ]
+                    },
+                    "application": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                      "maxLength": 32
+                    },
+                    "component": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                      "maxLength": 32
+                    }
+                  },
+                  "required": [
+                    "manager",
+                    "application",
+                    "component"
+                  ]
+                },
+                "imageIdentity": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "pullReference": {
+                          "type": "string",
+                          "pattern": "^ghcr\\.io/[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*@sha256:[0-9a-f]{64}(?![\\s\\S])",
+                          "maxLength": 272
+                        },
+                        "pullKind": {
+                          "enum": [
+                            "manifest",
+                            "index"
+                          ]
+                        },
+                        "manifestDigest": {
+                          "type": "string",
+                          "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
+                          "maxLength": 71
+                        },
+                        "platform": {
+                          "const": "linux/amd64"
+                        },
+                        "relationship": {
+                          "enum": [
+                            "verified",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "pullReference",
+                        "pullKind",
+                        "manifestDigest",
+                        "platform",
+                        "relationship"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "runtime": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "platform": {
+                          "const": "linux/amd64"
+                        },
+                        "type": {
+                          "enum": [
+                            "http",
+                            "worker"
+                          ]
+                        },
+                        "port": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 65535
+                        },
+                        "health": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "strategy": {
+                                  "const": "http"
+                                },
+                                "path": {
+                                  "type": "string",
+                                  "pattern": "^/(?:[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*(?:/[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*)*/?)?(?![\\s\\S])",
+                                  "maxLength": 256
+                                }
+                              },
+                              "required": [
+                                "strategy",
+                                "path"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "strategy": {
+                                  "const": "imageHealthcheck"
+                                }
+                              },
+                              "required": [
+                                "strategy"
+                              ]
+                            }
+                          ]
+                        },
+                        "dependsOn": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                            "maxLength": 32
+                          },
+                          "minItems": 0,
+                          "maxItems": 32,
+                          "uniqueItems": true
+                        },
+                        "configRefs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                            "maxLength": 32
+                          },
+                          "minItems": 0,
+                          "maxItems": 32,
+                          "uniqueItems": true
+                        },
+                        "secretRefs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                            "maxLength": 32
+                          },
+                          "minItems": 0,
+                          "maxItems": 32,
+                          "uniqueItems": true
+                        },
+                        "volumeMounts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "volume": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                                "maxLength": 32
+                              },
+                              "mountPath": {
+                                "type": "string",
+                                "pattern": "^/(?:[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*)(?:/[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*)*(?![\\s\\S])",
+                                "maxLength": 256
+                              }
+                            },
+                            "required": [
+                              "volume",
+                              "mountPath"
+                            ]
+                          },
+                          "minItems": 0,
+                          "maxItems": 32
+                        },
+                        "proxyNetwork": {
+                          "type": "boolean"
+                        },
+                        "runtimeSecurity": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "apiVersion": {
+                              "const": "portfolio.runtime/v1"
+                            },
+                            "readOnlyRootFilesystem": {
+                              "type": "boolean"
+                            },
+                            "user": {
+                              "type": "string",
+                              "pattern": "^[1-9][0-9]{0,4}:[1-9][0-9]{0,4}$"
+                            },
+                            "capDrop": {
+                              "const": [
+                                "ALL"
+                              ]
+                            },
+                            "noNewPrivileges": {
+                              "const": true
+                            },
+                            "restart": {
+                              "enum": [
+                                "no",
+                                "on-failure",
+                                "unless-stopped"
+                              ]
+                            },
+                            "imageHealthcheck": {
+                              "const": "preserve"
+                            },
+                            "tmpfs": {
+                              "type": "array",
+                              "maxItems": 1,
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "target": {
+                                    "const": "/tmp"
+                                  },
+                                  "sizeBytes": {
+                                    "type": "integer",
+                                    "minimum": 1048576,
+                                    "maximum": 268435456
+                                  },
+                                  "mode": {
+                                    "const": "1777"
+                                  }
+                                },
+                                "required": [
+                                  "target",
+                                  "sizeBytes",
+                                  "mode"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "apiVersion",
+                            "readOnlyRootFilesystem",
+                            "user",
+                            "capDrop",
+                            "noNewPrivileges",
+                            "restart",
+                            "imageHealthcheck",
+                            "tmpfs"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "platform",
+                        "type",
+                        "health",
+                        "proxyNetwork"
+                      ],
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "type": {
+                                "const": "http"
+                              }
+                            }
+                          },
+                          "then": {
+                            "required": [
+                              "port"
+                            ],
+                            "properties": {
+                              "health": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "strategy": {
+                                    "const": "http"
+                                  },
+                                  "path": {
+                                    "type": "string",
+                                    "pattern": "^/(?:[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*(?:/[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*)*/?)?(?![\\s\\S])",
+                                    "maxLength": 256
+                                  }
+                                },
+                                "required": [
+                                  "strategy",
+                                  "path"
+                                ]
+                              }
+                            }
+                          },
+                          "else": {
+                            "not": {
+                              "required": [
+                                "port"
+                              ]
+                            },
+                            "properties": {
+                              "health": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "strategy": {
+                                    "const": "imageHealthcheck"
+                                  }
+                                },
+                                "required": [
+                                  "strategy"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "runtimeComplete": {
+                  "type": "boolean"
+                },
+                "health": {
+                  "enum": [
+                    "healthy",
+                    "degraded",
+                    "unknown"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "existence",
+                "owner",
+                "imageIdentity",
+                "runtime",
+                "runtimeComplete",
+                "health"
+              ]
+            },
+            "maxItems": 32
+          },
+          "storage": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {
+                        "const": "stateless"
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {
+                        "const": "persistent"
+                      },
+                      "volumes": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                              "maxLength": 32
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 32
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "volumes"
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "configRefs": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                  "maxLength": 32
+                },
+                "minItems": 0,
+                "maxItems": 32,
+                "uniqueItems": true
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "secretRefs": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                  "maxLength": 32
+                },
+                "minItems": 0,
+                "maxItems": 32,
+                "uniqueItems": true
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "route": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "existence": {
+                "enum": [
+                  "absent",
+                  "present",
+                  "unknown"
+                ]
+              },
+              "owner": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "manager": {
+                    "enum": [
+                      "portfolio-deployment",
+                      "foreign",
+                      "ambiguous"
+                    ]
+                  },
+                  "application": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "manager",
+                  "application"
+                ]
+              },
+              "configuration": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "hostname": {
+                        "type": "string",
+                        "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?(?![\\s\\S])",
+                        "maxLength": 253
+                      },
+                      "component": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                        "maxLength": 32
+                      },
+                      "port": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65535
+                      }
+                    },
+                    "required": [
+                      "hostname",
+                      "component",
+                      "port"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "existence",
+              "owner",
+              "configuration"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "existence",
+          "owner",
+          "components",
+          "storage",
+          "configRefs",
+          "secretRefs",
+          "route"
+        ]
+      },
+      "maxItems": 128
+    }
+  },
+  "required": [
+    "apiVersion",
+    "scope",
+    "applications"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

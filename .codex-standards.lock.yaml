@@ -1,0 +1,63 @@
+# File inventory detects missing assets; compatible local adaptations are allowed.
+version: 1
+source:
+  repository: https://github.com/DanilFaritovich/codex-development-standards
+  branch: develop
+  ref: 104a8ed8e10a07fbb9a9ac2d7be669cc93913590
+profile:
+  name: docker-deployment-platform
+  version: 1
+skills:
+- task-development-workflow
+- standards-sync
+- code-quality
+- docker
+- github-actions
+- continuous-delivery
+- caddy-gateway
+- gitops-deployment
+- documentation
+- licensing
+optional_skills: []
+package_files:
+  task-development-workflow:
+  - SKILL.md
+  - references/context-efficiency.md
+  - references/git-delivery.md
+  - references/validation.md
+  standards-sync:
+  - SKILL.md
+  code-quality:
+  - SKILL.md
+  - references/frontend.md
+  - references/python.md
+  - references/validation-and-ci.md
+  docker:
+  - SKILL.md
+  - references/container-security.md
+  - references/dockerfile-build.md
+  - references/migrations-health.md
+  - references/production-networking.md
+  - references/redis-quota.md
+  - references/static-site-runtime.md
+  - references/validation-output.md
+  github-actions:
+  - SKILL.md
+  continuous-delivery:
+  - SKILL.md
+  - references/foundation.md
+  - references/image-producer.md
+  - references/production-integration.md
+  caddy-gateway:
+  - SKILL.md
+  - references/config-generation-and-reload.md
+  - references/networking-and-tls.md
+  gitops-deployment:
+  - SKILL.md
+  - references/auth-and-triggering.md
+  - references/registry-and-reconciliation.md
+  - references/safe-rollout-and-recovery.md
+  documentation:
+  - SKILL.md
+  licensing:
+  - SKILL.md

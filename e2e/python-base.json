@@ -1,0 +1,5 @@
+{
+  "source": "docker.io/library/python:3.13-slim-bookworm",
+  "upstream": "https://github.com/docker-library/python",
+  "platform": "linux/amd64"
+}

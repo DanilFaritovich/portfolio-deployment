@@ -1,0 +1,49 @@
+# Eligibility only; acceptance is never production authorization.
+apiVersion: portfolio.deployment/v1
+kind: AdmissionPolicy
+applications:
+- id: project-router
+  sourceRepository: DanilFaritovich/project-router
+  imageRepositories:
+    web:
+    - ghcr.io/danilfaritovich/project-router
+  hostnames:
+  - danil-miftakhov.dev
+  platforms:
+  - linux/amd64
+  staticSite:
+    component: web
+    port: 8080
+    readinessPath: /en/
+    buildOrigin: https://danil-miftakhov.dev
+  acceptance:
+    signerWorkflows:
+    - .github/workflows/publish.yml
+    sourceRefs:
+    - refs/heads/main
+    requiredPredicates:
+    - https://slsa.dev/provenance/v1
+    - https://github.com/DanilFaritovich/project-router/attestations/build-origin/v1
+    runtimeSecurity:
+      web:
+        apiVersion: portfolio.runtime/v1
+        readOnlyRootFilesystem: true
+        user: 101:101
+        capDrop:
+        - ALL
+        noNewPrivileges: true
+        restart: unless-stopped
+        imageHealthcheck: preserve
+        tmpfs:
+        - target: /tmp
+          sizeBytes: 16777216
+          mode: '1777'
+    predicateClaims:
+    - predicateType: https://github.com/DanilFaritovich/project-router/attestations/build-origin/v1
+      expectedPredicate:
+        sourceRepository: DanilFaritovich/project-router
+        sourceRef: refs/heads/main
+        platform: linux/amd64
+        buildArguments:
+          VITE_SITE_ORIGIN: https://danil-miftakhov.dev
+        originOutputVerified: true

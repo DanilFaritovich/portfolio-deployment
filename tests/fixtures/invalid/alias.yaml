@@ -1,0 +1,2 @@
+a: &value [1]
+b: *value

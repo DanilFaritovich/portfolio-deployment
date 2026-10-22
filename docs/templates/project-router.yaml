@@ -1,0 +1,37 @@
+# INACTIVE TEMPLATE: outside registry/applications; substitution is mandatory.
+# PROJECT_ROUTER_DIGEST must be a verified sha256:<64 lowercase hex> registry digest.
+# Keep disabled until separate first-deployment authorization. See ../production-contracts.md.
+apiVersion: portfolio.deployment/v1
+kind: Application
+metadata:
+  id: project-router
+  sourceRepository: DanilFaritovich/project-router
+spec:
+  enabled: false
+  components:
+  - name: web
+    image: ghcr.io/danilfaritovich/project-router@${PROJECT_ROUTER_DIGEST}
+    platform: linux/amd64
+    type: http
+    health:
+      strategy: http
+      path: /en/
+    runtimeSecurity:
+      apiVersion: portfolio.runtime/v1
+      readOnlyRootFilesystem: true
+      user: '101:101'
+      capDrop: [ALL]
+      noNewPrivileges: true
+      restart: unless-stopped
+      imageHealthcheck: preserve
+      tmpfs:
+      - target: /tmp
+        sizeBytes: 16777216
+        mode: '1777'
+    port: 8080
+  storage:
+    type: stateless
+  ingress:
+    hostname: danil-miftakhov.dev
+    component: web
+    port: 8080

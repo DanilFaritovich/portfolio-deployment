@@ -1,0 +1,25 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store
+.idea/
+.vscode/
+coverage/
+.coverage
+*.log
+.pytest_cache/
+
+# Private controller journal and SQLite sidecars
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+
+# Private Stage 07 host receipts, pinned image artifacts and fixture plans
+.e2e-state/
+.e2e-fixtures/
