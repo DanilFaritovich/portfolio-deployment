@@ -224,3 +224,14 @@ privileged installation and exact-image runtime tests remain blockers. The
 with their limits in the handoff. Do not promote develop publication evidence or
 `VITE_SITE_ORIGIN` runtime environment into origin-bound release evidence.
 09.4B is the separate first authorized rollout; 09.5 and 09.6 remain future tasks.
+
+## ProjectRouter v1.0.0 acceptance preparation
+
+A later scoped task prepared an exact-digest disabled
+[candidate](candidates/project-router.yaml) outside the real registry and a
+separate manual GitHub-hosted image acceptance workflow. Owner-reported release
+and attestation results update the historical context above; manager-side live
+byte/runtime verification and complete production admission remain pending.
+The workflow was not run during implementation. See the
+[acceptance handoff](project-router-acceptance.md) for exact release identity,
+reviewed trigger, evidence limits and remaining production gates.

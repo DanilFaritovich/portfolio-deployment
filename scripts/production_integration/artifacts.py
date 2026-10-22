@@ -41,20 +41,16 @@ class SourceVerification:
     evidence_identity: str
 
 
-def verify_artifact(reference, allowed_repository, blobs, source, verifier=None, *, expected_source, expected_origin=None):
-    """blobs: digest -> raw registry bytes (bounded, duplicate-key rejecting JSON).
+def verify_oci_bytes(reference, allowed_repository, blobs):
+    """Verify only OCI bytes/platform mapping; establishes no source/release trust.
 
-    Supports one index level and exactly one linux/amd64 descriptor. Verifies every
-    selected descriptor's digest, byte size and media type; config ID is NOT the
-    manifest digest. Does not assert network availability beyond supplied bytes.
+    Shared by isolated acceptance and the production verifier. Callers must never
+    treat this result as production source admission.
     """
     if not re.fullmatch(re.escape(allowed_repository) + r'@sha256:[0-9a-f]{64}', reference):
         raise DockerError('artifact-repository-or-digest-invalid')
     if not allowed_repository.startswith('ghcr.io/'):
         raise DockerError('artifact-registry-not-admitted')
-    if (source.repository != expected_source or source.build_origin != expected_origin or
-        source.manager_repository != 'DanilFaritovich/portfolio-deployment'):
-        raise DockerError('source-repository-or-build-origin-mismatch')
     def descriptor_valid(descriptor, media_types, *, bounded=True):
         return (isinstance(descriptor, dict) and descriptor.get('mediaType') in media_types and
                 isinstance(descriptor.get('digest'), str) and
@@ -109,6 +105,15 @@ def verify_artifact(reference, allowed_repository, blobs, source, verifier=None,
     document = read(config.get('digest'), config['size'])
     if document.get('os') != 'linux' or document.get('architecture') != 'amd64':
         raise DockerError('artifact-config-platform-mismatch')
+    return ImageEvidence(reference, config['digest'], 'linux/amd64', selected, True, encode(document.get('config') or {}))
+
+
+def verify_artifact(reference, allowed_repository, blobs, source, verifier=None, *, expected_source, expected_origin=None):
+    """OCI mapping plus the separately authenticated full production source gate."""
+    if (source.repository != expected_source or source.build_origin != expected_origin or
+        source.manager_repository != 'DanilFaritovich/portfolio-deployment'):
+        raise DockerError('source-repository-or-build-origin-mismatch')
+    evidence = verify_oci_bytes(reference, allowed_repository, blobs)
     try:
         revision(source.producer_revision)
         revision(source.manager_revision)
@@ -122,7 +127,7 @@ def verify_artifact(reference, allowed_repository, blobs, source, verifier=None,
     if (not isinstance(proof, SourceVerification) or proof.request != source or proof.blockers or
         not re.fullmatch(r'sha256:[0-9a-f]{64}', proof.evidence_identity)):
         raise DockerError('source-evidence-unverified')
-    return ImageEvidence(reference, config['digest'], 'linux/amd64', selected, True, encode(document.get('config') or {}))
+    return evidence
 
 
 def bind_engine_image(evidence, inspected):
