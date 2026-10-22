@@ -66,6 +66,14 @@ protected-main exact-SHA source/artifact/origin evidence, trusted live transport
 and operation approval. Stage 09.6 automated digest-update PR/CD is planned after
 safe manual rollout/rollback; no automatic CD is implemented here.
 
+[How to add a new application](docs/application-acceptance.md): add one validated
+Application YAML with release metadata and obtain independent admission/security
+review. One manual **Application isolated acceptance** workflow checks artifact
+signatures, deployment readiness/security, dependencies, restart and owned cleanup
+for HTTP/worker components. `make acceptance-check` validates inactive declarations
+offline. Business tests remain in application CI; real acceptance and production
+admission require separate review/authorization. Universal acceptance was not run.
+
 ## Purpose and architecture
 
 The target flow is application CI → GHCR immutable image → approved desired state

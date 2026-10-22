@@ -154,3 +154,21 @@ forbidden. See [schema](../schemas/runtime-security-v1.schema.json),
 The observed runtime supports the same shape; security drift is an update, not a
 no-op. Production preview requires explicit security; actual compatibility and
 safe references remain separately verified blockers.
+
+## Optional acceptance metadata
+
+The backwards-compatible top-level `release` object uses
+`apiVersion: portfolio.acceptance/v1`, `components` keyed by component name, and
+optional `volumePolicy: remove-isolated`. Each component declares exact source SHA,
+signer SHA, signer workflow, source ref and required attestation predicates (with
+optional bounded JSON `expectedPredicate` for exact equality). These are expected
+values, not provenance or permission to run. The normal engine ignores this metadata;
+acceptance checks exact component coverage and independent policy constraints.
+
+Optional admission `acceptance` contains allowed `signerWorkflows`, `sourceRefs`,
+`requiredPredicates`, optional `predicateClaims` (required top-level JSON claims),
+and an exact `runtimeSecurity` object for every component.
+Existing manifests/policies without these objects remain valid, but acceptance
+blocks when the reviewed contract is missing. Unknown fields/versions/unsupported
+values are rejected. See [adding applications and acceptance](application-acceptance.md)
+for static/backend examples, trust boundaries and unsupported configuration.

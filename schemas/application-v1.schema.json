@@ -399,6 +399,94 @@
         "components",
         "storage"
       ]
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": {
+          "const": "portfolio.acceptance/v1"
+        },
+        "components": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+            "maxLength": 32
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "sourceSha": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}(?![\\s\\S])"
+              },
+              "signerSha": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}(?![\\s\\S])"
+              },
+              "signerWorkflow": {
+                "type": "string",
+                "pattern": "^\\.github/workflows/[A-Za-z0-9_-]+\\.ya?ml(?![\\s\\S])",
+                "maxLength": 128
+              },
+              "sourceRef": {
+                "type": "string",
+                "pattern": "^refs/(heads|tags)/[A-Za-z0-9][A-Za-z0-9._/-]*(?![\\s\\S])",
+                "maxLength": 256
+              },
+              "attestations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "predicateType": {
+                      "type": "string",
+                      "pattern": "^https://[A-Za-z0-9./_-]+(?![\\s\\S])",
+                      "maxLength": 256
+                    },
+                    "expectedPredicate": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "maxProperties": 32,
+                      "additionalProperties": {
+                        "$ref": "#/$defs/acceptanceValue"
+                      },
+                      "propertyNames": {
+                        "maxLength": 128
+                      }
+                    }
+                  },
+                  "required": [
+                    "predicateType"
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 8,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "sourceSha",
+              "signerSha",
+              "signerWorkflow",
+              "sourceRef",
+              "attestations"
+            ]
+          },
+          "minProperties": 1,
+          "maxProperties": 32
+        },
+        "volumePolicy": {
+          "const": "remove-isolated"
+        }
+      },
+      "required": [
+        "apiVersion",
+        "components"
+      ]
     }
   },
   "required": [
@@ -406,5 +494,41 @@
     "kind",
     "metadata",
     "spec"
-  ]
+  ],
+  "$defs": {
+    "acceptanceValue": {
+      "oneOf": [
+        {
+          "type": "string",
+          "maxLength": 512
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/acceptanceValue"
+          }
+        },
+        {
+          "type": "object",
+          "maxProperties": 32,
+          "propertyNames": {
+            "maxLength": 128
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/acceptanceValue"
+          }
+        }
+      ]
+    }
+  }
 }

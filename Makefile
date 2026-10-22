@@ -16,6 +16,7 @@ validate:
 check:
 	@$(PYTHON) scripts/check_bootstrap.py
 	@$(PYTHON) scripts/validate_registry.py
+	@$(PYTHON) -m scripts.acceptance_contract
 	@$(PYTHON) -m pytest -q -p no:cacheprovider
 
 # Pinned actionlint is provisioned separately, never downloaded by checks.
@@ -165,3 +166,8 @@ production-plan:
 
 production-integration-check:
 	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_production_integration.py tests/test_production_ports.py tests/test_production_preparation.py
+
+# Candidate declarations only: never Docker, registry requests or workflow dispatch.
+.PHONY: acceptance-check
+acceptance-check:
+	@$(PYTHON) -m scripts.acceptance_contract

@@ -98,6 +98,163 @@
               "readinessPath",
               "buildOrigin"
             ]
+          },
+          "acceptance": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "signerWorkflows": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\.github/workflows/[A-Za-z0-9_-]+\\.ya?ml(?![\\s\\S])",
+                  "maxLength": 128
+                },
+                "minItems": 1,
+                "maxItems": 8,
+                "uniqueItems": true
+              },
+              "sourceRefs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^refs/(heads|tags)/[A-Za-z0-9][A-Za-z0-9._/-]*(?![\\s\\S])",
+                  "maxLength": 256
+                },
+                "minItems": 1,
+                "maxItems": 8,
+                "uniqueItems": true
+              },
+              "requiredPredicates": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^https://[A-Za-z0-9./_-]+(?![\\s\\S])",
+                  "maxLength": 256
+                },
+                "minItems": 1,
+                "maxItems": 8,
+                "uniqueItems": true
+              },
+              "runtimeSecurity": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])",
+                  "maxLength": 32
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "apiVersion": {
+                      "const": "portfolio.runtime/v1"
+                    },
+                    "readOnlyRootFilesystem": {
+                      "type": "boolean"
+                    },
+                    "user": {
+                      "type": "string",
+                      "pattern": "^[1-9][0-9]{0,4}:[1-9][0-9]{0,4}(?![\\s\\S])"
+                    },
+                    "capDrop": {
+                      "const": [
+                        "ALL"
+                      ]
+                    },
+                    "noNewPrivileges": {
+                      "const": true
+                    },
+                    "restart": {
+                      "enum": [
+                        "no",
+                        "on-failure",
+                        "unless-stopped"
+                      ]
+                    },
+                    "imageHealthcheck": {
+                      "const": "preserve"
+                    },
+                    "tmpfs": {
+                      "type": "array",
+                      "maxItems": 1,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "target": {
+                            "const": "/tmp"
+                          },
+                          "sizeBytes": {
+                            "type": "integer",
+                            "minimum": 1048576,
+                            "maximum": 268435456
+                          },
+                          "mode": {
+                            "const": "1777"
+                          }
+                        },
+                        "required": [
+                          "target",
+                          "sizeBytes",
+                          "mode"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "apiVersion",
+                    "readOnlyRootFilesystem",
+                    "user",
+                    "capDrop",
+                    "noNewPrivileges",
+                    "restart",
+                    "imageHealthcheck",
+                    "tmpfs"
+                  ]
+                },
+                "minProperties": 1,
+                "maxProperties": 32
+              },
+              "predicateClaims": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "predicateType": {
+                      "type": "string",
+                      "pattern": "^https://[A-Za-z0-9./_-]+(?![\\s\\S])",
+                      "maxLength": 256
+                    },
+                    "expectedPredicate": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "maxProperties": 32,
+                      "additionalProperties": {
+                        "$ref": "#/$defs/acceptanceValue"
+                      },
+                      "propertyNames": {
+                        "maxLength": 128
+                      }
+                    }
+                  },
+                  "required": [
+                    "predicateType",
+                    "expectedPredicate"
+                  ]
+                },
+                "minItems": 0,
+                "maxItems": 8,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "signerWorkflows",
+              "sourceRefs",
+              "requiredPredicates",
+              "runtimeSecurity"
+            ]
           }
         },
         "required": [
@@ -116,5 +273,41 @@
     "apiVersion",
     "kind",
     "applications"
-  ]
+  ],
+  "$defs": {
+    "acceptanceValue": {
+      "oneOf": [
+        {
+          "type": "string",
+          "maxLength": 512
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/acceptanceValue"
+          }
+        },
+        {
+          "type": "object",
+          "maxProperties": 32,
+          "propertyNames": {
+            "maxLength": 128
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/acceptanceValue"
+          }
+        }
+      ]
+    }
+  }
 }

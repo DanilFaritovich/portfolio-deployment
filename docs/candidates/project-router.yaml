@@ -1,5 +1,4 @@
-# INACTIVE RELEASE CANDIDATE: not admitted to the real registry.
-# See ../project-router-acceptance.md for evidence and remaining gates.
+# INACTIVE: outside production registry; acceptance never grants admission.
 apiVersion: portfolio.deployment/v1
 kind: Application
 metadata:
@@ -18,8 +17,9 @@ spec:
     runtimeSecurity:
       apiVersion: portfolio.runtime/v1
       readOnlyRootFilesystem: true
-      user: '101:101'
-      capDrop: [ALL]
+      user: 101:101
+      capDrop:
+      - ALL
       noNewPrivileges: true
       restart: unless-stopped
       imageHealthcheck: preserve
@@ -34,3 +34,24 @@ spec:
     hostname: danil-miftakhov.dev
     component: web
     port: 8080
+release:
+  apiVersion: portfolio.acceptance/v1
+  components:
+    web:
+      sourceSha: 526c765f33932e163392dd1d512de4aa2f2a5260
+      signerSha: 526c765f33932e163392dd1d512de4aa2f2a5260
+      signerWorkflow: .github/workflows/publish.yml
+      sourceRef: refs/heads/main
+      attestations:
+      - predicateType: https://slsa.dev/provenance/v1
+      - predicateType: https://github.com/DanilFaritovich/project-router/attestations/build-origin/v1
+        expectedPredicate:
+          sourceRepository: DanilFaritovich/project-router
+          sourceSha: 526c765f33932e163392dd1d512de4aa2f2a5260
+          sourceRef: refs/heads/main
+          platform: linux/amd64
+          buildArguments:
+            VITE_SITE_ORIGIN: https://danil-miftakhov.dev
+          originOutputVerified: true
+          runId: '39776962924'
+          runAttempt: '1'
