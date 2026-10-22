@@ -3,7 +3,7 @@
 [English version](README.md)
 
 Централизованная платформа Docker/GitOps-деплоя независимо собираемых портфолио-
-приложений на одном Ubuntu VPS. **Текущее состояние: Stage 09.1 — production contracts/security реализованы офлайн.**
+приложений на одном Ubuntu VPS. **Текущее состояние: Stage 09.2 — read-only диагностика VDS реализована и проверена офлайн.**
 Stage 08 смержен в `develop`; реальный локальный VM E2E Stage 07 пройден: 15/15 сценариев.
 Реализованы registry/admission, offline-планирование и retained Caddy previews;
 PR #4 Stage 04, PR #5 Stage 05 и PR #6 Stage 06 смержены в `develop`. Stage 05 добавляет детерминированный Compose,
@@ -25,6 +25,21 @@ hostname `danil-miftakhov.dev` и ожидаемый build origin `https://danil
 отдельно разрешённая read-only диагностика VDS и runtime-security/adapters/Caddy
 integration. Документ содержит acceptance gates 09.2–09.5 и несекретные сведения
 от оператора. Подключений к VPS и production mutations не выполнялось.
+
+[Operator guide Stage 09.2](docs/production-inspection.md) описывает `make production-check`
+(офлайн-проверка локальных prerequisites/trust), `make production-inspect` (отдельно
+разрешённый интерактивный read-only SSH) и `make production-report` (офлайн-просмотр
+последнего отчёта). Используй существующий
+`PRODUCTION_INVENTORY=../portfolio-server-infrastructure/inventories/production.yml`:
+из него берутся managed user, фактический порт и существующий ключ автоматизации;
+trust берётся из `~/.ssh/known_hosts`, с strict host checking и public-key-only auth.
+До разрешённого запуска независимо проверь исходное доверие к host key и разблокируй
+выбранный зашифрованный ключ в существующем agent. Приватный отчёт (каталог 0700,
+файл 0600): `~/.local/share/portfolio-deployment/production-inspection/latest.json`.
+Passed/blocked/unknown относятся к ограниченным наблюдениям; отсутствие Docker
+permissions — blocker, а не доказательство отсутствия Docker. DNS/TLS/GHCR,
+runtime hardening, production adapters и согласованные пути/subnets остаются
+prerequisites для Stage 09.3. Реального SSH и production mutations в этом этапе не было.
 
 ## Назначение и архитектура
 
@@ -206,7 +221,7 @@ Docker, публикация образов и деплой в CI не запу�
 **Offline CI / Offline checks** нужно вручную включить в branch rules GitHub.
 См. [Stage 08](docs/stage-08-automation.md): установка инструментов и ручная процедура
 экспорта/проверки evidence успешной сессии перед отдельно подтверждаемыми остановкой
-и удалением VM. Процедура ещё не выполнялась; существующие VM сохранены.
+и удалением VM. Stage 08 не выполнял эту процедуру; текущее наличие VM здесь не утверждается.
 Targets `verify`, deploy и production apply отсутствуют. Успешные offline
 проверки не доказывают live Docker, HTTPS, reconciliation или rollback.
 
@@ -248,7 +263,7 @@ references; читать references нужно только для текуще�
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Реализован; реальный локальный VM E2E пройден, 15/15; production acceptance ожидается |
 | Stage 08 | GitHub Actions & Automation | Реализован офлайн; ручная процедура завершения VM ожидает live review |
-| Stage 09 | Production Integration & Release | 09.1 реализован офлайн; 09.2–09.5 Planned; операции требуют отдельных разрешений |
+| Stage 09 | Production Integration & Release | 09.1 реализован офлайн; 09.2 реализован офлайн; 09.3–09.5 Planned; операции требуют отдельных разрешений |
 
 Stage 05 выбирает Python CLI без изменений контрактов Stage 02–04. Реальному
 ProjectRouter всё ещё нужен подтверждённый digest. Stage 06 отвечает за readiness,
@@ -300,7 +315,7 @@ CLI: `python -m scripts.e2e.cli`; отдельные prepare/images/test/status/
 **Подтверждённая локальная приёмка (2026-10-21):** сессия `4963fe050c4567f2`, receipt
 `complete/passed`, `realE2E=performed`, **15/15 реальных сценариев passed**; принятая
 реализация также прошла **779 offline tests**. Production deployment не выполнялся,
-Stage 08 добавляет offline CI; Stage 09.1 — офлайн-контракты/security, а 09.2–09.5 остаются Planned. Предыдущие неудачные попытки и evidence их закрытия
+Stage 08 добавляет offline CI; Stage 09.1 — офлайн-контракты/security, а 09.2 реализован офлайн; 09.3–09.5 остаются Planned. Предыдущие неудачные попытки и evidence их закрытия
 сохранены; journals намеренных crash/unknown сценариев остаются analysis-only,
 без replay. См. [результаты приёмки и историю](docs/local-e2e.md#verified-local-acceptance).
 

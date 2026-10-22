@@ -7,7 +7,7 @@ Stage 07 passed **15/15 real local VM E2E scenarios** in session `4963fe050c4567
 on 2026-10-21; all six GHCR fixture digests were published and anonymously verified.
 The Stage 07 implementation passed **779 offline tests**. Stage 08 adds offline
 PR CI, the Caddy retained-route regression fix and a manual successful-session VM
-completion procedure; its final offline check passed **785 tests**. Stage 09.1 adds offline production contracts/security; Stages 09.2–09.5 and
+completion procedure; its final offline check passed **785 tests**. Stage 09.1 adds offline production contracts/security; Stage 09.2 adds an offline-tested read-only diagnostics interface; Stages 09.3–09.5 and
 production execution remain **Planned**; the separate Stage 05 smoke was not run.
 Each stage needs its own scoped task, validation evidence and review. This roadmap
 does not authorize production actions, merges, release tags or changes to other
@@ -24,7 +24,8 @@ repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
 | Stage 07 — Local E2E & Integration Testing | Isolated end-to-end registration/update/failure/recovery scenarios | Implemented and accepted: 15/15 real local VM scenarios passed; 6/6 GHCR digests verified; no production deployment, VPS/DNS/real certificates |
 | Stage 08 — GitHub Actions & Automation | Offline PR CI for develop/main, actionlint, retained-route fix and manual evidence-first VM completion | Implemented offline; 785 tests; VM export/stop/deletion unperformed; branch rules manual; production triggers remain gated |
 | Stage 09.1 — Production Contracts & Security | Producer audit, inactive template, narrow admission, manual protected-source policy | Implemented offline; no verified production digest or VDS contact |
-| Stage 09.2–09.5 — Production Integration & Release | Read-only diagnostics, adapters/Caddy, first rollout, update/rollback and release | Planned; stage-specific prerequisites and explicit permissions required |
+| Stage 09.2 — Production VDS Read-only Diagnostics | Existing inventory/trust adapter, bounded SSH probes, private report, three Make commands | Implemented/tested offline; no real SSH/VDS inspection or mutations |
+| Stage 09.3–09.5 — Production Integration & Release | Adapters/Caddy, first rollout, update/rollback and release | Planned; accepted diagnostics, stage-specific prerequisites and explicit permissions required |
 
 Stage 02 defines the [v1 application and admission contracts](manifest-v1.md),
 accepts immutable OCI manifest/index digests with explicit `linux/amd64`, and
@@ -84,3 +85,14 @@ validation must be established before production. The document defines concrete
 inputs/acceptance for 09.2 read-only diagnostics, 09.3 production adapters/Caddy
 (including missing runtime hardening), 09.4 first rollout and 09.5 update, rollback,
 acceptance/release. None is authorized by ordinary merge or successful offline CI.
+
+Stage 09.2 [read-only diagnostics](production-inspection.md) consumes the existing
+local infrastructure inventory and host trust, never provisions access. Check and
+report commands are offline; inspect requires a terminal and exact confirmation
+after separate live-operation authorization. Synthetic transports test failure,
+permissions, injection, conflicts, bounded output and private atomic storage.
+No real VDS was inspected. Reports are diagnostic snapshots, never complete
+planner observations. Stage 09.3 still needs accepted fresh diagnostics, permissions,
+reviewed paths/subnets, runtime hardening, complete adapters/Caddy and the existing
+artifact/source/DNS/TLS/GHCR prerequisites. Historical local VM E2E evidence is
+unchanged and does not assert that previously used VMs still exist.
