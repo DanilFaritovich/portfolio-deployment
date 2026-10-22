@@ -726,3 +726,30 @@ Caddy real-runtime results are tracked separately in its acceptance guide. Produ
 remains unperformed; Stage 09.4B privileged execution, authenticated observations,
 source/provenance, actual candidate/DNS/TLS/storage and explicit rollout approval
 remain required. ProductionGateway and ManagedGatewayReadPort write blockers stay intact.
+
+## Stage 09.4B.2 release/source trust boundary
+
+The [read-only release collector](docs/production-release-source-trust.md) implements
+the existing `ReleaseVerifier` port without installing it in CLI/CI.
+`release_transport.py` confines authenticated GitHub reads to the two repositories
+and public GHCR immutable-byte reads to ProjectRouter; a fixed blob CDN receives
+no credentials. `release_source.py` establishes main ancestry, applicable active
+protection, App-bound mandatory checks and same-SHA workflow/publication identity.
+Unreadable rules, bypass details or incomplete pages block. Manager manifest/policy
+hashes come from exact-SHA repository bytes, never echoed candidate claims.
+
+`release_crypto.py` wraps the existing acceptance gh/Sigstore command and statement
+selector with separately pinned installed binary/root, local bundles/subject bytes,
+private bounded output and no inherited credentials. Source/signer certificate
+constraints, SLSA builder and signed origin/publish-run predicates precede
+`release_collector.py` constructing `ReleaseFacts`. There is no second OCI mapper,
+cryptographic signature implementation, facts deserializer or production authority.
+Trusted Python ports retain ADR 0001's installed-code boundary.
+
+Controlled offline integration is verified; no real GitHub/GHCR collection was
+authorized/run here. The official Caddy selected bytes and plain hash-linked SLSA
+v0.2 remain insufficient publisher authentication; Caddy admission is blocked,
+with alternative security policies left for separate review. Production execution,
+authenticated actual state, operator issuance, DNS/TLS/storage/recovery and explicit
+first-operation approval remain separate prerequisites. Image digests and admission
+policy are unchanged.
