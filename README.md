@@ -3,7 +3,7 @@
 [Русская версия](README.ru.md)
 
 Central Docker/GitOps deployment platform for independently built portfolio
-applications on a single Ubuntu VPS. **Current status: Stage 09.1 — production contracts/security implemented offline.**
+applications on a single Ubuntu VPS. **Current status: Stage 09.2 — read-only VDS diagnostics implemented and tested offline.**
 Stage 08 is merged into `develop`; Stage 07 real local VM E2E passed 15/15 scenarios.
 Registry/admission, offline planning and retained Caddy previews are implemented;
 Stage 04 PR #4, Stage 05 PR #5 and Stage 06 PR #6 are merged into `develop`. Stage 05 adds deterministic Compose,
@@ -26,6 +26,20 @@ claimed. Required next steps include protected-source CI, artifact/origin eviden
 separately authorized VDS read-only diagnostics and runtime-security/adapters/Caddy
 integration. The document lists acceptance gates for 09.2–09.5 and non-secret
 operator inputs. No VPS connection or production mutation was performed.
+
+[Stage 09.2 operator guide](docs/production-inspection.md) adds `make production-check`
+(offline local prerequisites/trust), `make production-inspect` (separately authorized,
+interactive read-only SSH) and `make production-report` (offline latest report).
+Reuse `PRODUCTION_INVENTORY=../portfolio-server-infrastructure/inventories/production.yml`:
+its managed user, actual port and existing automation key are used with existing
+`~/.ssh/known_hosts`, strict host checking and public-key-only authentication.
+Independently verify the original host trust and unlock an encrypted selected key
+in the existing agent before an authorized run. The report is private (directory
+0700/file 0600) at `~/.local/share/portfolio-deployment/production-inspection/latest.json`.
+Passed/blocked/unknown describe bounded observations; missing Docker permissions
+remain blockers, not proof Docker is absent. DNS/TLS/GHCR, runtime hardening,
+production adapters and approved paths/subnets remain Stage 09.3 prerequisites.
+No real SSH connection or production mutation was performed in this stage.
 
 ## Purpose and architecture
 
@@ -206,7 +220,7 @@ Docker, publication or deployment runs in CI. Configure the required
 **Offline CI / Offline checks** check in GitHub branch rules manually.
 See [Stage 08](docs/stage-08-automation.md) for tool setup and the reviewed manual
 procedure to export/verify successful-session evidence before separately approved
-VM stop/deletion. This procedure has not been executed; existing VMs are retained.
+VM stop/deletion. Stage 08 did not execute this procedure; current VM existence is not asserted here.
 No `verify`, deploy or production apply target exists. Passing offline checks
 does not prove live Docker, HTTPS, reconciliation or rollback.
 
@@ -247,7 +261,7 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Implemented; real local VM E2E passed, 15/15; production acceptance pending |
 | Stage 08 | GitHub Actions & Automation | Implemented offline; manual VM completion procedure awaiting live review |
-| Stage 09 | Production Integration & Release | 09.1 implemented offline; 09.2–09.5 Planned; separate operation approvals required |
+| Stage 09 | Production Integration & Release | 09.1 implemented offline; 09.2 implemented offline; 09.3–09.5 Planned; separate operation approvals required |
 
 Stage 05 selects Python CLI without changing Stage 02–04 contracts. Real
 ProjectRouter registration still requires a confirmed digest. Stage 06 owns
@@ -299,7 +313,7 @@ automatically. `make e2e-check` and `make check` remain fully offline.
 **Verified local acceptance (2026-10-21):** session `4963fe050c4567f2`, receipt
 `complete/passed`, `realE2E=performed`, **15/15 real scenarios passed**; the accepted
 implementation also passed **779 offline tests**. Production deployment was not
-performed. Stage 08 adds offline CI; Stage 09.1 adds offline contracts/security, while 09.2–09.5 remain Planned. Earlier failed attempts and their
+performed. Stage 08 adds offline CI; Stage 09.1 adds offline contracts/security, while 09.2 is implemented offline; 09.3–09.5 remain Planned. Earlier failed attempts and their
 closure evidence are retained; intentional crash/unknown journals remain
 analysis-only, without replay. See [acceptance and history](docs/local-e2e.md#verified-local-acceptance).
 

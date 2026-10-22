@@ -1,0 +1,1087 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "portfolio.production-inspection/v1"
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "alias": {
+          "type": "string",
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+        },
+        "host": {
+          "type": "string",
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "user": {
+          "type": "string",
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+        }
+      },
+      "required": [
+        "alias",
+        "host",
+        "port",
+        "user"
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hostname": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+        },
+        "machine_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+        },
+        "daemon": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+        }
+      },
+      "required": [
+        "hostname",
+        "machine_id",
+        "daemon"
+      ]
+    },
+    "sshTrust": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "const": "strict-existing-user-known-hosts"
+        },
+        "initialProvenance": {
+          "const": "operator-verification-required"
+        },
+        "negotiatedKey": {
+          "const": "not-collected"
+        },
+        "trustedFingerprints": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^SHA256:[A-Za-z0-9+/]{43}$"
+          },
+          "maxItems": 32
+        }
+      },
+      "required": [
+        "policy",
+        "initialProvenance",
+        "negotiatedKey",
+        "trustedFingerprints"
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "enum": [
+              "os",
+              "architecture",
+              "cpu",
+              "memory",
+              "disk",
+              "hostname",
+              "machine_id",
+              "engine",
+              "daemon",
+              "compose",
+              "containers",
+              "networks",
+              "volumes",
+              "listeners",
+              "caddy",
+              "services",
+              "firewall"
+            ]
+          },
+          "category": {
+            "enum": [
+              "system",
+              "docker",
+              "network"
+            ]
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "blocked",
+              "unknown"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 512,
+            "pattern": "^[\\x20-\\x7E]*$"
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "status",
+          "reason",
+          "details"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "os"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "maxLength": 256,
+                          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                        },
+                        "version_id": {
+                          "type": "string",
+                          "maxLength": 256,
+                          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "version_id"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "architecture"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "string",
+                          "maxLength": 256,
+                          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                        }
+                      },
+                      "required": [
+                        "value"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "cpu"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1125899906842624
+                        }
+                      },
+                      "required": [
+                        "value"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "memory"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1125899906842624
+                        }
+                      },
+                      "required": [
+                        "value"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "disk"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "filesystems": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mount": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "availableKiB": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1125899906842624
+                              }
+                            },
+                            "required": [
+                              "mount",
+                              "availableKiB"
+                            ]
+                          },
+                          "maxItems": 16
+                        }
+                      },
+                      "required": [
+                        "filesystems"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "hostname"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "string",
+                          "maxLength": 256,
+                          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                        }
+                      },
+                      "required": [
+                        "value"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "machine_id"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "string",
+                          "maxLength": 256,
+                          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                        }
+                      },
+                      "required": [
+                        "value"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "engine"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "string",
+                          "maxLength": 256,
+                          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                        }
+                      },
+                      "required": [
+                        "value"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "daemon"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "string",
+                          "maxLength": 256,
+                          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                        }
+                      },
+                      "required": [
+                        "value"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "compose"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "string",
+                          "maxLength": 256,
+                          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                        }
+                      },
+                      "required": [
+                        "value"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "containers"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "resources": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "managed": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "application": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "component": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "project": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "ownership": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "id": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "state": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "ports": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "managed",
+                              "application",
+                              "component",
+                              "project",
+                              "ownership",
+                              "id",
+                              "state",
+                              "ports"
+                            ]
+                          },
+                          "maxItems": 128
+                        }
+                      },
+                      "required": [
+                        "resources"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "networks"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "resources": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "managed": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "application": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "component": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "project": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "ownership": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "driver": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "id": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "subnets": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 256,
+                                  "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                                },
+                                "maxItems": 16
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "managed",
+                              "application",
+                              "component",
+                              "project",
+                              "ownership",
+                              "driver",
+                              "id",
+                              "subnets"
+                            ]
+                          },
+                          "maxItems": 128
+                        }
+                      },
+                      "required": [
+                        "resources"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "volumes"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "resources": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "managed": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "application": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "component": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "project": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "ownership": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "driver": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "managed",
+                              "application",
+                              "component",
+                              "project",
+                              "ownership",
+                              "driver"
+                            ]
+                          },
+                          "maxItems": 128
+                        }
+                      },
+                      "required": [
+                        "resources"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "listeners"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "ports": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 65535
+                          },
+                          "maxItems": 65535
+                        }
+                      },
+                      "required": [
+                        "ports"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "caddy"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "string",
+                          "maxLength": 256,
+                          "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                        }
+                      },
+                      "required": [
+                        "value"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "services"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "services": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "Id": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "LoadState": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              },
+                              "ActiveState": {
+                                "type": "string",
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9_./:@+,=() *%\\[\\]<>-]*$"
+                              }
+                            },
+                            "required": [
+                              "Id",
+                              "LoadState",
+                              "ActiveState"
+                            ]
+                          },
+                          "maxItems": 4
+                        }
+                      },
+                      "required": [
+                        "services"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "name": {
+                  "const": "firewall"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "details": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {},
+                      "required": []
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "enum": [
+                            "active",
+                            "inactive"
+                          ]
+                        },
+                        "rules": {
+                          "const": "not-collected"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "maxItems": 17
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 512,
+        "pattern": "^[\\x20-\\x7E]*$"
+      },
+      "maxItems": 256
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 512,
+        "pattern": "^[\\x20-\\x7E]*$"
+      },
+      "maxItems": 256
+    },
+    "unverifiedPrerequisites": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 512,
+        "pattern": "^[\\x20-\\x7E]*$"
+      },
+      "maxItems": 256
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 512,
+        "pattern": "^[\\x20-\\x7E]*$"
+      },
+      "maxItems": 256
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "startedAt",
+    "finishedAt",
+    "target",
+    "identity",
+    "sshTrust",
+    "checks",
+    "conflicts",
+    "blockers",
+    "unverifiedPrerequisites",
+    "limitations"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

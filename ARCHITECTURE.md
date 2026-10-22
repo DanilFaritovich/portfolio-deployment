@@ -14,7 +14,8 @@ harness and real test-only readers/probes; all 15 real local VM E2E scenarios
 passed on 2026-10-21. This verifies only the disposable test integration.
 Stage 08 offline CI is merged into `develop`. Stage 09.1 adds offline production
 contracts/security and narrow ProjectRouter admission; the real registry remains
-empty pending a verified origin-bound digest. No VPS integration is verified.
+empty pending a verified origin-bound digest. Stage 09.2 adds an offline-tested
+read-only inspection layer; no real VDS connection or inspection is verified.
 
 Python CLI, Docker Engine/Compose v2, GHCR, Git and Caddy are selected technologies.
 There is no daemon, database server, Kubernetes or production deployment trigger.
@@ -332,7 +333,7 @@ See the preliminary [roadmap](docs/roadmap.md). Stages 01–04 are implemented
 offline; Stage 05 is an engine foundation with an unexecuted local smoke harness.
 Stage 06 is implemented offline; Stage 07 infrastructure passed real disposable
 VM acceptance; Stage 08 adds offline CI and Stage 09.1 defines production contracts/security.
-Stages 09.2–09.5 remain Planned. Protected-source enforcement, configuration delivery, full live observation integration and
+Stage 09.2 is implemented offline; Stages 09.3–09.5 remain Planned. Protected-source enforcement, configuration delivery, full live observation integration and
 operator recovery/retention procedures remain open. See
 [development instructions](AGENTS.md) for workflow boundaries.
 
@@ -406,10 +407,10 @@ Acceptance evidence is retained outside Git: host receipt
 records `complete/passed`, `mode=real`, `realE2E=performed` and all 15 results.
 The accepted implementation also passed 779 offline tests. Production deployment
 was not performed; Stage 08 adds offline CI and Stage 09.1 defines offline contracts/security;
-Stages 09.2–09.5 remain Planned.
+Stage 09.2 is implemented offline; Stages 09.3–09.5 remain Planned.
 See [acceptance and failed-attempt history](docs/local-e2e.md#verified-local-acceptance).
-The VM retains its report, baseline, gateway snapshots and intentional crash/unknown
-journals; recovery analysis confirms no automatic completion or replay. Failed
+The historical acceptance recorded reports, baseline, gateway snapshots and intentional crash/unknown
+journals; current VM existence is not asserted here; recovery analysis confirms no automatic completion or replay. Failed
 earlier attempts retain independent closure evidence and original journals.
 
 `scripts/e2e/cli.py` is the host entry point. Shared `scripts/e2e/paths.py`
@@ -532,3 +533,32 @@ transports and temporary SQLite and never claim real E2E acceptance. Cleanup is
 manual opt-in, exact-owned containers/empty networks only; volumes, journal,
 snapshots, unrelated resources and VM are retained. See [Stage 07](docs/local-e2e.md)
 for commands, prerequisites, report semantics and remaining evidence limits.
+
+## Stage 09.2 read-only inspection boundary
+
+`scripts/production/inventory.py` is a small static Ansible inventory adapter,
+reusing the bounded YAML loader from `validate_registry`. It selects only the
+explicit managed host/port/user/key from the sibling infrastructure inventory.
+No infrastructure controller, playbook or alternate identity system is imported.
+`transport.py` performs local trust/prerequisite checks and bounds OpenSSH subprocess
+pipes/timeouts. Only `production-inspect` constructs it after terminal confirmation;
+`production-check` and `production-report` are offline. SSH config/proxies/forwarding,
+password fallback, trust changes and connection sharing are disabled. The existing
+selected identity can use the invoking shell's unlocked agent.
+
+`probes.py` owns static read-only commands and closed normalization. `inspection.py`
+collects independent system/Docker/network evidence, classifies transport failures,
+reserved resources/listeners, label ownership claims and subnet overlap.
+`report.py` validates the versioned closed JSON schema and atomically stores only
+the latest private normalized report outside Git (0700 directory/0600 file).
+`cli.py` exposes the three Make commands. No raw stderr, full Docker inspect,
+container secrets, private keys or environment are persisted. No mutating transport
+or executor dependency is introduced. Reports cannot be converted into a trusted
+complete ObservedState and never relax existing planner/lifecycle safety gates.
+
+The baseline is Ubuntu 24.04 / x86_64 and the rootful local Docker socket; other
+scopes, unprivileged firewall gaps and external DNS/TLS/GHCR remain explicit unknowns
+or prerequisites. Existing SSH trust is not proof of its initial independent
+verification. Actual diagnostics require separate authorization and report review
+before 09.3. See the [operator guide](docs/production-inspection.md) for exact
+bounds, permissions, trust handoff, statuses and retained production blockers.
