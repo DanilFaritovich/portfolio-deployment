@@ -3,12 +3,14 @@ name: Offline CI
 on:
   pull_request:
     branches: [develop, main]
+  push:
+    branches: [develop, main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: offline-pr-${{ github.event.pull_request.number }}
+  group: offline-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
