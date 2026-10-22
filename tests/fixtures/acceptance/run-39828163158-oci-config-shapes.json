@@ -1,0 +1,26 @@
+{
+  "configDigest": "sha256:115af1631e16774d114aa857130086e0a32711720895195c52d0b30ce68df102",
+  "shapes": {
+    "User": "string",
+    "Env": "array",
+    "Entrypoint": "array",
+    "Cmd": "array",
+    "WorkingDir": "string",
+    "ExposedPorts": "object",
+    "Volumes": "absent",
+    "Labels": "object",
+    "StopSignal": "string",
+    "Healthcheck": "object",
+    "ArgsEscaped": "boolean",
+    "OnBuild": "absent",
+    "Hostname": "absent",
+    "Domainname": "absent",
+    "AttachStdin": "absent",
+    "AttachStdout": "absent",
+    "AttachStderr": "absent",
+    "Tty": "absent",
+    "OpenStdin": "absent",
+    "StdinOnce": "absent",
+    "Image": "absent"
+  }
+}
