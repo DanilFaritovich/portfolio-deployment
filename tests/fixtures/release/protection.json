@@ -1,0 +1,11 @@
+{
+  "required_status_checks": {"strict": true, "checks": [{"context": "ci", "app_id": 15368}]},
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1,
+    "dismiss_stale_reviews": true,
+    "bypass_pull_request_allowances": {"users": [], "teams": [], "apps": []}
+  },
+  "enforce_admins": {"enabled": true},
+  "allow_force_pushes": {"enabled": false},
+  "allow_deletions": {"enabled": false}
+}

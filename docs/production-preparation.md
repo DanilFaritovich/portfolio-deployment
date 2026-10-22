@@ -22,7 +22,7 @@ readiness, journal/LKG and recovery; there is no second deployment engine.
 | `bootstrap.plan_bootstrap` | Authenticated empty-host or exact-existing-proxy proposal; IPAM/resource/listener/storage conflicts block; no operation executor |
 | `locking.production_host_lock` | Existing flock primitive with one canonical path, existing metadata/parent checks and real lease/inode validation; no provisioning/fallback |
 | `storage` | Explicit bounded budgets and read-only existing-directory metadata checks; not resource ownership or backup evidence |
-| `release.ReleaseVerifier` | Exact candidate checks over authenticated GitHub/GHCR/provenance collector; default collector unavailable; existing OCI byte verifier handles index → manifest → config |
+| `release.ReleaseVerifier` | Exact candidate checks through the Stage 09.4B.2 read-only authenticated collector; default remains unconfigured; existing OCI byte verifier handles index → manifest → config |
 | `authorization.review_approval` | Validate authenticated operator claims against every candidate field and a maximum one-hour window; returns review claims, no executable capability |
 | `caddy_image.inspect_caddy_contract` | Reject incompatible image defaults and projection; always retains runtime/provenance/official-validation blockers |
 
@@ -278,3 +278,38 @@ byte/runtime verification and complete production admission remain pending.
 The workflow was not run during implementation. See the
 [acceptance handoff](project-router-acceptance.md) for exact release identity,
 reviewed trigger, evidence limits and remaining production gates.
+
+## Stage 09.4B.1 acceptance evidence update
+
+ProjectRouter's [isolated acceptance run 39837965499](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39837965499)
+is confirmed successful, as is [main Offline CI 39839861288](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39839861288)
+at `65af84bd0de23af9cf9ae40b2c0c411e1fbe2c36`. Earlier pending-run statements above
+are historical preparation status. The candidate remains disabled, with its original
+digest and unchanged admission policy. This success does not mint production trust.
+
+[Caddy acceptance](caddy-runtime-acceptance.md) now pins official 2.11.7 amd64 bytes
+and provides a separate explicitly authorized disposable runner harness, with no
+host ports/production TLS. Offline, real-Docker and production results are separate.
+Unsigned/unverified Caddy provenance, actual production wiring/attestors, full actual
+candidate validation and operator bootstrap/rollout approval remain blockers.
+
+Caddy [real acceptance run 39844325743](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39844325743)
+passed all 17 isolated cases and cleanup (Caddy 2.11.7 / Engine 28.0.4 / Compose
+2.38.2). This supplies disposable runtime evidence only; no production gate is bypassed.
+
+## Stage 09.4B.2 release/source trust update
+
+The [release/source trust implementation](production-release-source-trust.md) now
+provides bounded authenticated GitHub protected-source/check/publication collection,
+GHCR immutable-byte reads and an adapter to the existing pinned gh/Sigstore
+verification. Collector facts bind exact producer/manager SHAs, selected digest,
+signer/source identities, signed origin/publish run and manager manifest/policy
+bytes. Unreadable protection or incomplete cryptographic evidence blocks. No
+collector is installed from API/files or configured by the production preview CLI.
+
+Controlled offline tests prove the composition and failure boundaries. No new
+real GitHub/GHCR release verification was authorized/run here. Historical real
+acceptance remains separate from release admission. The available official Caddy
+statement remains unsigned/unverified; no weaker official-image security policy
+is selected. Privileged execution, actual observations, operator authorization,
+DNS/TLS/storage/recovery and first rollout retain their separate blockers.

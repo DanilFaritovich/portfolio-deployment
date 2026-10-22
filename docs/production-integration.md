@@ -26,7 +26,7 @@ Stage 09.2's `scripts/production/` SSH diagnostics package.
 | --- | --- | --- |
 | `docker.ProductionDockerAdapter` | Explicit local Unix endpoint; bounded inventory/inspect using Stage 05 methods; host and daemon identity checks; sanitized command environment | Separately approved Docker read access, actual identity and socket; mutations always blocked |
 | `observations.ProductionStateReader` | Fresh source rounds; closed Stage 03 input; effective runtime/image/ownership corroboration; complete universe checks; double inventory/identity checks; CompositeStateProvider freshness gate | Independently trusted runtime delivery, active gateway and readiness source implementations configured for approved host; no source can be a journal or inspection report |
-| `artifacts.verify_artifact` | Hash exact supplied bytes; index/platform manifest/config mapping, size/media/platform checks; immutable admitted repository; exact source/origin request; Engine config-ID binding | Authenticated producer/manager protected-main, exact-SHA CI/publish and provenance verifier; no built-in network verifier or credentials |
+| `artifacts.verify_artifact` | Hash exact supplied bytes; index/platform manifest/config mapping, size/media/platform checks; immutable admitted repository; exact source/origin request; Engine config-ID binding | Stage 09.4B.2 collector installation with reviewed workflow/App/root pins and separately authorized live verification; no default credentials |
 | `readiness.ProductionProbes` | Pin actual container ID, project/ownership and private IP/subnet; internal path/port; no redirects; bounded timeout; rediscover after probe | Approved bounded internal HTTP transport and reviewed private subnet; no HTTP client is configured by CLI |
 | `runtime.CaddyRuntime` | Deterministic pinned-image Compose model; only 80/443 TCP; persistent data/config; no Docker socket; read-only managed configuration | Actual separately verified Caddy image/version, approved storage/permissions/budget and exclusive gateway ownership |
 | `gateway_read.ManagedGatewayReadPort` | Exact managed active configuration, pinned config ID/version and ownership/storage attestation | Trusted active-config transport; disk config alone is insufficient; unknown configuration is rejected |
@@ -242,3 +242,38 @@ byte/runtime verification and complete production admission remain pending.
 The workflow was not run during implementation. See the
 [acceptance handoff](project-router-acceptance.md) for exact release identity,
 reviewed trigger, evidence limits and remaining production gates.
+
+## Stage 09.4B.1 runtime acceptance update
+
+ProjectRouter isolated acceptance [39837965499](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39837965499)
+and manager main Offline CI [39839861288](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39839861288)
+are now confirmed passed. This supersedes the pending isolated-acceptance status
+in historical preparation sections, without granting production admission.
+
+The [Caddy runtime acceptance guide](caddy-runtime-acceptance.md) records official
+2.11.7 index/amd64 manifest/config mapping, image defaults, provenance limitations
+and the separate disposable real-Docker workflow. It reuses the existing runtime
+renderer and image contract with temporary paths and no published host ports.
+Application OCI admission remains GHCR-only; a pure registry-independent mapper is
+shared with the official gateway fixture verifier. No production attestor, validation/
+reload transport, operator approval or write authority is installed by acceptance.
+
+Caddy [real acceptance run 39844325743](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39844325743)
+passed all 17 isolated cases and cleanup (Caddy 2.11.7 / Engine 28.0.4 / Compose
+2.38.2). This supplies disposable runtime evidence only; no production gate is bypassed.
+
+## Stage 09.4B.2 release/source trust update
+
+[Release/source trust](production-release-source-trust.md) implements the missing
+read-only collector port, separating authenticated GitHub API, public GHCR byte
+transport, source policy, existing gh/Sigstore verification and authenticated facts.
+It reuses the existing OCI mapper and acceptance signature command/selector; no
+second verifier or deployment engine is added. Exact manager manifest/policy bytes
+are checked at the selected protected-main SHA. CLI/CI still configure no collector,
+production credential, write transport or approval issuer.
+
+Offline API fixtures exercise success and fail-closed boundaries; real exact-release
+collection was not run in this task. Caddy's hash-linked SLSA v0.2 statement has no
+established independent publisher signature. Caddy admission remains blocked
+pending independent cryptographic evidence or a separately reviewed security
+policy. Neither this collector nor successful isolated acceptance authorizes rollout.

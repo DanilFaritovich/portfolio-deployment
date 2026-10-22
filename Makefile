@@ -165,7 +165,7 @@ production-plan:
 	@$(PYTHON) -c 'import os,sys; from scripts.production_integration.cli import main; sys.exit(main(["plan","--contract",os.environ.get("PRODUCTION_CONTRACT",""),"--root",os.environ["REGISTRY_ROOT"],"--git-revision",os.environ.get("GIT_REVISION",""),"--observed",os.environ.get("OBSERVED","")]))'
 
 production-integration-check:
-	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_production_integration.py tests/test_production_ports.py tests/test_production_preparation.py
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_production_integration.py tests/test_production_ports.py tests/test_production_preparation.py tests/test_release_collector.py
 
 # Candidate declarations only: never Docker, registry requests or workflow dispatch.
 .PHONY: acceptance-check
@@ -178,3 +178,9 @@ acceptance-check:
 export RUNTIME_TEST_ENDPOINT RUNTIME_TEST_AUTHORIZE
 runtime-integration-test:
 	@$(PYTHON) -c 'import os,sys; from scripts.runtime_integration import main; sys.exit(main(["--endpoint",os.environ.get("RUNTIME_TEST_ENDPOINT",""),"--authorize",os.environ.get("RUNTIME_TEST_AUTHORIZE","")]))'
+
+# Explicitly authorized ephemeral GitHub-hosted PR runner only; no host ports.
+.PHONY: caddy-integration-test
+export CADDY_TEST_ENDPOINT CADDY_TEST_AUTHORIZE
+caddy-integration-test:
+	@$(PYTHON) -c 'import os,sys; from scripts.caddy_integration import main; sys.exit(main(["--endpoint",os.environ.get("CADDY_TEST_ENDPOINT",""),"--authorize",os.environ.get("CADDY_TEST_AUTHORIZE","")]))'

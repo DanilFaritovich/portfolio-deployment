@@ -39,7 +39,7 @@ The specialized runner/workflow have been replaced by
 
 After review/integration on a protected branch, the owner can explicitly dispatch
 **Application isolated acceptance**, choosing `application=project-router` and
-`confirmation=isolated-acceptance`. This task does not execute it. See the universal
+`confirmation=isolated-acceptance`. The confirmed execution result is recorded below. See the universal
 guide for prerequisites, schema, resource cleanup, receipt and verification boundaries.
 
 Acceptance verifies the signed origin claim, OCI/Engine identity, `/en/` readiness,
@@ -50,9 +50,9 @@ security, `enabled: false` and location outside the active registry are preserve
 
 ## Remaining admission blockers
 
-Until an owner triggers and reviews this workflow, independent live byte mapping,
-real-image runtime/security/restart/HTTP acceptance and its report remain pending.
-A successful run is only isolated image acceptance. The manager's existing
+The isolated workflow now passed, as recorded below: live byte mapping and
+real-image runtime/security/restart/HTTP checks have disposable-run evidence.
+This is only isolated image acceptance. The manager's existing
 production `ReleaseVerifier`, authenticated collector/attestors and exact
 OperationCandidate approval gate remain required and are not wired to consume
 this report. Both repositories' effective protected-main rules/ancestry,
@@ -68,3 +68,19 @@ merge, tag or release is authorized or performed here. See
 [production contracts](production-contracts.md),
 [integration](production-integration.md) and
 [preparation](production-preparation.md).
+
+
+## Confirmed isolated acceptance
+
+GitHub API confirms [Application isolated acceptance 39837965499](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39837965499)
+completed successfully at manager SHA `6b4173d7c0d51439041a59bd12cc6a6a4d3b161d`.
+[Main Offline CI 39839861288](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39839861288)
+passed at `65af84bd0de23af9cf9ae40b2c0c411e1fbe2c36`. Shared real-Docker runtime
+integration was also reported passed; these checks are separate from offline CI.
+No production operation or candidate activation follows from those results. The
+ProjectRouter digest/admission and disabled candidate remain unchanged.
+
+The separate [Caddy runtime acceptance](caddy-runtime-acceptance.md) closes only
+its own disposable image/runtime evidence gate. Production source/release verification,
+trusted host/gateway observations, Caddy provenance and exact operation approval
+remain prerequisites for the separately authorized Stage 09.4B rollout.

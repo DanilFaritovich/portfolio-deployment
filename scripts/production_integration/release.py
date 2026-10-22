@@ -1,7 +1,9 @@
 """Strict release evidence verifier over an authenticated, separately installed port.
 
 No GitHub token, HTTP client or attestation trust root is configured here. The
-default blocks. OCI byte/index/config verification remains in artifacts.py.
+default blocks. release_collector.AuthenticatedReleaseCollector implements the
+read-only installed port; CLI/CI never install it from user data. OCI byte/index/
+config verification remains in artifacts.py.
 """
 from dataclasses import asdict, dataclass
 
