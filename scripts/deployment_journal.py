@@ -14,7 +14,7 @@ import sqlite3
 import stat
 import time
 
-from scripts.deployment import host_lock
+from scripts.deployment import host_lock, owns_host_lock
 
 
 class JournalError(RuntimeError):
@@ -98,7 +98,7 @@ class Journal:
         self._directory = None
 
     def _locked(self):
-        if not self.lease.active:
+        if not owns_host_lock(self.lease):
             raise JournalError("journal-host-lock-required")
 
     def __enter__(self):

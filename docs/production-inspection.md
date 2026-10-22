@@ -120,7 +120,7 @@ Static commands collect only:
   `/`, `/var`, `/opt`, hostname and machine ID. Other filesystems and a custom
   Docker data root are not exhaustively verified.
 - Engine version and daemon ID from the current user's rootful local Docker API,
-  Compose v2 version, all containers (including stopped), project labels, network
+  supported Compose version, all containers (including stopped), project labels, network
   names/drivers/subnets and volume names/drivers. Each resource includes only the
   manager's managed/application/component labels and the Compose project label.
   Full inspect objects, container environment, mounts, commands, logs, volume
@@ -218,3 +218,24 @@ report still cannot become complete fresh planner evidence; a passing local
 `production-check` is not server readiness. Fresh source ports, exact artifact and
 origin evidence, approved identities/paths/subnets and separately authorized
 Stage 09.4 operations remain necessary. No real SSH inspection was performed.
+
+## Stage 09.4A compatibility clarification
+
+The shared Compose policy accepts stable plugin versions >= 2 (including future
+major/minor/patch versions and Ubuntu build suffixes), with or without `v`. Legacy
+v1, prereleases and malformed versions are rejected. Inspection normalization,
+Stage 05 prerequisites and official validation use the same policy. A separate
+read-only `compose_cli` probe checks required plugin options using the shared
+capability policy; unavailable or incomplete evidence prevents readiness. Syntax
+of the actual rendered configuration is checked by `config -q` before `up` and
+during official validation. Inspection does not upload or validate application
+configurations. Version parsing and CLI help are not proof of image/runtime
+compatibility.
+
+The operator's 2026-10-22 manual observations reported Engine 29.9.0, Compose 5.6.0,
+Docker access only through administrative `sudo -n`, active UFW and an empty host.
+The previous 9 passed / 2 blocked / 6 unknown report is not a trusted live snapshot.
+`docker-permission-denied` means missing permission, not absent Engine; the missing
+host Caddy binary is expected for container-managed Caddy. Codex did not reconnect
+to the VDS. No sudo mode was added to inspection. See
+[09.4A handoff](production-preparation.md) for full operator evidence and blockers.

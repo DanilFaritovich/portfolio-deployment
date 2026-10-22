@@ -68,6 +68,8 @@ class RuntimePaths:
                     len(p.parts) >= 3 and p.parts[1] not in ('tmp', 'run', 'dev', 'proc', 'sys') and
                     not path.startswith('/var/tmp/'),
                     'operator-production-path-invalid')
+        from scripts.production_integration.locking import CANONICAL_LOCK_DIRECTORY
+        require(self.lock == CANONICAL_LOCK_DIRECTORY, 'production-lock-path-mismatch')
         require(not any(a != b and a in PurePosixPath(b).parents for a in map(PurePosixPath, paths) for b in paths),
                 'operator-path-overlap')
 
@@ -92,8 +94,11 @@ class CaddyRuntime:
             'security_opt': ['no-new-privileges:true'], 'labels': owner,
             'command': ['caddy', 'run', '--config', '/etc/caddy/Caddyfile', '--adapter', 'caddyfile'],
             'ports': ['80:80/tcp', '443:443/tcp'], 'networks': ['proxy'],
-            'volumes': [{'type': 'bind', 'source': self.paths.gateway_config, 'target': '/etc/caddy', 'read_only': True},
-                        {'type': 'bind', 'source': self.paths.certificate_data, 'target': '/data'},
-                        {'type': 'bind', 'source': self.paths.gateway_data, 'target': '/config'}]}},
+            'volumes': [{'type': 'bind', 'source': self.paths.gateway_config, 'target': '/etc/caddy', 'read_only': True,
+                         'bind': {'create_host_path': False}},
+                        {'type': 'bind', 'source': self.paths.certificate_data, 'target': '/data',
+                         'bind': {'create_host_path': False}},
+                        {'type': 'bind', 'source': self.paths.gateway_data, 'target': '/config',
+                         'bind': {'create_host_path': False}}]}},
             'networks': {'proxy': {'name': 'portfolio-proxy', 'external': True}}}
         return ComposeArtifact('@gateway', 'portfolio-gateway', encode(model))

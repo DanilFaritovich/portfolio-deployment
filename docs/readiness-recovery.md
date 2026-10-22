@@ -259,3 +259,7 @@ postverification precedes LKG promotion. Failed/unknown activation cannot promot
 LKG. Production write approval and live source transports remain unavailable;
 inherited test-only lifecycle gating is retained. Existing rollback and crash
 recovery limits are unchanged.
+
+## Stage 09.4A preparation
+
+Journal now verifies an issued live host-lock lease and its inode before operations; a fabricated `LockLease(active=True)` is rejected. ProductionGateway additionally requires the canonical production path by default. First deployment has no previous application LKG: empty gateway configuration is only a gateway baseline. See [production preparation](production-preparation.md) for backups, storage, first-release containment and blocked production wiring.

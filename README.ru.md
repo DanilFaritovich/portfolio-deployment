@@ -3,7 +3,7 @@
 [English version](README.md)
 
 Централизованная платформа Docker/GitOps-деплоя независимо собираемых портфолио-
-приложений на одном Ubuntu VPS. **Текущее состояние: Stage 09.3 — компоненты production integration реализованы и проверены офлайн (1055 тестов).**
+приложений на одном Ubuntu VPS. **Текущее состояние: Stage 09.4A — подготовка production deployment реализована и проверена офлайн (1120 тестов).**
 Stage 08 смержен в `develop`; реальный локальный VM E2E Stage 07 пройден: 15/15 сценариев.
 Реализованы registry/admission, offline-планирование и retained Caddy previews;
 PR #4 Stage 04, PR #5 Stage 05 и PR #6 Stage 06 смержены в `develop`. Stage 05 добавляет детерминированный Compose,
@@ -15,6 +15,18 @@ disposable Ubuntu VM и test-only readers/probes; локальная приём�
 Production-деплой остаётся **Planned**: Docker не даёт полный registry/gateway
 snapshot Stage 03. Production apply интерфейса нет. Реальный реестр пуст до
 подтверждения digest с нужным origin; admission резервирует ProjectRouter. Отдельный локальный smoke Stage 05 не запускался.
+
+[Подготовка Stage 09.4A](docs/production-preparation.md) и
+[execution ADR](docs/adr/0001-production-execution.md) добавляют общую policy
+стабильного Compose plugin >= 2 с отдельными проверками CLI/конфигурации, authenticated source bindings, канонические production lock/storage,
+офлайн-план первой установки и source/artifact/approval contracts.
+Рекомендуется локальное исполнение на VDS через отдельно подготавливаемую
+privileged boundary; sudo fallback и production apply отсутствуют. Protected-main
+evidence обоих репозиториев, доверенные execution/trust mechanisms и изолированные
+runtime-тесты точных images остаются blockers. Stage 09.4B — First Authorized
+ProjectRouter Rollout — требует отдельного разрешения; Stages 09.5/09.6 остаются
+Planned. Наблюдения оператора не являются trusted planner state. Подключений к VDS
+и mutations в 09.4A не было; полный offline check: 1120 tests passed.
 
 [Контракты и безопасность Stage 09.1](docs/production-contracts.md) фиксируют
 `project-router` → `project-router-web:8080` в `portfolio-proxy`, readiness `/en/`,
@@ -39,7 +51,7 @@ trust берётся из `~/.ssh/known_hosts`, с strict host checking и publi
 Passed/blocked/unknown относятся к ограниченным наблюдениям; отсутствие Docker
 permissions — blocker, а не доказательство отсутствия Docker. DNS/TLS/GHCR,
 совместимость конкретного image, trusted live transports и согласованные пути/subnets
-остаются prerequisites для Stage 09.4. Реального SSH и production mutations в этом этапе не было.
+остаются prerequisites для Stage 09.4B. Реального SSH и production mutations в этом этапе не было.
 
 [Operator guide Stage 09.3](docs/production-integration.md) описывает версионированный
 per-component runtime security contract, production Engine read adapter,
@@ -50,7 +62,7 @@ SQLite journal/LKG и recovery. `make production-integration-check` работа
 `make production-plan PRODUCTION_CONTRACT=<saved.json> OBSERVED=<saved.json> GIT_REVISION=<full-sha>`
 возвращают только blocked preview (`authorization=false`, exit 2). Используй `PYTHON=.venv/bin/python`.
 Production apply команды и настроенного live write transport нет.
-Stage 09.4 требует отдельно согласованных identities, путей/budgets/subnets,
+Stage 09.4B требует отдельно согласованных identities, путей/budgets/subnets,
 protected-main exact-SHA source/artifact/origin evidence, trusted live transports
 и разрешения операции. Stage 09.6 automated digest-update PR/CD запланирован после
 безопасного ручного rollout/rollback; автоматический CD здесь не реализован.
@@ -277,7 +289,7 @@ references; читать references нужно только для текуще�
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Реализован; реальный локальный VM E2E пройден, 15/15; production acceptance ожидается |
 | Stage 08 | GitHub Actions & Automation | Реализован офлайн; ручная процедура завершения VM ожидает live review |
-| Stage 09 | Production Integration & Release | 09.1 реализован офлайн; 09.2 реализован офлайн; 09.3 реализован офлайн; 09.4–09.6 Planned; операции требуют отдельных разрешений |
+| Stage 09 | Production Integration & Release | 09.1 реализован офлайн; 09.2 реализован офлайн; 09.3/09.4A реализованы офлайн; 09.4B/09.5/09.6 Planned; операции требуют отдельных разрешений |
 
 Stage 05 выбирает Python CLI без изменений контрактов Stage 02–04. Реальному
 ProjectRouter всё ещё нужен подтверждённый digest. Stage 06 отвечает за readiness,
@@ -329,7 +341,7 @@ CLI: `python -m scripts.e2e.cli`; отдельные prepare/images/test/status/
 **Подтверждённая локальная приёмка (2026-10-21):** сессия `4963fe050c4567f2`, receipt
 `complete/passed`, `realE2E=performed`, **15/15 реальных сценариев passed**; принятая
 реализация также прошла **779 offline tests**. Production deployment не выполнялся,
-Stage 08 добавляет offline CI; Stage 09.1 — офлайн-контракты/security, а 09.2 реализован офлайн; 09.3 реализован офлайн; 09.4–09.6 остаются Planned. Предыдущие неудачные попытки и evidence их закрытия
+Stage 08 добавляет offline CI; Stage 09.1 — офлайн-контракты/security, а 09.2 реализован офлайн; 09.3/09.4A реализованы офлайн; 09.4B/09.5/09.6 остаются Planned. Предыдущие неудачные попытки и evidence их закрытия
 сохранены; journals намеренных crash/unknown сценариев остаются analysis-only,
 без replay. См. [результаты приёмки и историю](docs/local-e2e.md#verified-local-acceptance).
 

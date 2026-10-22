@@ -26,7 +26,8 @@ repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
 | Stage 09.1 — Production Contracts & Security | Producer audit, inactive template, narrow admission, manual protected-source policy | Implemented offline; no verified production digest or VDS contact |
 | Stage 09.2 — Production VDS Read-only Diagnostics | Existing inventory/trust adapter, bounded SSH probes, private report, three Make commands | Implemented/tested offline; no real SSH/VDS inspection or mutations |
 | Stage 09.3 — Production Docker & Caddy Integration | Runtime security, Engine read adapter, complete-source composition, OCI/source gates, managed gateway contracts and same-engine rehearsal | Implemented/tested offline: 1055 tests; production writes and unconfigured live transports remain blocked; no VDS deployment |
-| Stage 09.4 — First Production Rollout | Configure reviewed live transports/gates and separately authorize ProjectRouter activation | Planned; accepted diagnostics, identities, paths/subnets, verified protected-main artifacts/origin and explicit operation approval required |
+| Stage 09.4A — Production Deployment Preparation | Stable Compose plugin >= 2 and capability policy, explicit source trust, canonical lock/storage, bootstrap and candidate/evidence interfaces, execution ADR | Implemented and checked offline: 1120 tests; privileged mechanism, authenticated collectors and real-image runtime evidence remain blocked; no production writes |
+| Stage 09.4B — First Authorized ProjectRouter Rollout | Review/install actual production wiring and separately approve bootstrap and exact rollout candidate | Planned; protected-main evidence, approved privileged mechanism, trusted fresh observations, isolated runtime acceptance, DNS/TLS/storage/recovery and operator approval required |
 | Stage 09.5 — Update, Rollback & Release Acceptance | Controlled production update/rollback and operational acceptance | Planned; separate task/operation authorization; no automatic merge/tag |
 | Stage 09.6 — Automated Continuous Deployment | Protected producer-main publish proposes a manager digest-update PR; policy-gated CD follows review | Planned after safe manual rollout/rollback acceptance; no automatic CD implemented in 09.3 |
 
@@ -113,3 +114,12 @@ revision should propose an immutable digest-update PR in this manager. Only afte
 an approved policy and required exact-source/artifact/state checks may it activate
 CD. This stage does not implement triggers, polling, dispatch, webhook activation
 or automatic deployment and does not override Stage 09.1 manual production policy.
+
+Stage 09.4 is now explicitly split into [09.4A preparation](production-preparation.md)
+and **09.4B — First Authorized ProjectRouter Rollout**. Preparation reuses the
+existing executor/lifecycle and introduces no production apply or automatic CD.
+The [execution ADR](adr/0001-production-execution.md) defines the infrastructure
+handoff. Operator-reported 2026-10-22 diagnostics are not fresh trusted planner
+state. GitHub metadata still reports both main branches unprotected; producer main
+lacks the audited deployment code. Missing evidence/mechanisms stay blocked.
+Stages 09.5 and 09.6 retain their independent acceptance/authorization boundaries.

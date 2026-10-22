@@ -5,6 +5,7 @@ import json
 import re
 
 from scripts.compose import LABEL
+from scripts.compose_version import CLI_REQUIREMENTS, HELP_SEPARATOR, supported_compose, supported_compose_cli
 from scripts.production import InspectionError
 
 DOCKER = 'env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/docker --config /nonexistent --host unix:///var/run/docker.sock '
@@ -23,6 +24,8 @@ COMMANDS = {
     'engine': DOCKER + "version --format '{{json .Server.Version}}'",
     'daemon': DOCKER + "info --format '{{json .ID}}'",
     'compose': DOCKER + 'compose version --short',
+    'compose_cli': ' && '.join("printf '\\nPD_COMPOSE_HELP\\n' && " + DOCKER + ' '.join(args)
+                               for args, _ in CLI_REQUIREMENTS),
     'containers': DOCKER + "ps -a --no-trunc --format '{\"name\":{{json .Names}},\"id\":{{json .ID}},\"state\":{{json .State}},\"ports\":{{json .Ports}},"
                   + ','.join('"' + field + '":{{json (.Label "' + label + '")}}' for field, label in (
                       ('managed', LABEL + '.managed'), ('application', LABEL + '.application'),
@@ -44,7 +47,7 @@ COMMANDS = {
     'services': 'systemctl show caddy.service nginx.service apache2.service docker.service --property=Id,LoadState,ActiveState --no-pager',
     'firewall': 'ufw status',
 }
-CATEGORIES = {name: ('docker' if name in ('engine', 'daemon', 'compose', 'containers', 'networks', 'volumes')
+CATEGORIES = {name: ('docker' if name in ('engine', 'daemon', 'compose', 'compose_cli', 'containers', 'networks', 'volumes')
                      else 'network' if name in ('listeners', 'caddy', 'services', 'firewall') else 'system') for name in COMMANDS}
 
 
@@ -70,7 +73,16 @@ def normalize(name, raw):
             if not re.fullmatch(r'v2\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?', value):
                 raise ValueError
             return {'value': value}
-        if name in ('architecture', 'hostname', 'machine_id', 'engine', 'daemon', 'compose'):
+        if name == 'compose':
+            if not supported_compose(text):
+                raise ValueError
+            return {'value': text}
+        if name == 'compose_cli':
+            sections = raw.decode('utf-8').split(HELP_SEPARATOR)
+            if sections[0] or not supported_compose_cli(sections[1:]):
+                raise ValueError
+            return {'supported': True}
+        if name in ('architecture', 'hostname', 'machine_id', 'engine', 'daemon'):
             value = json.loads(text) if name in ('engine', 'daemon') else text
             value = token(value)
             if name == 'machine_id' and not re.fullmatch(r'[0-9a-f]{32}', value):
@@ -78,8 +90,6 @@ def normalize(name, raw):
             if name == 'engine' and not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?', value):
                 raise ValueError
             if name == 'daemon' and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9:-]{7,127}', value):
-                raise ValueError
-            if name == 'compose' and not re.fullmatch(r'v?2\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?', value):
                 raise ValueError
             return {'value': value}
         if name in ('cpu', 'memory'):

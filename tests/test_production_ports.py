@@ -96,7 +96,9 @@ def test_gateway_read_requires_exact_active_managed_runtime(change):
     class Transport:
         def read_active(self):
             return replace(snapshot, **change)
-    port = ManagedGatewayReadPort(Transport(), image_evidence=image, expected_version='2.10.2')
+    class Attestor:
+        def verify(self, *args): return args[-1]  # fake authenticated runtime/channel
+    port = ManagedGatewayReadPort(Transport(), image_evidence=image, expected_version='2.10.2', attestor=Attestor())
     if change:
         with pytest.raises(DockerError):
             port.read()

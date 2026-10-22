@@ -13,6 +13,7 @@ import tempfile
 import time
 
 from scripts.compose import ComposeArtifact
+from scripts.compose_version import CLI_REQUIREMENTS, supported_compose, supported_compose_cli
 from scripts.planning_inputs import parse_snapshot
 
 MAX_OUTPUT = 1024 * 1024
@@ -22,6 +23,17 @@ class DockerError(RuntimeError):
     def __init__(self, code, unknown=False):
         self.code, self.unknown = code, unknown
         super().__init__(code)
+
+
+def command_failure(returncode, errors):
+    """Closed classification only; raw Docker diagnostics never leave transport."""
+    if b'permission denied' in errors.lower():
+        return DockerError('docker-permission-denied')
+    return DockerError('docker-command-failed', returncode < 0 or returncode >= 128 or
+                      any(token in errors.lower() for token in
+                          (b'cannot connect', b'connection refused', b'error during connect',
+                           b'eof', b'connection reset', b'context deadline', b'broken pipe',
+                           b'i/o timeout', b'transport is closing')))
 
 
 def run_bounded(argv, *, timeout=20, cwd=None):
@@ -55,11 +67,7 @@ def run_bounded(argv, *, timeout=20, cwd=None):
                                 errors.extend(chunk)
                     process.wait(timeout=max(0.001, deadline - time.monotonic()))
                 if process.returncode:
-                    raise DockerError("docker-command-failed", process.returncode < 0 or process.returncode >= 128 or
-                                      any(token in errors.lower() for token in
-                                      (b"cannot connect", b"connection refused", b"error during connect",
-                                       b"eof", b"connection reset", b"context deadline", b"broken pipe",
-                                       b"i/o timeout", b"transport is closing")))
+                    raise command_failure(process.returncode, errors)
                 return bytes(data)
             except BaseException:
                 process.kill()
@@ -158,8 +166,11 @@ class LocalDockerAdapter:
     def prerequisites(self):
         try:
             version = self._run(["compose", "version", "--short"]).decode("ascii").strip()
-            if not re.fullmatch(r"v?2\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.~-]+)?", version):
-                raise DockerError("compose-v2-required")
+            if not supported_compose(version):
+                raise DockerError("compose-version-unsupported")
+            if not supported_compose_cli([self._run(list(args)).decode("utf-8")
+                                          for args, _ in CLI_REQUIREMENTS]):
+                raise DockerError("compose-capabilities-unsupported")
             server = json.loads(self._run(["version", "--format", "{{json .Server}}"]))
             if server.get("Os") != "linux" or server.get("Arch") != "amd64":
                 raise DockerError("unsupported-daemon-platform")
@@ -179,6 +190,8 @@ class LocalDockerAdapter:
             path = Path(directory) / "compose.json"
             path.write_text(artifact.to_json())
             self._run(["compose", "--project-name", artifact.project, "--project-directory", directory,
+                       "--env-file", "/dev/null", "--file", str(path), "config", "-q"], cwd=directory)
+            self._run(["compose", "--project-name", artifact.project, "--project-directory", directory,
                        "--env-file", "/dev/null", "--file", str(path), "up", "-d", "--no-deps",
                        "--no-build", "--pull", "never", service], timeout=60, cwd=directory)
 
@@ -196,14 +209,19 @@ def official_validate(artifact):
             path.write_text(artifact.to_json())
             try:
                 version = run_bounded([binary, "compose", "version", "--short"], cwd=directory).decode("ascii").strip()
-                if not re.fullmatch(r"v?2\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.~-]+)?", version):
-                    return {"status": "not-performed", "reason": "compose-v2-required"}
+                if not supported_compose(version):
+                    return {"status": "not-performed", "reason": "compose-version-unsupported"}
             except (DockerError, UnicodeError):
-                return {"status": "not-performed", "reason": "compose-v2-unavailable"}
+                return {"status": "not-performed", "reason": "compose-plugin-unavailable"}
+            if not supported_compose_cli([run_bounded([binary, *args], cwd=directory).decode("utf-8")
+                                          for args, _ in CLI_REQUIREMENTS]):
+                return {"status": "failed", "reason": "compose-capabilities-unsupported"}
             run_bounded([binary, "--host", "unix:///nonexistent/pd-no-daemon.sock", "compose",
                          "--project-name", artifact.project, "--project-directory", directory,
                          "--env-file", "/dev/null", "--file", str(path), "config", "-q"], cwd=directory)
         return {"status": "passed", "reason": "syntax-only"}
+    except UnicodeError:
+        return {"status": "failed", "reason": "compose-capabilities-unsupported"}
     except DockerError as error:
         return {"status": "not-performed" if error.code == "docker-unavailable" else "failed",
                 "reason": error.code}

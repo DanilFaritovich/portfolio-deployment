@@ -204,3 +204,30 @@ First rollout, public TLS, external probes and controlled update/rollback accept
 remain unperformed. No merge, release tag or automatic CD is authorized here.
 Stage 09.6 will separately design producer-main digest PR proposals and policy-gated
 CD after safe manual rollout/rollback is accepted.
+
+## Stage 09.4A integration changes
+
+[Production preparation](production-preparation.md) extends these ports without
+replacing executor/lifecycle or enabling apply. SourceTrust now binds each source
+to expected machine/daemon/source identities and an authenticated attestor;
+ManagedGatewayReadPort also requires an independent attestor. A nonempty identity
+and `verified=True` are insufficient. No attestor is configured from saved JSON.
+Missing authenticated source/release/approval implementations remain blockers.
+
+The Engine port executes only exact inventory/inspect commands, canonical local
+socket and bounded timeouts; Docker permission errors have a redacted explicit
+classification. It never escalates with sudo. InternalHTTPRead implements a
+numeric private endpoint transport with an absolute deadline and bounded status
+line. ProductionGateway's default lock verifier requires the canonical real
+lease, and an exact empty managed gateway configuration can be observed and
+preserved as a baseline. Foreign/absent Caddy cannot become an empty observation.
+Image-only updates still do not reload Caddy.
+
+RuntimePaths.lock now must be `/srv/portfolio/locks`, with the fixed `host.lock`
+inode; the shared journal rejects forged active leases. Caddy bind sources have
+`create_host_path: false`. The separate bootstrap proposal handles absent resources
+without invented network IDs/routes, while existing-proxy reuse still requires
+its exact independently approved identity and full contract. The handoff specifies
+migration, storage budgets, TLS/first-release recovery and missing privileged
+mechanism. Read-only CLI/CI and real registry/template activation boundaries remain
+unchanged. See [ADR 0001](adr/0001-production-execution.md).

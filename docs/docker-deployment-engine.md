@@ -331,3 +331,7 @@ resources in a target Compose project block preflight. A separately approved
 local Engine read adapter verifies host/daemon identity and reuses bounded
 inventory commands. Its write boundary remains closed; smoke/E2E restrictions
 are unchanged. No production apply interface is introduced.
+
+## Stage 09.4A preparation
+
+Stage 05 prerequisites and local syntax validation now share the Compose policy: stable plugin versions >= 2, including future major/minor/patch versions, optional `v`, and no v1 or prereleases. Preflight separately requires the project/file/environment options, `up --detach --no-deps --no-build --pull never`, and `config --quiet` through read-only plugin help. Before `up`, the actual rendered configuration must pass `config -q`; official validation uses the same capability policy and syntax check with a nonexistent daemon socket. Missing options, failed probes or rejected syntax fail closed. Production uses the canonical `/srv/portfolio/locks/host.lock`; injectable disposable test paths remain local-only. See [production preparation](production-preparation.md) for the migration and privileged execution boundary.
