@@ -7,8 +7,8 @@ Stage 07 passed **15/15 real local VM E2E scenarios** in session `4963fe050c4567
 on 2026-10-21; all six GHCR fixture digests were published and anonymously verified.
 The Stage 07 implementation passed **779 offline tests**. Stage 08 adds offline
 PR CI, the Caddy retained-route regression fix and a manual successful-session VM
-completion procedure; its final offline check passed **785 tests**. Stage 09.1 adds offline production contracts/security; Stage 09.2 adds an offline-tested read-only diagnostics interface; Stages 09.3–09.5 and
-production execution remain **Planned**; the separate Stage 05 smoke was not run.
+completion procedure; its final offline check passed **785 tests**. Stage 09.1 adds offline production contracts/security; Stage 09.2 adds an offline-tested read-only diagnostics interface; Stage 09.3 adds offline-tested production integration ports (1055 tests);
+Stages 09.4–09.6 and production execution remain **Planned**; the separate Stage 05 smoke was not run.
 Each stage needs its own scoped task, validation evidence and review. This roadmap
 does not authorize production actions, merges, release tags or changes to other
 repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
@@ -25,7 +25,10 @@ repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
 | Stage 08 — GitHub Actions & Automation | Offline PR CI for develop/main, actionlint, retained-route fix and manual evidence-first VM completion | Implemented offline; 785 tests; VM export/stop/deletion unperformed; branch rules manual; production triggers remain gated |
 | Stage 09.1 — Production Contracts & Security | Producer audit, inactive template, narrow admission, manual protected-source policy | Implemented offline; no verified production digest or VDS contact |
 | Stage 09.2 — Production VDS Read-only Diagnostics | Existing inventory/trust adapter, bounded SSH probes, private report, three Make commands | Implemented/tested offline; no real SSH/VDS inspection or mutations |
-| Stage 09.3–09.5 — Production Integration & Release | Adapters/Caddy, first rollout, update/rollback and release | Planned; accepted diagnostics, stage-specific prerequisites and explicit permissions required |
+| Stage 09.3 — Production Docker & Caddy Integration | Runtime security, Engine read adapter, complete-source composition, OCI/source gates, managed gateway contracts and same-engine rehearsal | Implemented/tested offline: 1055 tests; production writes and unconfigured live transports remain blocked; no VDS deployment |
+| Stage 09.4 — First Production Rollout | Configure reviewed live transports/gates and separately authorize ProjectRouter activation | Planned; accepted diagnostics, identities, paths/subnets, verified protected-main artifacts/origin and explicit operation approval required |
+| Stage 09.5 — Update, Rollback & Release Acceptance | Controlled production update/rollback and operational acceptance | Planned; separate task/operation authorization; no automatic merge/tag |
+| Stage 09.6 — Automated Continuous Deployment | Protected producer-main publish proposes a manager digest-update PR; policy-gated CD follows review | Planned after safe manual rollout/rollback acceptance; no automatic CD implemented in 09.3 |
 
 Stage 02 defines the [v1 application and admission contracts](manifest-v1.md),
 accepts immutable OCI manifest/index digests with explicit `linux/amd64`, and
@@ -92,7 +95,21 @@ report commands are offline; inspect requires a terminal and exact confirmation
 after separate live-operation authorization. Synthetic transports test failure,
 permissions, injection, conflicts, bounded output and private atomic storage.
 No real VDS was inspected. Reports are diagnostic snapshots, never complete
-planner observations. Stage 09.3 still needs accepted fresh diagnostics, permissions,
-reviewed paths/subnets, runtime hardening, complete adapters/Caddy and the existing
-artifact/source/DNS/TLS/GHCR prerequisites. Historical local VM E2E evidence is
+planner observations. Stage 09.3 adds the offline contracts/ports below. Stage 09.4 still needs accepted
+fresh diagnostics, permissions, reviewed paths/subnets, actual-image compatibility,
+configured live transports and artifact/source/DNS/TLS/GHCR prerequisites. Historical local VM E2E evidence is
 unchanged and does not assert that previously used VMs still exist.
+
+Stage 09.3 [production integration](production-integration.md) implements reusable
+Ports/Adapters contracts and fake lifecycle integration over Stages 03–07, with
+versioned runtime security and deterministic Caddy/Compose topology. Saved-input
+preflight/plan remain blocked previews. Actual protected-main source verification,
+origin/provenance evidence, trusted host/runtime transports and write authorization
+remain explicit Stage 09.4 gates. No server inspection or deployment was performed.
+
+Stage 09.6 — **Automated Continuous Deployment (Planned)** — follows accepted safe
+manual rollout/rollback. A successful CI/publish for a protected producer `main`
+revision should propose an immutable digest-update PR in this manager. Only after
+an approved policy and required exact-source/artifact/state checks may it activate
+CD. This stage does not implement triggers, polling, dispatch, webhook activation
+or automatic deployment and does not override Stage 09.1 manual production policy.

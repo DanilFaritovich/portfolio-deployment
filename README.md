@@ -3,7 +3,7 @@
 [Русская версия](README.ru.md)
 
 Central Docker/GitOps deployment platform for independently built portfolio
-applications on a single Ubuntu VPS. **Current status: Stage 09.2 — read-only VDS diagnostics implemented and tested offline.**
+applications on a single Ubuntu VPS. **Current status: Stage 09.3 — production integration components implemented and tested offline (1055 tests).**
 Stage 08 is merged into `develop`; Stage 07 real local VM E2E passed 15/15 scenarios.
 Registry/admission, offline planning and retained Caddy previews are implemented;
 Stage 04 PR #4, Stage 05 PR #5 and Stage 06 PR #6 are merged into `develop`. Stage 05 adds deterministic Compose,
@@ -23,8 +23,8 @@ hostname `danil-miftakhov.dev` and expected build origin `https://danil-miftakho
 The [inactive template](docs/templates/project-router.yaml) is outside the registry
 and fails validation until its digest is substituted. No production digest is
 claimed. Required next steps include protected-source CI, artifact/origin evidence,
-separately authorized VDS read-only diagnostics and runtime-security/adapters/Caddy
-integration. The document lists acceptance gates for 09.2–09.5 and non-secret
+separately authorized VDS read-only diagnostics and approved live integration
+transports/operation gates. The document lists acceptance gates for 09.2–09.5 and non-secret
 operator inputs. No VPS connection or production mutation was performed.
 
 [Stage 09.2 operator guide](docs/production-inspection.md) adds `make production-check`
@@ -37,9 +37,23 @@ Independently verify the original host trust and unlock an encrypted selected ke
 in the existing agent before an authorized run. The report is private (directory
 0700/file 0600) at `~/.local/share/portfolio-deployment/production-inspection/latest.json`.
 Passed/blocked/unknown describe bounded observations; missing Docker permissions
-remain blockers, not proof Docker is absent. DNS/TLS/GHCR, runtime hardening,
-production adapters and approved paths/subnets remain Stage 09.3 prerequisites.
+remain blockers, not proof Docker is absent. DNS/TLS/GHCR, actual-image compatibility,
+trusted live transports and approved paths/subnets remain Stage 09.4 prerequisites.
 No real SSH connection or production mutation was performed in this stage.
+
+[Stage 09.3 operator guide](docs/production-integration.md) covers the versioned
+per-component runtime security contract, production Engine read adapter,
+complete-source composition, OCI mapping/source verification ports and managed
+Caddy runtime/candidate integration. The existing executor, host lock, readiness,
+SQLite journal/LKG and recovery are reused. `make production-integration-check`
+is offline; `make production-preflight PRODUCTION_CONTRACT=<saved.json>` and
+`make production-plan PRODUCTION_CONTRACT=<saved.json> OBSERVED=<saved.json> GIT_REVISION=<full-sha>`
+only return blocked previews (`authorization=false`, exit 2). Use `PYTHON=.venv/bin/python`.
+No production apply command or configured live write transport exists.
+Stage 09.4 requires separately approved identities, paths/budgets/subnets,
+protected-main exact-SHA source/artifact/origin evidence, trusted live transports
+and operation approval. Stage 09.6 automated digest-update PR/CD is planned after
+safe manual rollout/rollback; no automatic CD is implemented here.
 
 ## Purpose and architecture
 
@@ -261,7 +275,7 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Implemented; real local VM E2E passed, 15/15; production acceptance pending |
 | Stage 08 | GitHub Actions & Automation | Implemented offline; manual VM completion procedure awaiting live review |
-| Stage 09 | Production Integration & Release | 09.1 implemented offline; 09.2 implemented offline; 09.3–09.5 Planned; separate operation approvals required |
+| Stage 09 | Production Integration & Release | 09.1 implemented offline; 09.2 implemented offline; 09.3 implemented offline; 09.4–09.6 Planned; separate operation approvals required |
 
 Stage 05 selects Python CLI without changing Stage 02–04 contracts. Real
 ProjectRouter registration still requires a confirmed digest. Stage 06 owns
@@ -313,7 +327,7 @@ automatically. `make e2e-check` and `make check` remain fully offline.
 **Verified local acceptance (2026-10-21):** session `4963fe050c4567f2`, receipt
 `complete/passed`, `realE2E=performed`, **15/15 real scenarios passed**; the accepted
 implementation also passed **779 offline tests**. Production deployment was not
-performed. Stage 08 adds offline CI; Stage 09.1 adds offline contracts/security, while 09.2 is implemented offline; 09.3–09.5 remain Planned. Earlier failed attempts and their
+performed. Stage 08 adds offline CI; Stage 09.1 adds offline contracts/security, while 09.2 is implemented offline; 09.3 is implemented offline; 09.4–09.6 remain Planned. Earlier failed attempts and their
 closure evidence are retained; intentional crash/unknown journals remain
 analysis-only, without replay. See [acceptance and history](docs/local-e2e.md#verified-local-acceptance).
 

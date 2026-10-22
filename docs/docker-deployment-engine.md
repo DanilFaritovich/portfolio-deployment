@@ -322,3 +322,12 @@ owns separately authorized production integration. Production SSH/VPS, Docker
 installation, migrations, secret delivery, Caddy activation/reload, DNS/TLS,
 monitoring, blue-green and multiple replicas are outside Stage 05. No zero-downtime,
 rollback or production release claim follows from offline tests or Compose exit 0.
+
+## Stage 09.3 integration
+
+Stage 09.3 adds [production integration ports](production-integration.md) over this
+same engine. Per-component runtime security is rendered and inspected; unknown
+resources in a target Compose project block preflight. A separately approved
+local Engine read adapter verifies host/daemon identity and reuses bounded
+inventory commands. Its write boundary remains closed; smoke/E2E restrictions
+are unchanged. No production apply interface is introduced.

@@ -139,3 +139,18 @@ Python was chosen for existing repository tooling and a small reusable Stage 03
 input API; PyYAML parses constrained YAML, jsonschema checks Draft 2020-12, and
 pytest covers success/failure boundaries. This choice does not select the future
 controller language, execution model, deployment trigger or journal store.
+
+## Optional runtime security v1
+
+Stage 09.3 adds closed `components[].runtimeSecurity` with its own
+`apiVersion: portfolio.runtime/v1`. Existing manifests remain compatible when it
+is absent. All fields in the object are required when present: non-root `user`,
+`readOnlyRootFilesystem`, `capDrop: [ALL]`, `noNewPrivileges: true`, supported
+`restart` (`no`, `on-failure`, `unless-stopped`), `imageHealthcheck: preserve` and
+`tmpfs` (zero or one bounded `/tmp` mount). Unknown Compose/security fields remain
+forbidden. See [schema](../schemas/runtime-security-v1.schema.json),
+[ProjectRouter template](templates/project-router.yaml) and
+[runtime/operator contract](production-integration.md#runtime-security-v1).
+The observed runtime supports the same shape; security drift is an update, not a
+no-op. Production preview requires explicit security; actual compatibility and
+safe references remain separately verified blockers.

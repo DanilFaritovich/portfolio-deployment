@@ -249,3 +249,13 @@ another engine. Production transport/authorization remain unavailable. Test-only
 loopback Caddy activation is external to the base lifecycle, after pinned readiness.
 Crash analysis still cannot replay or automatically complete recovery. Real E2E is
 not-performed; fixture digests must be independently built/published and confirmed.
+
+## Stage 09.3 integration
+
+Stage 09.3's [integration rehearsal](production-integration.md#lifecycle-and-stage-094-boundary)
+reuses this lifecycle/journal through the same executor, with fake Docker/gateway
+ports and real temporary SQLite. Readiness precedes route activation and full
+postverification precedes LKG promotion. Failed/unknown activation cannot promote
+LKG. Production write approval and live source transports remain unavailable;
+inherited test-only lifecycle gating is retained. Existing rollback and crash
+recovery limits are unchanged.

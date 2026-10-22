@@ -209,3 +209,12 @@ firewall/SSH/systemd/Caddy/TLS, activate routes or deploy. No mutating retry or
 repair path exists. Standard `make check` and CI use synthetic inventories and
 fake SSH transports only; implementing or merging this interface authorizes no
 real connection. Every live inspection requires separate operation authorization.
+
+## Stage 09.3 integration
+
+Stage 09.3 now provides [offline production integration](production-integration.md).
+The inspection package remains independent of deployment/executor imports. Its
+report still cannot become complete fresh planner evidence; a passing local
+`production-check` is not server readiness. Fresh source ports, exact artifact and
+origin evidence, approved identities/paths/subnets and separately authorized
+Stage 09.4 operations remain necessary. No real SSH inspection was performed.
