@@ -118,60 +118,13 @@ def owned_resource(resource, expected_labels, project=None, identity=None):
 
 
 def container_runtime(resource, artifact, service, image):
-    """Conservative supported-runtime comparison against actual Engine inspect.
+    """Compatible boolean facade over the shared structured runtime policy."""
+    return container_runtime_verification(resource, artifact, service, image).matched
 
-    Labels corroborate identity; they do not replace network/mount/image inspection.
-    Unsupported overrides fail closed. Image defaults preserve command/entrypoint.
-    """
-    f, model = resource.facts, artifact.model
-    wanted = model["services"][service]
-    config, host = f["config"], f["host"]
-    defaults = json.loads(image.defaults_json)
-    if config.get("Image") != wanted["image"] or f["imageId"] != image.image_id or not image.verified:
-        return False
-    empty_defaults = {"Cmd": [], "Entrypoint": [], "Env": [], "ExposedPorts": {}, "Volumes": {}}
-    for key in ("Cmd", "Entrypoint", "Env", "User", "WorkingDir", "Healthcheck", "ExposedPorts", "Volumes"):
-        actual, expected = config.get(key), wanted.get("user", defaults.get(key)) if key == "User" else defaults.get(key)
-        if key in empty_defaults:
-            empty = empty_defaults[key]
-            if actual is None:
-                actual = empty
-            if expected is None:
-                expected = empty
-        if actual != expected:
-            return False
-    if (host.get("Privileged") or host.get("PortBindings") or host.get("PublishAllPorts") or
-        host.get("Binds") or host.get("CapAdd") or host.get("Devices") or host.get("DeviceRequests") or
-        host.get("PidMode") or host.get("IpcMode") not in (None, "", "private") or
-        host.get("NetworkMode") in ("host", "none") or host.get("VolumesFrom") or
-        host.get("ExtraHosts") or host.get("Links") or host.get("UsernsMode") or host.get("Sysctls")):
-        return False
-    if host.get("NetworkMode") not in (None, "", model["networks"]["private"]["name"]):
-        return False
-    if any(host.get(key) for key in ("CpuShares", "CpuQuota", "CpusetCpus", "CpusetMems",
-                                        "Memory", "MemoryReservation", "MemorySwap", "Ulimits",
-                                        "Dns", "DnsSearch", "DnsOptions", "GroupAdd", "Init", "AutoRemove")):
-        return False
-    from scripts.runtime_security import matches
-    if not matches(host, wanted):
-        return False
-    if host.get("Runtime") not in (None, "", "runc") or host.get("PidsLimit") not in (None, 0):
-        return False
-    networks = {model["networks"][n]["name"]: options for n, options in wanted["networks"].items()}
-    if set(f["networks"]) != set(networks):
-        return False
-    for name, options in networks.items():
-        aliases = set(f["networks"][name].get("Aliases") or [])
-        required = set(options.get("aliases", []))
-        allowed = required | {service, resource.name, resource.identifier[:12]}
-        if not required <= aliases or aliases - allowed:
-            return False
-    mounts = {(m.get("Name"), m.get("Destination"), m.get("RW")) for m in f["mounts"] if m.get("Type") == "volume"}
-    expected = {(model["volumes"][m["source"]]["name"], m["target"], True) for m in wanted.get("volumes", [])}
-    tmpfs = [m for m in f["mounts"] if m.get("Type") == "tmpfs"]
-    return (len(f["mounts"]) == len(mounts) + len(tmpfs) and mounts == expected and
-            {m.get("Destination") for m in tmpfs} == set((host.get("Tmpfs") or {})) and
-            len(tmpfs) == len(host.get("Tmpfs") or {}))
+
+def container_runtime_verification(resource, artifact, service, image):
+    from scripts.runtime_contract import verify_runtime
+    return verify_runtime(resource, artifact, service, image)
 
 
 class LocalStateProvider:

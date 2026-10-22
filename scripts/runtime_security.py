@@ -17,21 +17,51 @@ def projection(contract):
                if contract['tmpfs'] else {})}
 
 
-def matches(host, wanted):
-    """Engine inspect normalized against generated settings, including legacy absence."""
-    if bool(host.get('ReadonlyRootfs')) != wanted.get('read_only', False):
-        return False
-    if sorted(host.get('CapDrop') or []) != sorted(wanted.get('cap_drop', [])):
-        return False
-    opts = [x.replace('no-new-privileges:true', 'no-new-privileges') for x in host.get('SecurityOpt') or []]
+def _options(value):
+    if type(value) is not str:
+        raise ValueError('invalid-tmpfs')
+    parts = value.split(',')
+    names = [p.split('=', 1)[0] for p in parts]
+    if len(set(names)) != len(names) or not all(parts):
+        raise ValueError('invalid-tmpfs')
+    return frozenset(parts)
+
+
+def differing_fields(host, wanted):
+    """Fixed names only; this owns both diagnostics and pass/fail decisions."""
+    fields = []
+    actual = host.get('ReadonlyRootfs', False)
+    if type(actual) is not bool or actual != wanted.get('read_only', False):
+        fields.append('ReadonlyRootfs')
+    caps = host.get('CapDrop')
+    caps = [] if caps is None else caps
+    if type(caps) is not list or any(type(c) is not str for c in caps) or sorted(caps) != sorted(wanted.get('cap_drop', [])):
+        fields.append('CapDrop')
+    opts = host.get('SecurityOpt')
+    opts = [] if opts is None else opts
     expected = ['no-new-privileges'] if wanted.get('security_opt') else []
-    if opts != expected:
-        return False
-    restart = host.get('RestartPolicy') or {}
-    if (restart.get('Name') or 'no') != wanted.get('restart', 'no') or restart.get('MaximumRetryCount', 0) != 0:
-        return False
+    if (type(opts) is not list or any(type(o) is not str for o in opts) or
+        [o if o != 'no-new-privileges:true' else 'no-new-privileges' for o in opts] != expected):
+        fields.append('SecurityOpt')
+    restart = host.get('RestartPolicy')
+    restart = {} if restart is None else restart
+    if (type(restart) is not dict or restart.keys() - {'Name', 'MaximumRetryCount'} or
+        (restart.get('Name', 'no') or 'no') != wanted.get('restart', 'no') or
+        type(restart.get('MaximumRetryCount', 0)) is not int or restart.get('MaximumRetryCount', 0) != 0):
+        fields.append('RestartPolicy')
     expected_tmpfs = dict(t.split(':', 1) for t in wanted.get('tmpfs', []))
-    actual_tmpfs = host.get('Tmpfs') or {}
-    if set(actual_tmpfs) != set(expected_tmpfs):
-        return False
-    return all(set(actual_tmpfs[k].split(',')) == set(v.split(',')) for k, v in expected_tmpfs.items())
+    actual_tmpfs = host.get('Tmpfs')
+    actual_tmpfs = {} if actual_tmpfs is None else actual_tmpfs
+    try:
+        valid = (type(actual_tmpfs) is dict and set(actual_tmpfs) == set(expected_tmpfs) and
+                 all(_options(actual_tmpfs[k]) == _options(v) for k, v in expected_tmpfs.items()))
+    except (TypeError, ValueError):
+        valid = False
+    if not valid:
+        fields.append('Tmpfs')
+    return tuple(fields)
+
+
+def matches(host, wanted):
+    """Legacy boolean interface uses exactly the structured field checker."""
+    return not differing_fields(host, wanted)

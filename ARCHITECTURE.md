@@ -676,6 +676,17 @@ v1.0.0 candidate stays disabled outside the registry with signed origin expectat
 
 The bounded sanitized report always has `productionAdmission: false` and is not
 accepted by the separate full production source/release verifier or operation gate.
+The [runtime contract audit](docs/runtime-contract-audit.md) documents the shared
+`scripts/runtime_contract.py` verifier behind discovery and acceptance boolean
+facades. One immutable structured result drives pass/fail and fixed group/field
+codes without copying inspect values. Typed normalizations distinguish image
+runtime defaults and Docker-managed metadata, including legacy HostConfig tmpfs
+that is absent from inspect Mounts. Acceptance classifies container state before
+runtime configuration. A separate opt-in `make runtime-integration-test` and
+GitHub-hosted PR job exercise real Compose/Engine with a local scratch fixture,
+without registry access or published ports. Nineteen checks passed on disposable
+Engine 29.1.3 / Compose 2.40.3; this does not establish ProjectRouter acceptance.
+
 Runtime diagnostics distinguish preflight, network creation, Compose startup,
 discovery/inspect, ownership/identity, runtime contract, container state, Docker
 health and HTTP readiness using fixed codes, allowlisted statuses and bounded
