@@ -312,3 +312,14 @@ The [Stage 09.4B.5 handoff](production-trust-readiness.md) consolidates the pend
 operator decisions, real-host evidence and separate release/diagnostic/install/
 image/bootstrap/rollout approvals. Stage 09.4B.6 activates approved B only in source
 verification; installation and runtime authority bindings remain unconfigured.
+
+## Operator signature verifier
+
+The [operator approval contract](operator-approval.md) provides closed SSHSIG v1
+verification and a separate local inspection workflow. A future reviewed fixed
+binding may use `SSHSIGVerifier(installation)`; both shipped bindings still block.
+The existing independently approved `external_files` inventory must additionally
+pin `/usr/bin/ssh-keygen` and `/etc/portfolio-deployment/operator-keys.json`.
+No installer authority, trust key, host permission or production readiness is
+established by providing this implementation. Key selection/custody/revocation,
+external pins and all prerequisites above remain separate operator decisions.
