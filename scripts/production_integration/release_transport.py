@@ -4,6 +4,7 @@ No proxy, retries, mutation or environment credential lookup. Only a fixed
 credential-free GHCR blob CDN redirect is allowed.
 One transport instance is scoped to one collection (120 seconds / 64 requests).
 """
+import base64
 import re
 import time
 import urllib.error
@@ -107,17 +108,30 @@ def bounded_items(document, key=None):
 
 
 class GHCRRead:
-    def __init__(self, transport):
+    def __init__(self, transport, *, repository=IMAGE_REPOSITORY, registry_auth=None):
+        require(repository in (IMAGE_REPOSITORY, 'ghcr.io/danilfaritovich/portfolio-caddy'),
+                'production-release-image-rejected')
         self.transport = transport
+        self.repository = repository
+        require(registry_auth is None or (repository == 'ghcr.io/danilfaritovich/portfolio-caddy' and
+                type(registry_auth) is tuple and len(registry_auth) == 2 and
+                all(isinstance(v, str) for v in registry_auth) and
+                re.fullmatch(r'[A-Za-z0-9_\[\]-]{1,128}', registry_auth[0]) is not None and
+                re.fullmatch(r'[A-Za-z0-9_]{1,4096}', registry_auth[1]) is not None),
+                'production-release-registry-credential-invalid')
+        self._registry_auth = registry_auth
 
     def collect(self, reference):
-        # Public pull token only, no GitHub token or Docker credential store.
+        # Anonymous pull by default. Explicit Caddy-only credentials reach only
+        # the fixed GHCR token endpoint; no Docker credential-store discovery.
         from scripts.production_integration.artifacts import INDEX_TYPES, blob_digest, verify_oci_bytes
-        require(re.fullmatch(re.escape(IMAGE_REPOSITORY) + r'@sha256:[0-9a-f]{64}', reference) is not None,
+        require(re.fullmatch(re.escape(self.repository) + r'@sha256:[0-9a-f]{64}', reference) is not None,
                 'production-release-image-rejected')
-        path = IMAGE_REPOSITORY.removeprefix('ghcr.io/')
+        path = self.repository.removeprefix('ghcr.io/')
+        auth_headers = {} if self._registry_auth is None else {
+            'Authorization': 'Basic ' + base64.b64encode(':'.join(self._registry_auth).encode()).decode()}
         token_doc = parse_snapshot(self.transport.get(
-            'https://ghcr.io/token?service=ghcr.io&scope=repository:' + path + ':pull', {}))
+            'https://ghcr.io/token?service=ghcr.io&scope=repository:' + path + ':pull', auth_headers))
         token = token_doc['token']
         require(isinstance(token, str) and 0 < len(token) <= 16384 and '\n' not in token and '\r' not in token)
         headers = {'Authorization': 'Bearer ' + token, 'Accept': ', '.join(sorted(INDEX_TYPES | {
@@ -139,5 +153,5 @@ class GHCRRead:
             require(len(matches) == 1, 'production-release-platform-unavailable')
             manifest = read(matches[0]['digest'], 'manifests')
         read(manifest['config']['digest'], 'blobs')
-        verify_oci_bytes(reference, IMAGE_REPOSITORY, blobs)
+        verify_oci_bytes(reference, self.repository, blobs)
         return blobs

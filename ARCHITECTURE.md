@@ -51,8 +51,19 @@ references can be pulled. Complete cache inventory distinguishes no-op/absence;
 two fresh Engine inspections verify digest/config/platform afterward. Consumed
 ledger payload records cache intent before mutation; failures fence all scopes.
 This scope does not create application/gateway LKG or authorize first-bootstrap or
-first-project-router-rollout. Caddy acquisition stays blocked pending provenance
-policy. No production binding, administrative channel, VDS operation or CD is enabled.
+first-project-router-rollout. Caddy acquisition remains outside this scope.
+No production binding, administrative channel, VDS operation or CD is enabled.
+
+Stage 09.4B.7 adds a separate [trusted Caddy image producer](docs/trusted-caddy-image.md):
+the Sigstore-authenticated Caddy 2.11.7 static release is packaged over an authenticated
+digest-pinned Distroless rootfs, without compilation or package installation.
+Read-only PR builds precede protected-main GHCR publication, isolated exact-digest
+acceptance and signed SLSA/input attestations. A separate CaddyReleaseCollector reuses
+ProtectedSource, OCI mapping and pinned gh/Sigstore, binding source SHA, signer/builder,
+inputs and successful publication attempt. CaddyRuntime additionally accepts only
+the fixed producer GHCR repository by digest; runtime hardening is unchanged.
+First main publication, signed digest, real exact-image acceptance and installed
+production attestation remain pending; no Caddy acquisition/rollout is authorized.
 
 Python CLI, Docker Engine/Compose (stable plugin versions >= 2, with separate CLI/configuration gates),
 GHCR, Git and Caddy are selected technologies.
