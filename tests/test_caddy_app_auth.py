@@ -32,41 +32,51 @@ def workflows():
                  for name in ('caddy-image.yml', 'caddy-publish.yml'))
 
 
-def test_app_token_scope_and_credential_isolation():
+@pytest.mark.parametrize('workflow_name,job_name,command,secret', [
+    ('caddy-publish.yml', 'publish', 'scripts.caddy_producer publish-guard', 'source-app-private-key'),
+    ('caddy-source-smoke.yml', 'source', 'scripts.caddy_source_smoke verify', 'CADDY_SOURCE_APP_PRIVATE_KEY'),
+])
+def test_app_token_scope_and_credential_isolation(workflow_name, job_name, command, secret):
     caller, reusable = workflows()
+    workflow = yaml.safe_load((ROOT / '.github/workflows' / workflow_name).read_text())
     assert caller['jobs']['publish']['secrets'] == {
         'source-app-private-key': '${{ secrets.CADDY_SOURCE_APP_PRIVATE_KEY }}'}
     assert reusable[True]['workflow_call']['secrets']['source-app-private-key']['required'] is True
-    job = reusable['jobs']['publish']
+    job = workflow['jobs'][job_name]
     steps = job['steps']
     issue_index = next(i for i, step in enumerate(steps) if step.get('id') == 'source-app')
     issue, guard = steps[issue_index:issue_index + 2]
     assert issue['uses'] == 'actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510'
     assert issue['with'] == {
         'client-id': '${{ vars.CADDY_SOURCE_APP_CLIENT_ID }}',
-        'private-key': '${{ secrets.source-app-private-key }}',
+        'private-key': '${{ secrets.' + secret + ' }}',
         'owner': '${{ github.repository_owner }}',
         'repositories': '${{ github.event.repository.name }}',
-        'permission-administration': 'read', 'permission-actions': 'read',
+        'permission-administration': 'write', 'permission-actions': 'read',
         'permission-checks': 'read', 'permission-contents': 'read',
         'skip-token-revoke': False,
     }
-    assert guard['run'] == 'python -m scripts.caddy_producer publish-guard'
-    assert guard['env'] == {'GH_TOKEN': '${{ steps.source-app.outputs.token }}'}
+    assert guard['run'] == 'python -m ' + command
+    assert guard['env']['GH_TOKEN'] == '${{ steps.source-app.outputs.token }}'
+    assert 'outputs' not in workflow and 'outputs' not in job
+    assert 'env' not in workflow
+    assert 'steps.source-app.outputs' not in json.dumps(job.get('env', {}))
     # A failed credential check, mint or guard must stop every publication step.
     for step in steps[:issue_index + 2]:
         assert 'if' not in step and not step.get('continue-on-error', False)
-    for workflow in (caller, reusable):
-        for other_job in workflow['jobs'].values():
+    for checked_workflow in (caller, workflow):
+        for other_job in checked_workflow['jobs'].values():
             assert 'GH_TOKEN' not in other_job.get('env', {})
             for step in other_job.get('steps', []):
                 text = json.dumps(step)
                 if step is not guard:
                     assert 'steps.source-app.outputs.token' not in text
                 if step is not issue and step.get('name') != 'Require source App credentials':
-                    assert 'secrets.source-app-private-key' not in text
-        assert 'CADDY_SOURCE_POLICY_TOKEN' not in json.dumps(workflow)
-    assert '${{ github.token }}' in json.dumps(steps[issue_index + 2:])
+                    assert 'secrets.' + secret not in text
+                    assert 'secrets.CADDY_SOURCE_APP_PRIVATE_KEY' not in text
+        assert 'CADDY_SOURCE_POLICY_TOKEN' not in json.dumps(checked_workflow)
+    if job_name == 'publish':
+        assert '${{ github.token }}' in json.dumps(steps[issue_index + 2:])
     for workflow in (caller, reusable):
         gate = workflow['jobs']['publish']['if']
         for condition in ("github.event_name == 'push'", "github.ref == 'refs/heads/main'", 'github.ref_protected'):
@@ -87,7 +97,9 @@ def test_missing_app_credentials_stop_before_token_creation(configured):
 
 @pytest.mark.parametrize('failure', ['success', 'missing-token', 'empty-token', 'unavailable-app', 'expired-token',
     'administration-denied', 'actions-denied', 'checks-denied', 'contents-denied',
-    'untrusted-app', 'untrusted-workflow', 'untrusted-source', 'weak-protection'])
+    'untrusted-app', 'untrusted-workflow', 'untrusted-source', 'weak-protection',
+    'bypass-hidden', 'bypass-null', 'bypass-malformed', 'bypass-present', 'ruleset-denied',
+    'ruleset-rate-limited', 'ruleset-unavailable', 'ruleset-timeout', 'ruleset-invalid-json'])
 def test_guard_cli_fails_closed_without_leaking_credentials(monkeypatch, capsys, failure):
     _, _, sha, docs, _, _ = consumer_fixture()
     for name, value in {'GITHUB_REPOSITORY': producer.REPOSITORY, 'GITHUB_EVENT_NAME': 'push',
@@ -102,8 +114,19 @@ def test_guard_cli_fails_closed_without_leaking_credentials(monkeypatch, capsys,
         docs['/commits/' + sha + '/check-runs?filter=latest&per_page=100']['check_runs'][0]['app']['id'] = 999
     if failure == 'untrusted-workflow':
         docs['/actions/runs?head_sha=' + sha + '&per_page=100']['workflow_runs'][1]['repository']['id'] = 999
+    if failure.startswith(('bypass-', 'ruleset-')):
+        docs['/rules/branches/main?per_page=100'] = [{'type': 'deletion', 'ruleset_id': 7}]
+        detail = {'id': 7, 'enforcement': 'active', 'target': 'branch', 'bypass_actors': []}
+        if failure == 'bypass-hidden': del detail['bypass_actors']
+        if failure == 'bypass-null': detail['bypass_actors'] = None
+        if failure == 'bypass-malformed': detail['bypass_actors'] = {}
+        if failure == 'bypass-present': detail['bypass_actors'] = [{'actor_id': 1}]
+        docs['/rulesets/7'] = detail
     calls = []
     def open_request(request, timeout):
+        assert request.get_method() == 'GET' and request.data is None
+        base = 'https://api.github.com/repos/' + producer.REPOSITORY
+        assert request.full_url == base or request.full_url.startswith(base + '/')
         path = request.full_url.split('/repos/' + producer.REPOSITORY, 1)[1]
         calls.append(path)
         assert request.get_header('Authorization') == 'Bearer ' + TOKEN
@@ -113,7 +136,12 @@ def test_guard_cli_fails_closed_without_leaking_credentials(monkeypatch, capsys,
                 failure in denied and path.startswith(denied[failure])):
             code = {'unavailable-app': 404, 'expired-token': 401}.get(failure, 403)
             raise urllib.error.HTTPError(request.full_url, code, TOKEN, {}, None)
-        raw = json.dumps(deepcopy(docs[path])).encode()
+        if path == '/rulesets/7':
+            status = {'ruleset-denied': 403, 'ruleset-rate-limited': 429, 'ruleset-unavailable': 500}.get(failure)
+            if status: raise urllib.error.HTTPError(request.full_url, status, TOKEN, {}, None)
+            if failure == 'ruleset-timeout': raise TimeoutError(TOKEN)
+        raw = (b'{' if failure == 'ruleset-invalid-json' and path == '/rulesets/7'
+               else json.dumps(deepcopy(docs[path])).encode())
         class Response:
             status = 200
             headers = {}
@@ -142,6 +170,12 @@ def test_guard_cli_fails_closed_without_leaking_credentials(monkeypatch, capsys,
         'untrusted-app': 'production-release-required-check-untrusted',
         'untrusted-workflow': 'production-release-check-workflow-mismatch',
         'weak-protection': 'production-release-protection-insufficient',
+        'bypass-hidden': 'production-release-protection-bypass-unreadable',
+        **{key: 'production-release-protection-unverifiable' for key in
+           ('bypass-null', 'bypass-malformed', 'bypass-present')},
+        'ruleset-unavailable': 'production-release-api-unavailable',
+        'ruleset-timeout': 'production-release-api-timeout-or-unavailable',
+        'ruleset-invalid-json': 'production-release-api-incomplete',
     }
     expected = '' if failure == 'success' else reasons.get(failure, 'production-release-api-denied-or-rate-limited') + '\n'
     assert captured.out == expected and not captured.err
@@ -260,3 +294,23 @@ def test_captured_main_checks_runs_and_rules_follow_real_api_structure():
     github = SimpleNamespace(get=lambda repo, path: deepcopy(docs[path]))
     ProtectedSource(github, review_policy='B').collect(producer.REPOSITORY, sha,
         (WorkflowCheck(producer.REPOSITORY, 'Offline checks', 15368, '.github/workflows/offline.yml'),))
+
+
+def test_app_credentials_are_confined_to_protected_source_workflows():
+    allowed = {'caddy-image.yml', 'caddy-publish.yml', 'caddy-source-smoke.yml'}
+    token_jobs = set()
+    for path in sorted((ROOT / '.github/workflows').glob('*.yml')):
+        workflow = yaml.safe_load(path.read_text())
+        if path.name not in allowed:
+            assert 'CADDY_SOURCE_APP_PRIVATE_KEY' not in path.read_text()
+            assert 'source-app-private-key' not in path.read_text()
+        for name, job in workflow['jobs'].items():
+            for step in job.get('steps', []):
+                if 'permission-administration' in step.get('with', {}):
+                    token_jobs.add((path.name, name))
+                    assert step['id'] == 'source-app'
+            if path.name in allowed and ('source-app-private-key' in json.dumps(job) or name == 'source'):
+                assert "github.event_name == 'push'" in job['if']
+                assert "github.repository == 'DanilFaritovich/portfolio-deployment'" in job['if']
+                assert 'github.ref_protected' in job['if']
+    assert token_jobs == {('caddy-publish.yml', 'publish'), ('caddy-source-smoke.yml', 'source')}
