@@ -108,6 +108,7 @@ def consumer_fixture():
     checks[0].update(name='Offline checks', check_suite={'id': 21})
     defaults = json.loads((Path(__file__).parent / 'fixtures/caddy/config.oci').read_bytes())
     defaults['config']['User'] = '0:0'
+    defaults['config']['ExposedPorts'] = {'80/tcp': {}, '443/tcp': {}}
     config = json.dumps(defaults).encode()
     manifest = json.dumps({'schemaVersion': 2, 'mediaType': 'application/vnd.oci.image.manifest.v1+json',
         'config': {'mediaType': 'application/vnd.oci.image.config.v1+json', 'digest': blob_digest(config),
@@ -201,7 +202,8 @@ def test_runtime_only_admits_exact_producer_digest(image):
 
 
 @pytest.mark.parametrize('key,value', [('Cmd', ['sh']), ('Entrypoint', ['sh']), ('User', '1000'),
-    ('Env', []), ('WorkingDir', '/'), ('Volumes', {'/data': {}}), ('Healthcheck', {'Test': ['CMD', 'true']})])
+    ('Env', []), ('WorkingDir', '/'), ('Volumes', {'/data': {}}), ('Healthcheck', {'Test': ['CMD', 'true']}),
+    ('ExposedPorts', {})])
 def test_build_config_rejects_contract_drift(key, value):
     _, runtime, _, _, blobs, _ = consumer_fixture()
     manifest = json.loads(blobs[runtime.image.split('@')[1]])

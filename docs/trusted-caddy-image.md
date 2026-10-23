@@ -106,6 +106,8 @@ Command, root UID/GID, `/srv`, XDG environment, three mounts, read-only root/con
 cap_drop ALL, NET_BIND_SERVICE, NNP, networks, 80/443 and loopback-only admin remain.
 `/data` holds TLS state; `/config` holds autosave. The image declares no volumes,
 healthcheck or entrypoint override.
+Its EXPOSE metadata declares TCP 80/443, matching the production renderer so Engine
+port publication preserves the verified image defaults; metadata alone publishes nothing.
 
 [Producer acceptance](../scripts/caddy_producer_acceptance.py) inherits the existing
 isolated 17-case harness and adds reload of its exact HTTP fixture. Host probes read
@@ -137,7 +139,7 @@ No new production authorization or apply interface is created.
 
 ## Verified and pending
 
-Locally: `make fix`, **71 targeted producer tests**, `make check` (**1953 passed**),
+Locally: `make fix`, **72 targeted producer tests**, `make check` (**1954 passed**),
 `make workflow-check`, `git diff --check`. Tests cover synthetic authenticated
 source/OCI/crypto integration and rejection of wrong SHA/digest/source, missing or
 invalid signature, wrong builder/platform/config, incomplete inputs and substituted

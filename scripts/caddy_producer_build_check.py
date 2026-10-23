@@ -17,6 +17,7 @@ def check(document):
             image['Os'] == 'linux' and image['Architecture'] == 'amd64' and
             config.get('Entrypoint') in (None, []) and config.get('Cmd') == COMMAND and
             config.get('User') == '0:0' and config.get('WorkingDir') == '/srv' and
+            config.get('ExposedPorts') == {'80/tcp': {}, '443/tcp': {}} and
             {'XDG_CONFIG_HOME=/config', 'XDG_DATA_HOME=/data', 'CADDY_VERSION=v' + lock['version']}.issubset(
                 config.get('Env') or ()) and not config.get('Volumes') and not config.get('Healthcheck'),
             'caddy-build-contract-mismatch')
