@@ -36,9 +36,10 @@ def package(**overrides):
                 'files': [[n, digest(raw), 0o700 if n == 'tools/caddy' else 0o600] for n, raw in sorted(files.items())]}
     output = io.BytesIO()
     with zipfile.ZipFile(output, 'w') as archive:
-        archive.writestr('bundle.json', canonical(manifest))
+        # Explicit ZipInfo uses a fixed timestamp, keeping independent approval stable.
+        archive.writestr(zipfile.ZipInfo('bundle.json'), canonical(manifest))
         for name, raw in files.items():
-            archive.writestr(name, raw)
+            archive.writestr(zipfile.ZipInfo(name), raw)
     return output.getvalue()
 
 
@@ -48,6 +49,16 @@ def rewrite(raw, name, data, **options):
         for item in source.infolist():
             dest.writestr(item.filename, data if item.filename == name else source.read(item.filename))
     return out.getvalue()
+
+
+def test_package_digest_is_stable_across_zip_timestamps(monkeypatch):
+    monkeypatch.setattr(zipfile.time, 'localtime', lambda *args: (2026, 1, 1, 0, 0, 0, 3, 1, -1))
+    raw = package()
+    monkeypatch.setattr(zipfile.time, 'localtime', lambda *args: (2026, 1, 1, 0, 0, 2, 3, 1, -1))
+    later = package()
+    assert later == raw
+    assert digest(later) == digest(raw)
+    assert digest(package(**{'launcher.py': b'changed'})) != digest(raw)
 
 
 @pytest.mark.parametrize('name', ['../escape', '/escape', 'vendor/../escape', 'vendor//a',
@@ -174,9 +185,11 @@ def test_conflicts_fail_before_writes(admin, case):
     assert not (bootstrap.STORAGE / 'locks/host.lock').exists()
 
 
-def test_existing_installation_changes_and_missing_lock_are_not_repaired(admin):
+def test_existing_installation_changes_and_missing_lock_are_not_repaired(admin, monkeypatch):
     bootstrap.install(package(), admin)
     (bootstrap.ROOT / 'launcher.py').write_bytes(b'tampered')
+    # Cross a ZIP timestamp boundary without sleeping; approval must still match.
+    monkeypatch.setattr(zipfile.time, 'localtime', lambda *args: (2040, 1, 1, 0, 0, 2, 6, 1, -1))
     with pytest.raises(InstallError, match='conflict'):
         bootstrap.install(package(), admin)
 
