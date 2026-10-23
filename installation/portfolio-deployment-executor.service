@@ -1,0 +1,21 @@
+[Unit]
+Description=Portfolio deployment one-shot executor (root-equivalent Docker authority)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+WorkingDirectory=/opt/portfolio-deployment
+ExecStart=/usr/bin/python3 -I -S -B /opt/portfolio-deployment/launcher.py
+Environment=LANG=C
+UnsetEnvironment=PYTHONPATH PYTHONHOME PYTHONSTARTUP PYTHONINSPECT LD_PRELOAD LD_LIBRARY_PATH DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG COMPOSE_FILE COMPOSE_PROJECT_NAME
+StandardInput=null
+TimeoutStartSec=30min
+KillMode=control-group
+Restart=no
+
+# No Install section: no boot activation, timer or polling. Infrastructure must
+# separately approve installation and the exact authenticated start policy.

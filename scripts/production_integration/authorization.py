@@ -1,4 +1,4 @@
-"""Candidate binding and approval verification only. No production apply API."""
+"""Candidate binding and independent operator signature verification contract."""
 from dataclasses import asdict, dataclass
 import math
 import re
@@ -57,7 +57,8 @@ def review_approval(candidate, envelope, *, verifier=None, now):
 
     This returns validated claims for review, never an executor capability. A
     fixture, merge, CI or plain dict cannot become an approval by parsing it.
-    Consumption/replay ledger and real write authorization belong to 09.4B.
+    The one-shot coordinator consumes these claims in the durable journal ledger
+    before creating an in-process execution grant. This function alone grants none.
     """
     identity = candidate.identity
     if verifier is None:

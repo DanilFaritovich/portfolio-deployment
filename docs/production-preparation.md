@@ -6,6 +6,11 @@ apply is unavailable.** Stage 09.4B is the separate first authorized rollout;
 
 ## Architecture and implemented interfaces
 
+The historical preparation-only boundaries below are extended by
+[Stage 09.4B.3 execution](production-execution.md): one-shot coordination, durable
+authorization consumption and fixed mutation ports now exist and are tested offline.
+Production installation, trusted bindings and live operations remain unconfigured.
+
 [ADR 0001](adr/0001-production-execution.md) selects a host-local one-shot
 controller/executor behind an independently provisioned privileged boundary.
 Stages 03–07 retain the planner, Compose renderer, resource preflight, executor,

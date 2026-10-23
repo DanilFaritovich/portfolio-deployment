@@ -6,6 +6,11 @@ verification has not run. Production
 execution, approval issuance, deployment and automatic CD remain unavailable.
 ProjectRouter and Caddy selected digests, registry and admission policy are unchanged.
 
+[Stage 09.4B.3](production-execution.md) adds one-shot execution and durable approval
+consumption over this unchanged verifier. It does not establish a production issuer,
+install trusted bindings or perform full live release verification. Missing GitHub
+policy/Caddy provenance evidence continues to block production execution.
+
 ## Architecture and installation boundary
 
 The existing `ReleaseVerifier` consumes `ReleaseFacts` only from installed trusted
