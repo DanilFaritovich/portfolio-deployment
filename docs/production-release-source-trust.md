@@ -69,9 +69,10 @@ manager SHA, trust root or fixture is automatically promoted into production pol
 
 The manager candidate hashes are SHA256 of the exact raw manifest and
 `policy/admission.yaml` bytes at its selected SHA. Default manifest path is
-`registry/applications/project-router.yaml`; the only alternative is the existing
-disabled `docs/candidates/project-router.yaml`, selected in reviewed installation
-code. Verifying that candidate does not enable its application or modify admission.
+`registry/applications/project-router.yaml`, populated by Stage C2. The collector
+also permits the legacy `docs/candidates/project-router.yaml` path only when selected
+in reviewed installation code; that candidate file was removed on promotion, so
+it is not a current release input. Verification does not grant execution authority.
 The full candidate identity remains bound by the existing `ReleaseVerifier`.
 
 ## Separately authorized read-only readiness API
