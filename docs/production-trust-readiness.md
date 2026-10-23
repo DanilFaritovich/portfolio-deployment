@@ -177,7 +177,8 @@ Proceed in this order; each permission applies only to its named operation:
 - [ ] Recheck latest develop exact SHA and successful Offline CI after this PR merges.
 - [ ] Review `origin/main...origin/develop` and the resulting tree diff, including
   workflows, installer/bindings, dependency pins, disabled candidate/admission and
-  all trust changes. Resolve the repository's existing license decision before release.
+  all trust changes. Confirm the selected [MIT License](../LICENSE) and retained
+  third-party notices are included in the release.
 - [ ] Operator manually opens `develop` → `main` PR; approved source policy and
   all strict App-bound required CI must pass. No direct push, automatic merge or release.
 - [ ] After the authorized merge, read the actual full main SHA, its ancestry,

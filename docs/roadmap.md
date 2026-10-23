@@ -75,8 +75,8 @@ Docker/OCI/runtime/readiness/Caddy evidence and the existing executor/lifecycle.
 Offline tests remain simulated and distinct from the completed real VM acceptance.
 See [acceptance evidence and earlier failed attempts](local-e2e.md#verified-local-acceptance).
 Local VM acceptance does not verify or authorize production deployment.
-No project license has been chosen;
-resolve it before project release.
+The owner selected the [MIT License](../LICENSE); vendored standards retain their
+[upstream notice](../.agents/skills/UPSTREAM-LICENSE.txt).
 
 Stage 08 uses `make check` and `make workflow-check`, without a redundant `ci`
 alias. [Automation and VM completion](stage-08-automation.md) documents pinned tool
