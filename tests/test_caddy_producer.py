@@ -122,7 +122,14 @@ def consumer_fixture():
             return deepcopy(docs[path])
     statements = tuple({'_type': 'https://in-toto.io/Statement/v1', 'predicateType': kind,
         'subject': [{'name': p.IMAGE, 'digest': {'sha256': blob_digest(manifest)[7:]}}], 'predicate': predicate}
-        for kind, predicate in ((p.SLSA, {'runDetails': {'builder': {'id': p.BUILDER}}}),
+        for kind, predicate in ((p.SLSA, {'buildDefinition': {
+            'buildType': 'https://actions.github.io/buildtypes/workflow/v1',
+            'externalParameters': {'workflow': {'path': '.github/workflows/caddy-image.yml',
+                'ref': 'refs/heads/main', 'repository': 'https://github.com/' + p.REPOSITORY}},
+            'resolvedDependencies': [{'uri': 'git+https://github.com/' + p.REPOSITORY + '@refs/heads/main',
+                                      'digest': {'gitCommit': sha}}]},
+            'runDetails': {'builder': {'id': p.BUILDER}, 'metadata': {
+                'invocationId': 'https://github.com/' + p.REPOSITORY + '/actions/runs/100/attempts/1'}}}),
                                 (p.PREDICATE, p.published_inputs(p.load_lock(), sha, '100', '1'))))
     class Crypto:
         called = False
@@ -130,7 +137,7 @@ def consumer_fixture():
             self.called = True
             assert subject == manifest and image == reference and bundles == [{'test': True}]
             assert identity == {'signerWorkflow': p.WORKFLOW, 'sourceSha': sha, 'signerSha': sha,
-                                'sourceRef': 'refs/heads/main'}
+                                'sourceRef': 'refs/heads/main', 'signerIdentity': p.BUILDER}
             assert expectations[1]['expectedPredicate'] == p.published_inputs(p.load_lock(), sha, '100', '1')
             return statements
     crypto = Crypto()
@@ -324,10 +331,10 @@ def test_caddy_crypto_reuses_pinned_gh_and_exact_identity(tmp_path, monkeypatch,
     def process(args, directory):
         if args[-1] == '--version': return b'gh version 2.102.0 (2026-09-30)\n'
         for flag, value in (('--repo', p.REPOSITORY), ('--signer-digest', sha), ('--source-digest', sha),
-            ('--signer-workflow', 'github.com/' + p.REPOSITORY + '/' + p.WORKFLOW),
-            ('--source-ref', 'refs/heads/main'), ('--cert-oidc-issuer', 'https://token.actions.githubusercontent.com')):
+            ('--source-ref', 'refs/heads/main'), ('--cert-identity', p.BUILDER), ('--cert-oidc-issuer', 'https://token.actions.githubusercontent.com')):
             assert args[args.index(flag) + 1] == value
         assert '--deny-self-hosted-runners' in args and '--custom-trusted-root' in args
+        assert '--signer-workflow' not in args
         if mode == 'bad-signature': raise DockerError('production-release-signature-unverified')
         kind = args[args.index('--predicate-type') + 1]
         selected = next(s for s in statements if s['predicateType'] == kind)

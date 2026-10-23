@@ -41,26 +41,53 @@ class CaddyReleaseCollector:
         require(runtime.version == lock['version'], 'caddy-release-version-mismatch')
         source = ProtectedSource(self.github, review_policy=PRODUCTION_REVIEW_POLICY)
         publication = source.collect(REPOSITORY, source_sha, self.checks, self.publication, source_sha, WORKFLOW)
-        blobs = self.registry.collect(runtime.image)
-        evidence = verify_oci_bytes(runtime.image, IMAGE, blobs)
-        inspect_caddy_contract(runtime, evidence)
-        attestations = self.github.get(REPOSITORY, '/attestations/' + runtime.image.split('@')[1] +
-                                       '?per_page=100')['attestations']
-        require(isinstance(attestations, list) and 0 < len(attestations) <= 10,
-                'caddy-release-attestation-unavailable')
-        identity = {'signerWorkflow': WORKFLOW, 'signerSha': source_sha,
-                    'sourceSha': source_sha, 'sourceRef': 'refs/heads/main'}
-        expected = published_inputs(lock, source_sha, *publication)
-        statements = self.crypto.verify(blobs[runtime.image.split('@')[1]], runtime.image, identity,
-            ({'predicateType': SLSA}, {'predicateType': PREDICATE, 'expectedPredicate': expected}),
-            [a['bundle'] for a in attestations])
-        require(isinstance(statements, tuple) and len(statements) == 2, 'caddy-release-signature-unverified')
-        for statement, kind in zip(statements, (SLSA, PREDICATE)):
-            require(statement.get('_type') == 'https://in-toto.io/Statement/v1' and
-                    statement.get('predicateType') == kind and statement.get('subject') ==
-                    [{'name': IMAGE, 'digest': {'sha256': runtime.image.split('@sha256:')[1]}}],
-                    'caddy-release-signed-subject-mismatch')
-        require(statements[0]['predicate']['runDetails']['builder']['id'] == BUILDER,
-                'caddy-release-builder-mismatch')
-        require(statements[1]['predicate'] == expected, 'caddy-release-inputs-mismatch')
-        return evidence  # Source-verified only through this trusted installed composition.
+        return verify_caddy_artifact(runtime, source_sha, publication, github=self.github,
+                                     registry=self.registry, crypto=self.crypto)
+
+
+def verify_caddy_artifact(runtime, source_sha, publication, *, github, registry, crypto):
+    """Immutable artifact/signature contract only; grants no protected-source trust.
+
+    Production calls this only after full ProtectedSource verification. PR QA
+    calls it with a fixed historical release and never constructs release facts.
+    """
+    require(isinstance(source_sha, str) and re.fullmatch(r'[0-9a-f]{40}', source_sha) is not None and
+            re.fullmatch(re.escape(IMAGE) + r'@sha256:[0-9a-f]{64}', runtime.image) is not None,
+            'caddy-release-subject-invalid')
+    lock = load_lock()
+    require(runtime.version == lock['version'], 'caddy-release-version-mismatch')
+    blobs = registry.collect(runtime.image)
+    evidence = verify_oci_bytes(runtime.image, IMAGE, blobs)
+    inspect_caddy_contract(runtime, evidence)
+    attestations = github.get(REPOSITORY, '/attestations/' + runtime.image.split('@')[1] +
+                                   '?per_page=100')['attestations']
+    require(isinstance(attestations, list) and 0 < len(attestations) <= 10,
+            'caddy-release-attestation-unavailable')
+    identity = {'signerWorkflow': WORKFLOW, 'signerSha': source_sha,
+                'sourceSha': source_sha, 'sourceRef': 'refs/heads/main', 'signerIdentity': BUILDER}
+    expected = published_inputs(lock, source_sha, *publication)
+    statements = crypto.verify(blobs[runtime.image.split('@')[1]], runtime.image, identity,
+        ({'predicateType': SLSA}, {'predicateType': PREDICATE, 'expectedPredicate': expected}),
+        [a['bundle'] for a in attestations])
+    require(isinstance(statements, tuple) and len(statements) == 2, 'caddy-release-signature-unverified')
+    for statement, kind in zip(statements, (SLSA, PREDICATE)):
+        require(statement.get('_type') == 'https://in-toto.io/Statement/v1' and
+                statement.get('predicateType') == kind and statement.get('subject') ==
+                [{'name': IMAGE, 'digest': {'sha256': runtime.image.split('@sha256:')[1]}}],
+                'caddy-release-signed-subject-mismatch')
+    require(statements[0]['predicate']['runDetails']['builder']['id'] == BUILDER,
+            'caddy-release-builder-mismatch')
+    slsa = statements[0]['predicate']
+    definition = slsa['buildDefinition']
+    require(definition['buildType'] == 'https://actions.github.io/buildtypes/workflow/v1' and
+            definition['externalParameters']['workflow'] == {
+                'path': '.github/workflows/caddy-image.yml', 'ref': 'refs/heads/main',
+                'repository': 'https://github.com/' + REPOSITORY} and
+            definition['resolvedDependencies'] == [{
+                'uri': 'git+https://github.com/' + REPOSITORY + '@refs/heads/main',
+                'digest': {'gitCommit': source_sha}}] and
+            slsa['runDetails']['metadata']['invocationId'] == 'https://github.com/' + REPOSITORY +
+                '/actions/runs/' + publication[0] + '/attempts/' + publication[1],
+            'caddy-release-provenance-mismatch')
+    require(statements[1]['predicate'] == expected, 'caddy-release-inputs-mismatch')
+    return evidence  # Artifact evidence alone grants no production authority.

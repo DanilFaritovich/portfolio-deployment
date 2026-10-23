@@ -61,7 +61,12 @@ class HTTPSRead:
                         break
                     raw.extend(chunk)
                 require(len(raw) <= LIMIT, 'production-release-response-too-large')
-                require(not response.headers.get('Link'), 'production-release-api-pagination-unproven')
+                # GitHub's fixed API-version deprecation notice is not pagination.
+                # Any pagination/unknown/mixed Link still fails closed.
+                link = response.headers.get('Link')
+                require(not link or (parsed.netloc == 'api.github.com' and link ==
+                    '<https://docs.github.com/en/rest/about-the-rest-api/api-versions>; '
+                    'rel="deprecation"; type="text/html"'), 'production-release-api-pagination-unproven')
                 return bytes(raw)
         except urllib.error.HTTPError as error:
             # Only GHCR config/blob delivery may redirect, once, to the fixed
