@@ -125,8 +125,11 @@ def admin(tmp_path, monkeypatch):
     monkeypatch.setattr(bootstrap.hashlib, 'file_digest', lambda stream, _: type('Pin', (), {'hexdigest': lambda s: 'b' * 64})())
     # System executables are not opened or modified by these fixtures.
     real_open = bootstrap.__builtins__['open']
-    monkeypatch.setattr(bootstrap, 'open', lambda path, *a, **k: io.BytesIO(b'') if str(path).startswith('/usr/') else real_open(path, *a, **k), raising=False)
-    monkeypatch.setattr(bootstrap, 'metadata', lambda p, **kw: None if str(p).startswith('/usr/') else checked(p, **kw))
+    system_python = str(Path(os.sys.executable).resolve())
+    def external_pin(path):
+        return str(path).startswith('/usr/') or str(path) == system_python
+    monkeypatch.setattr(bootstrap, 'open', lambda path, *a, **k: io.BytesIO(b'') if external_pin(path) else real_open(path, *a, **k), raising=False)
+    monkeypatch.setattr(bootstrap, 'metadata', lambda p, **kw: None if external_pin(p) else checked(p, **kw))
     approval = InitialInstallationApproval(digest(package()), SHA, Path('/etc/machine-id').read_text().strip(),
         (('/usr/bin/docker', 'b'*64), (str(Path(os.sys.executable).resolve()), 'b'*64),
          ('/usr/lib/docker/cli-plugins/docker-compose', 'b'*64), ('/usr/bin/gh', 'b'*64),
