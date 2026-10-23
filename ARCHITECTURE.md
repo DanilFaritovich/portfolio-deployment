@@ -803,6 +803,24 @@ token via step-local `GH_TOKEN`; action post-job revocation remains enabled.
 Policy B, exact-SHA Offline CI and trusted workflow/check App identity are unchanged.
 Build, registry publication, signing and provenance receive no App credential.
 
+GitHub credentials are bounded opaque HTTP-header values, including stateless
+`ghs_APPID_JWT` tokens; no JWT contents are decoded or locally trusted. Guard
+failures expose only exact allowlisted reason codes, with fixed redacted codes
+for incomplete responses and unexpected failures. Unreadable ruleset bypass
+actors remain a blocker; no additional App permission or policy fallback is added.
+
+`caddy-source-smoke.yml` prepares real read-only App integration only on a push
+to protected `develop`, with the same repository scope, read permissions and
+post-job token revocation as publication. `caddy_source_smoke.py` verifies current
+protected main through the shared full source verifier, including exact-SHA push
+CI, App/check-suite identity and repeated head/protection reads. It neither builds
+nor publishes images and has no Docker step. Release PRs into main add a read-only
+Actions-metadata gate inside required Offline checks: the exact protected develop
+head must already have a successful push smoke. PR code receives no App secret.
+This workflow must first be reviewed and explicitly merged into develop before
+the real App smoke can run; local/offline success does not establish live App API
+compatibility. This task does not authorize that merge or a publication retry.
+
 The [read-only release collector](docs/production-release-source-trust.md) implements
 the existing `ReleaseVerifier` port without installing it in CLI/CI.
 `release_readiness.py` adds a separately authorized read-only API over typed,

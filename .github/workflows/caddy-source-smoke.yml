@@ -1,0 +1,53 @@
+name: Caddy source App smoke
+
+# App secrets are available only after reviewed code reaches protected develop.
+# No PR or pull_request_target trigger, dispatch ref, images or Docker access.
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    name: Read-only source App integration
+    if: >-
+      github.event_name == 'push' && github.repository == 'DanilFaritovich/portfolio-deployment' &&
+      github.ref == 'refs/heads/develop' && github.ref_protected
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.12'
+      - run: python -m pip install --quiet -r requirements-dev.txt
+      - name: Require source App credentials
+        env:
+          SOURCE_APP_CONFIGURED: ${{ vars.CADDY_SOURCE_APP_CLIENT_ID != '' && secrets.CADDY_SOURCE_APP_PRIVATE_KEY != '' }}
+        run: |
+          if [ "$SOURCE_APP_CONFIGURED" != true ]; then
+            echo 'caddy-source-app-credentials-unavailable' >&2
+            exit 1
+          fi
+      - name: Create read-only source App token
+        id: source-app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.CADDY_SOURCE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CADDY_SOURCE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-administration: read
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          skip-token-revoke: false
+      - name: Verify current protected main with real App authentication
+        env:
+          GH_TOKEN: ${{ steps.source-app.outputs.token }}
+          GITHUB_REF_PROTECTED: ${{ github.ref_protected }}
+        run: python -m scripts.caddy_source_smoke verify
