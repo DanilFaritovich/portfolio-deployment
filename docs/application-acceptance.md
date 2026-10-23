@@ -39,9 +39,11 @@ Deployment Manager verifies artifact identity and the deployment contract.
 
 ## Static site example
 
-The real, still-disabled [ProjectRouter candidate](candidates/project-router.yaml)
+The independently verified [ProjectRouter production manifest](../registry/applications/project-router.yaml)
 illustrates the complete static site declaration, including its exact v1.0.0
-image, source SHA, signed build-origin expectation and runtime security.
+image, source SHA, signed build-origin expectation and runtime security. Stage C2
+[verification evidence](project-router-acceptance.md#stage-c2-independent-producer-verification)
+records its promotion; enabled desired state does not authorize production execution.
 [Manifest v1](manifest-v1.md) documents the existing fields. A minimal shape is:
 
 ```yaml
