@@ -197,17 +197,26 @@ rulesets are independently readable. It cannot prove absence or grant permission
 Denied ruleset/bypass details, unknown App bindings, unsupported checks/events,
 truncated lists, API denial, timeout and rate limit produce blockers.
 
-Minimal token permissions are repository metadata, contents, checks, Actions and attestations
-**read** for the two repositories, plus
-[administration read](https://docs.github.com/en/rest/branches/branch-protection#get-branch-protection)
-where necessary to inspect classical protection/bypass details. No write,
-production environment, deployment, secret or package-publish permission is needed.
-GHCR uses an anonymous pull-only token for the fixed public image repository.
-GitHub [limits visibility of `bypass_actors`](https://docs.github.com/en/rest/repos/rules#get-a-repository-ruleset)
-to callers with write access to the ruleset. Validate this capability with the
-separately supplied read-only credential; the stated grants do not guarantee the
-field will be returned. An omitted field blocks. Do not infer an empty list or
-automatically widen credentials to make the check pass.
+The two-repository release collector needs repository metadata, contents, checks,
+Actions and attestations **read**, plus
+[Administration:read](https://docs.github.com/en/rest/branches/branch-protection#get-branch-protection)
+for classical protection. Complete Rulesets bypass evidence additionally requires
+Rulesets write access: GitHub [limits visibility of `bypass_actors`](https://docs.github.com/en/rest/repos/rules#get-a-repository-ruleset)
+to callers with that capability. A read-only grant alone cannot guarantee complete
+evidence. Missing bypass details block; never infer an empty list or automatically
+widen credentials. GHCR uses an anonymous pull-only token for the fixed public
+image repository.
+
+The separately configured [Caddy source App](trusted-caddy-image.md) is installed
+only in `DanilFaritovich/portfolio-deployment`. Its source-verification workflows
+explicitly request Administration:write and Actions/Checks/Contents:read following
+the owner's manual permission change. This elevated grant could change repository
+settings if misused, but the verifier uses GET requests exclusively and receives
+the token only in its verification step. No Rulesets, branch protection or other
+settings are changed. Token revocation remains enabled; no App token goes to
+registry operations, artifacts, provenance or other jobs. No production environment,
+deployment, secret or package-publish permission is requested for this App token.
+API failures or incomplete bypass evidence still block, without policy fallback.
 
 ## Approved source policy B — Stage 09.4B.6
 

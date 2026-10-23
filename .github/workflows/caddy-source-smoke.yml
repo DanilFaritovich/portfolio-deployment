@@ -33,7 +33,7 @@ jobs:
             echo 'caddy-source-app-credentials-unavailable' >&2
             exit 1
           fi
-      - name: Create read-only source App token
+      - name: Create source verification App token
         id: source-app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -41,7 +41,9 @@ jobs:
           private-key: ${{ secrets.CADDY_SOURCE_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
-          permission-administration: read
+          # GitHub exposes bypass_actors only to callers with Rulesets write access.
+          # Source verification uses this credential exclusively for GET requests.
+          permission-administration: write
           permission-actions: read
           permission-checks: read
           permission-contents: read
