@@ -79,11 +79,16 @@ jobs:
         id: image
         env:
           REGISTRY_TOKEN: ${{ github.token }}
-          DOCKER_CONFIG: ${{ runner.temp }}/publish-docker
         run: |
-          mkdir -m 700 "$DOCKER_CONFIG"
-          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin > /dev/null
-          docker push "$IMAGE:sha-$SOURCE_SHA" > "$RUNNER_TEMP/push.txt"
+          # Pinned attest actions read ~/.docker/config.json, ignoring DOCKER_CONFIG.
+          # Use inline auth on this disposable hosted runner, without credential helpers.
+          umask 077
+          mkdir -p "$HOME/.docker"
+          chmod 700 "$HOME/.docker"
+          printf '{"auths":{}}\n' > "$HOME/.docker/config.json"
+          chmod 600 "$HOME/.docker/config.json"
+          printf '%s' "$REGISTRY_TOKEN" | docker --config "$HOME/.docker" login ghcr.io --username "$GITHUB_ACTOR" --password-stdin > /dev/null
+          docker --config "$HOME/.docker" push "$IMAGE:sha-$SOURCE_SHA" > "$RUNNER_TEMP/push.txt"
           python -m scripts.caddy_producer_receipt "$RUNNER_TEMP/push.txt" "$RUNNER_TEMP/publication.json" >> "$GITHUB_OUTPUT"
       - name: Exact-digest isolated Caddy acceptance before signing
         env:
@@ -95,8 +100,6 @@ jobs:
             "$(command -v python)" -m scripts.caddy_producer_acceptance --reference "$REFERENCE" | tee "$RUNNER_TEMP/caddy-acceptance.json"
       - name: Sign digest-bound SLSA provenance
         id: provenance
-        env:
-          DOCKER_CONFIG: ${{ runner.temp }}/publish-docker
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
           subject-name: ${{ env.IMAGE }}
@@ -104,8 +107,6 @@ jobs:
           push-to-registry: true
       - name: Sign digest-bound authenticated input evidence
         id: inputs
-        env:
-          DOCKER_CONFIG: ${{ runner.temp }}/publish-docker
         uses: actions/attest@f057fd524d485ac48d9b534c235aad15b5bb303f # v3
         with:
           subject-name: ${{ env.IMAGE }}
@@ -128,6 +129,4 @@ jobs:
           retention-days: 90
       - name: Remove ephemeral registry authentication
         if: always()
-        env:
-          DOCKER_CONFIG: ${{ runner.temp }}/publish-docker
-        run: docker logout ghcr.io > /dev/null
+        run: rm -f "$HOME/.docker/config.json"
