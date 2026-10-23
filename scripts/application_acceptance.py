@@ -123,10 +123,11 @@ def verify_gh_version(raw):
     require(tuple(map(int, version.split('.'))) >= GH_MINIMUM and version == GH_VERSION)
 
 
-def provision_gh(directory):
+def provision_gh(directory, *, execute=None):
     """Authenticate archive before parsing/executing; no installed-gh fallback."""
+    execute = command if execute is None else execute
     url = 'https://github.com/cli/cli/releases/download/v' + GH_VERSION + '/' + GH_ARCHIVE
-    raw = command(['curl', '--fail', '--silent', '--show-error', '--location',
+    raw = execute(['curl', '--fail', '--silent', '--show-error', '--location',
                    '--proto', '=https', '--proto-redir', '=https', '--max-time', '120',
                    '--max-filesize', str(32 * LIMIT), url], timeout=130, limit=32 * LIMIT)
     require(hashlib.sha256(raw).hexdigest() == GH_ARCHIVE_SHA256)
@@ -143,7 +144,7 @@ def provision_gh(directory):
     with path.open('xb') as target:
         target.write(binary)
     path.chmod(0o500)
-    verify_gh_version(command([str(path), '--version'], limit=4096))
+    verify_gh_version(execute([str(path), '--version'], limit=4096))
     return str(path)
 
 

@@ -7,6 +7,7 @@ import re
 from scripts.compose import LABEL, ComposeArtifact
 from scripts.docker_adapter import DockerError
 from scripts.reconciliation import encode
+from scripts.production_integration.admin_contract import HOST_DIRECTORY, CONTAINER_DIRECTORY
 
 
 def require(condition, code):
@@ -55,9 +56,11 @@ class RuntimePaths:
     certificate_data: str
     gateway_data: str
     certificate_budget_bytes: int
+    admin_socket_directory: str = HOST_DIRECTORY
 
     def validate(self):
-        paths = [self.state, self.lock, self.journal, self.gateway_config, self.certificate_data, self.gateway_data]
+        require(self.admin_socket_directory == HOST_DIRECTORY, 'caddy-admin-fixed-directory-required')
+        paths = [self.state, self.lock, self.journal, self.gateway_config, self.certificate_data, self.gateway_data, self.admin_socket_directory]
         require(type(self.certificate_budget_bytes) is int and 1048576 <= self.certificate_budget_bytes <= 10737418240,
                 'operator-storage-budget-required')
         require(all(isinstance(p, str) and len(p) <= 512 for p in paths), 'operator-production-path-invalid')
@@ -87,8 +90,7 @@ class CaddyRuntime:
                 'caddy-pinned-image-required')
         require(isinstance(self.version, str) and bool(re.fullmatch(r'2\.[0-9]+\.[0-9]+', self.version)), 'caddy-version-required')
         owner = {LABEL + '.managed': 'true', LABEL + '.role': 'gateway'}
-        # Admin is bound to container loopback by the generated Caddyfile. Only a
-        # future bounded exec/reload port can reach it; no host 2019 publishing.
+        # Dedicated private directory carries the UDS; no admin TCP publishing.
         model = {'name': 'portfolio-gateway', 'services': {'caddy': {
             'image': self.image, 'platform': 'linux/amd64', 'restart': 'unless-stopped',
             'read_only': True, 'cap_drop': ['ALL'], 'cap_add': ['NET_BIND_SERVICE'],
@@ -100,6 +102,8 @@ class CaddyRuntime:
                         {'type': 'bind', 'source': self.paths.certificate_data, 'target': '/data',
                          'bind': {'create_host_path': False}},
                         {'type': 'bind', 'source': self.paths.gateway_data, 'target': '/config',
+                         'bind': {'create_host_path': False}},
+                        {'type': 'bind', 'source': self.paths.admin_socket_directory, 'target': CONTAINER_DIRECTORY,
                          'bind': {'create_host_path': False}}]}},
             'networks': {'proxy': {'name': 'portfolio-proxy', 'external': True}}}
         return ComposeArtifact('@gateway', 'portfolio-gateway', encode(model))

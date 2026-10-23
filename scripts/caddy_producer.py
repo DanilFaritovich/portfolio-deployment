@@ -28,7 +28,7 @@ UPSTREAM = 'https://github.com/caddyserver/caddy'
 WORKFLOW = '.github/workflows/caddy-publish.yml'
 PREDICATE = 'https://github.com/' + REPOSITORY + '/attestations/caddy-inputs/v1'
 SLSA = 'https://slsa.dev/provenance/v1'
-BUILDER = 'https://github.com/actions/runner/github-hosted'
+BUILDER = 'https://github.com/' + REPOSITORY + '/' + WORKFLOW + '@refs/heads/main'
 KEYS = frozenset(('version', 'sourceSha', 'archiveSha256', 'certificateSha256', 'signatureSha256',
                   'binarySha256', 'baseIndex', 'baseManifest', 'cosignVersion', 'cosignSha256',
                   'githubTrustRootSha256', 'dockerVersion', 'buildxVersion', 'composeVersion', 'runnerImageVersion'))

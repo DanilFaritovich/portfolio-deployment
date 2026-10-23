@@ -91,7 +91,8 @@ def main():
     import tempfile
     root = Path(__file__).resolve().parents[1]
     try:
-        paths = sorted((root / 'docs/candidates').iterdir())
+        candidates = root / 'docs/candidates'
+        paths = sorted(candidates.iterdir()) if candidates.exists() or candidates.is_symlink() else []
         require(len(paths) <= 128)
         for path in paths:
             require(path.suffix == '.yaml' and not path.is_symlink())

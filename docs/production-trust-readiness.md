@@ -134,7 +134,7 @@ trust anchors or real host values.
 
 | Dependency | Ready mechanism / remaining work | Where resolved |
 | --- | --- | --- |
-| Operator approval | `review_approval` and durable executor nonce/candidate ledger exist. Choose independently authenticated signer/issuer allowlist, standard signature mechanism, key custody/revocation and envelope intake; implement/review `verifier.authenticate` outside request input. Wrong signer/candidate/time/replay must block. | Operator decision + reviewed binding, before mutations |
+| Operator approval | [Closed SSHSIG verifier](operator-approval.md), `review_approval` and durable executor nonce/candidate ledger exist. Independently choose/pin principal/key allowlist and ssh-keygen, approve custody/revocation and envelope intake, and review the fixed binding; no key/verifier is installed. Wrong signer/candidate/time/replay must block. | Operator decision + reviewed binding, before mutations |
 | Administrative install channel | Standalone helper/installer exist; `installation/admin_bindings.py` deliberately raises. Select already authenticated administrator/host channel, review helper and binding externally, confirm exact bundle/manager/machine/pins. No generic sudo relay. | Operator decision, then separately permitted host contact |
 | Fixed production composition | `installation/bindings.py` deliberately raises. Review/pin concrete ports and identities; bundle binding must be independently pinned. No request-selected modules. | Reviewed code after policy and actual host identities are available |
 | HostContracts / SourceTrust | Kernel/Engine/storage/read-only journal collectors exist; approve network/IPAM/VPN coverage, ownership, quotas, containment and lease-aware recovery attestation. Bind complete actual payloads, port identity, host/daemon and sampling round. | Policy decision + fresh VDS inspection |
@@ -176,7 +176,7 @@ Proceed in this order; each permission applies only to its named operation:
 
 - [ ] Recheck latest develop exact SHA and successful Offline CI after this PR merges.
 - [ ] Review `origin/main...origin/develop` and the resulting tree diff, including
-  workflows, installer/bindings, dependency pins, disabled candidate/admission and
+  workflows, installer/bindings, dependency pins, registered manifest/admission and
   all trust changes. Confirm the selected [MIT License](../LICENSE) and retained
   third-party notices are included in the release.
 - [ ] Operator manually opens `develop` → `main` PR; approved source policy and
@@ -185,8 +185,9 @@ Proceed in this order; each permission applies only to its named operation:
   effective rules and exact-SHA successful **push** workflows; do not reuse PR success.
 - [ ] Confirm ProjectRouter protected-main producer release, exact GHCR digest,
   OCI platform/config, immutable signer workflow, SLSA builder and signed build-origin
-  caller run/attempt. Re-review real admitted manifest/policy bytes; disabled candidate
-  remains disabled until an explicitly reviewed registry/admission change.
+  caller run/attempt. Stage C2 registered the enabled ProjectRouter manifest after
+  independent verification; re-review its exact admitted manifest/policy bytes.
+  Desired registration does not authorize installation or rollout.
 - [ ] Independently review install bundle and all dependency/helper/binding pins
   from outside the candidate bundle. Build output/report alone is not approval.
 - [ ] Separately authorize the first read-only VDS inspection as above. This may

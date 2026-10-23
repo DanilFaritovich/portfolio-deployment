@@ -99,7 +99,8 @@ class ProductionExecutor:
                 raise DockerError('production-runtime-dependencies-unavailable')
             with production_host_lock() as lease:
                 self.installation.verify()
-                fresh = self.preflight.prepare(candidate.scope)
+                fresh = (self.preflight.prepare_locked(candidate.scope, lease)
+                         if hasattr(self.preflight, 'prepare_locked') else self.preflight.prepare(candidate.scope))
                 if fresh.candidate != candidate:
                     raise DockerError('production-exact-candidate-changed')
                 # Re-authenticate after potentially slow release/lock/observations.

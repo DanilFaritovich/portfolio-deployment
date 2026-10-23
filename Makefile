@@ -191,3 +191,9 @@ caddy-integration-test:
 export MANAGER_REVISION INSTALL_VENDOR INSTALL_CADDY INSTALL_DEPENDENCY_PINS INSTALL_BUNDLE
 installation-bundle:
 	@$(PYTHON) -c 'import os,sys; from scripts.production_integration.install_bundle import main; sys.exit(main(["--revision",os.environ.get("MANAGER_REVISION",""),"--vendor",os.environ.get("INSTALL_VENDOR",""),"--caddy",os.environ.get("INSTALL_CADDY",""),"--dependency-pins",os.environ.get("INSTALL_DEPENDENCY_PINS",""),"--output",os.environ.get("INSTALL_BUNDLE","")]))'
+
+# Explicit networked read-only historical QA; never a dependency of offline check.
+# GH_TOKEN needs read access only. No App credentials or production authorization.
+.PHONY: qa-release-check
+qa-release-check:
+	@$(PYTHON) -m scripts.caddy_release_qa

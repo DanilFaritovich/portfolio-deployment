@@ -15,6 +15,7 @@ from test_planning import root
 
 
 ID = 'a' * 64
+NETWORK_ID = 'c' * 64
 COMPONENT = {'name': 'web', 'type': 'http', 'port': 8080, 'health': {'strategy': 'http', 'path': '/en/'}}
 
 
@@ -25,10 +26,19 @@ class Docker:
                                          LABEL + '.component': 'web', 'com.docker.compose.project': 'portfolio-router',
                                          'com.docker.compose.service': 'web'}},
                     'HostConfig': {}, 'NetworkSettings': {'Networks': {
-                        'portfolio-router-private': {'IPAddress': '172.31.0.2'}}}}
+                        'portfolio-router-private': {'IPAddress': '172.31.0.2', 'NetworkID': NETWORK_ID}}}}
+        self.network = {'Id': NETWORK_ID, 'Name': 'portfolio-router-private', 'Driver': 'bridge',
+                        'Scope': 'local', 'Internal': True, 'EnableIPv6': False, 'Options': {},
+                        'Labels': {LABEL + '.managed': 'true', LABEL + '.application': 'router',
+                                   'com.docker.compose.project': 'portfolio-router', 'com.docker.compose.network': 'private'},
+                        'IPAM': {'Driver': 'default', 'Options': {}, 'Config': [{'Subnet': '172.31.0.0/24'}]},
+                        'Containers': {ID: {'IPv4Address': '172.31.0.2/24'}}}
         self.calls = 0
 
     def inspect(self, kind, identity):
+        if kind == 'network':
+            assert identity == NETWORK_ID
+            return copy.deepcopy(self.network)
         assert kind == 'container' and identity == ID
         self.calls += 1
         return copy.deepcopy(self.raw)
@@ -45,7 +55,7 @@ class Http:
 
 def test_bounded_internal_probe_pins_id_path_and_network():
     docker, http = Docker(), Http()
-    result = ProductionProbes(docker, http, 'router', '172.31.0.0/24').probe(
+    result = ProductionProbes(docker, http, 'router', '172.31.0.0/24', network_id=NETWORK_ID).probe(
         COMPONENT, ID, timeout=2, follow_redirects=False)
     assert result.http_status == 200 and docker.calls == 2
     assert http.calls == [(('172.31.0.2', 8080, '/en/'), {'timeout': 2, 'follow_redirects': False})]
@@ -65,7 +75,7 @@ def test_probe_rejects_unverified_targets(case):
         docker.raw['NetworkSettings']['Networks']['portfolio-router-private']['IPAddress'] = '8.8.8.8'
     elif case == 'stopped':
         docker.raw['State']['Status'] = 'exited'
-        result = ProductionProbes(docker, http, 'router', '172.31.0.0/24').probe(COMPONENT, ID, **kwargs)
+        result = ProductionProbes(docker, http, 'router', '172.31.0.0/24', network_id=NETWORK_ID).probe(COMPONENT, ID, **kwargs)
         assert result.running is False and not http.calls
         return
     elif case == 'timeout':
@@ -78,7 +88,7 @@ def test_probe_rejects_unverified_targets(case):
             return 200
         http.get = get
     with pytest.raises(DockerError):
-        ProductionProbes(docker, http, 'router', '172.31.0.0/24').probe(COMPONENT, ID, **kwargs)
+        ProductionProbes(docker, http, 'router', '172.31.0.0/24', network_id=NETWORK_ID).probe(COMPONENT, ID, **kwargs)
 
 
 def sample():

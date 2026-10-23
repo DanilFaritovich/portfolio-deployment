@@ -89,7 +89,8 @@ class ProductionStateReader:
         apps = {a.id: a for a in desired.applications}
         # Unknown managed applications cannot disappear from a complete snapshot.
         observed_apps = {a['id']: a for a in observed.document['applications']}
-        require(all(r.facts['labels'].get(LABEL + '.application') in observed_apps
+        require(all((r.facts['labels'].get(LABEL + '.application') in observed_apps or
+                     (r.kind != 'container' and r.facts['labels'].get(LABEL + '.application') in apps))
                     for r in before.resources if r.facts['labels'].get(LABEL + '.managed') == 'true' and
                     r.facts['labels'].get(LABEL + '.application')), 'production-managed-universe-incomplete')
         for app in observed.document['applications']:

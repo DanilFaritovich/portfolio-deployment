@@ -3,7 +3,7 @@
 [Русская версия](README.ru.md)
 
 Central Docker/GitOps deployment platform for independently built portfolio
-applications on a single Ubuntu VPS. **Current status: Stage 09.4A — production deployment preparation implemented and checked offline (1120 tests).**
+applications on a single Ubuntu VPS. **Current status: Stage C3 — protected-main release preparation; production installation and rollout remain pending.**
 Stage 08 is merged into `develop`; Stage 07 real local VM E2E passed 15/15 scenarios.
 Registry/admission, offline planning and retained Caddy previews are implemented;
 Stage 04 PR #4, Stage 05 PR #5 and Stage 06 PR #6 are merged into `develop`. Stage 05 adds deterministic Compose,
@@ -13,8 +13,13 @@ recovery analysis in the same executor. Stage 07 adds a separate disposable Ubun
 VM harness and real test-only observation/probe adapters; local acceptance passed,
 and future executions still require separate opt-ins.
 Production deployment remains **Planned**: full registry/gateway observations are
-not available from Docker alone. No production apply interface exists. The real
-registry remains empty pending a verified origin-bound digest; admission reserves ProjectRouter.
+not available from Docker alone. The one-shot executor requires independently
+installed trust bindings and signed operation approval. The real registry contains
+one enabled [ProjectRouter manifest](registry/applications/project-router.yaml),
+registered in Stage C2 after independent producer/source/OCI/signature verification.
+Registration declares desired state and does not authorize execution.
+See the [Stage C3 release review](docs/protected-main-release.md) for the complete
+`main...develop` scope, release gates and main-push Caddy publication effects.
 The separate Stage 05 local smoke was not performed.
 
 [Stage 09.4A preparation](docs/production-preparation.md) and
@@ -22,9 +27,11 @@ The separate Stage 05 local smoke was not performed.
 authenticated source bindings, canonical production lock/storage, an
 offline first-host bootstrap proposal and source/artifact/approval contracts.
 Recommended execution is host-local behind a separately provisioned privileged
-boundary; no sudo fallback or production apply exists. Both protected-main source
-proofs, installed trust/execution mechanisms and isolated exact-image runtime
-acceptance remain blockers. Stage 09.4B — First Authorized ProjectRouter Rollout —
+boundary; no sudo fallback exists. Fresh protected-main source proofs and
+independently installed trust/execution bindings remain execution gates. Historical
+[ProjectRouter acceptance](docs/project-router-acceptance.md) and
+[Caddy acceptance](docs/caddy-runtime-acceptance.md) passed in isolated environments;
+they do not grant production authority. Stage 09.4B — First Authorized ProjectRouter Rollout —
 requires separate approval; Stages 09.5/09.6 remain Planned. Operator observations
 are not trusted planner state. No VDS connection or mutation occurred in 09.4A.
 
@@ -32,8 +39,10 @@ are not trusted planner state. No VDS connection or mutation occurred in 09.4A.
 `project-router` → `project-router-web:8080` on `portfolio-proxy`, readiness `/en/`,
 hostname `danil-miftakhov.dev` and expected build origin `https://danil-miftakhov.dev`.
 The [inactive template](docs/templates/project-router.yaml) is outside the registry
-and fails validation until its digest is substituted. No production digest is
-claimed. Required next steps include protected-source CI, artifact/origin evidence,
+and retains a placeholder digest. The registered manifest pins the verified
+ProjectRouter digest and signed origin expectations recorded in
+[acceptance evidence](docs/project-router-acceptance.md). Execution still requires
+fresh protected-source CI and artifact/origin evidence,
 separately authorized VDS read-only diagnostics and approved live integration
 transports/operation gates. The document lists acceptance gates for 09.2–09.5 and non-secret
 operator inputs. No VPS connection or production mutation was performed.
@@ -79,7 +88,16 @@ review. One manual **Application isolated acceptance** workflow checks artifact
 signatures, deployment readiness/security, dependencies, restart and owned cleanup
 for HTTP/worker components. `make acceptance-check` validates inactive declarations
 offline. Business tests remain in application CI; real acceptance and production
-admission require separate review/authorization. Universal acceptance was not run.
+admission require separate review/authorization. ProjectRouter isolated acceptance
+passed in run [39837965499](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39837965499);
+this historical evidence does not replace fresh production release verification.
+
+[Operator SSHSIG verification](docs/operator-approval.md),
+[trusted composition and ACTIVE UDS](docs/production-installation.md#stage-b2-trusted-components)
+are implemented and tested offline. Both shipped installation bindings still block.
+The trusted Caddy producer has a historical signed publication; a future merge to
+`main` automatically builds/publishes a new exact-SHA candidate after source/CI
+gates. Publication does not install or roll out that candidate.
 
 ## Purpose and architecture
 
@@ -141,7 +159,7 @@ execution mechanism over the existing engine: exact candidates, independently
 verified one-time approval, durable SQLite replay protection and canonical lock.
 Installation artifacts are prepared; trusted production bindings are unconfigured.
 No VDS installation, bootstrap or rollout was performed. Full live release
-verification, operator verifier/attestors, Caddy provenance and independently approved manager
+verification, installed operator keys/verifier/attestors, Caddy provenance and independently approved manager
 installation remain prerequisites; `productionAuthorized=false` by default.
 
 [Stage 09.4B.4](docs/production-installation.md) adds deterministic offline install
@@ -191,7 +209,7 @@ scripts/composite_state.py      Full-source observation contract
 scripts/deployment_journal.py   Private versioned SQLite intent/events/LKG
 scripts/deployment_lifecycle.py Readiness, constrained rollback and recovery analysis
 scripts/local_docker_smoke.py   Separate opt-in disposable test lifecycle
-registry/applications/         Empty real registry; one manifest per application
+registry/applications/         ProjectRouter registered; one manifest per application
 policy/admission.yaml           ProjectRouter eligibility; security review required
 schemas/                       Versioned closed application/admission contracts
 tests/fixtures/                 Synthetic examples and hostile YAML inputs
@@ -266,7 +284,7 @@ make deployment-plan PYTHON=.venv/bin/python REGISTRY_ROOT=. APPLICATION=APP GIT
 make compose-check PYTHON=.venv/bin/python
 ```
 
-Replace APP with an admitted application; the real registry is empty. Preview JSON
+Replace APP with an admitted application, currently `project-router`. Preview JSON
 is machine-readable and never authorizes execution. `compose-validate` with the
 same root/application/revision optionally invokes installed Compose v2 `config -q`
 without daemon contact; missing prerequisites report `not-performed`.
@@ -328,10 +346,10 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Implemented; real local VM E2E passed, 15/15; production acceptance pending |
 | Stage 08 | GitHub Actions & Automation | Implemented offline; manual VM completion procedure awaiting live review |
-| Stage 09 | Production Integration & Release | 09.1–09.4A and 09.4B.3 mechanism implemented offline; production installation/first rollout and 09.5/09.6 Planned; separate operation approvals required |
+| Stage 09 | Production Integration & Release | One-shot execution, SSHSIG verification, trusted composition and ACTIVE UDS implemented offline; ProjectRouter registered; C3 protected-main release preparation; installation/first rollout and 09.5/09.6 pending separate approvals |
 
-Stage 05 selects Python CLI without changing Stage 02–04 contracts. Real
-ProjectRouter registration still requires a confirmed digest. Stage 06 owns
+Stage 05 selects Python CLI without changing Stage 02–04 contracts. Stage C2
+registered ProjectRouter with its independently verified digest. Stage 06 owns
 readiness, rollback, journal and recovery; Stage 07 expands isolated E2E. Full live
 observation, protected-source enforcement, configuration delivery and index mapping
 need review before production execution.

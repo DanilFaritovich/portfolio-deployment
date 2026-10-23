@@ -13,8 +13,11 @@ executor; PR #6 is merged into `develop`. Stage 07 adds a disposable Ubuntu VM
 harness and real test-only readers/probes; all 15 real local VM E2E scenarios
 passed on 2026-10-21. This verifies only the disposable test integration.
 Stage 08 offline CI is merged into `develop`. Stage 09.1 adds offline production
-contracts/security and narrow ProjectRouter admission; the real registry remains
-empty pending a verified origin-bound digest. Stage 09.2 adds an offline-tested
+contracts/security and narrow ProjectRouter admission. Stage C2 registers one enabled
+ProjectRouter manifest after independent producer/source/OCI/signature verification;
+registration is desired state only. [Stage C3](docs/protected-main-release.md) prepares
+the protected-main release without authorizing installation or rollout.
+Stage 09.2 adds an offline-tested
 read-only inspection layer; no real VDS connection or inspection is verified.
 Stage 09.3 adds offline-tested production integration ports, runtime security and
 a fake-adapter lifecycle rehearsal. Production write transports and source/operation
@@ -39,7 +42,7 @@ by default; no release or configuration file grants its authority.
 Concrete fixed local machine/kernel/storage and read-only SQLite sources emit
 bounded fresh facts for existing HostContracts/SourceTrust composition; they do
 not attest their own payloads or manufacture complete planner evidence. Independent
-runtime/gateway/readiness/host/bootstrap attestors remain missing. A local empty
+authority bindings and gateway/bootstrap attestors remain unconfigured. A local empty
 Caddy validation binding reuses existing ManagedBootstrapPort/BootstrapExecution;
 provenance and exact-image runtime acceptance remain mandatory external gates.
 
@@ -65,8 +68,9 @@ the fixed producer GHCR repository by digest; runtime hardening is unchanged.
 Publication waits boundedly for exact main-push Offline CI, then rechecks full
 source policy with a separately supplied repository-scoped read-only credential;
 the workflow token cannot supply Administration:read branch-protection evidence.
-First main publication, signed digest, real exact-image acceptance and installed
-production attestation remain pending; no Caddy acquisition/rollout is authorized.
+Historical main publication and signed digest are recorded in the release QA
+section below. Each future main push requires new exact-SHA publication/acceptance
+evidence and installed production attestation; no Caddy acquisition/rollout is authorized.
 
 Python CLI, Docker Engine/Compose (stable plugin versions >= 2, with separate CLI/configuration gates),
 GHCR, Git and Caddy are selected technologies.
@@ -81,6 +85,60 @@ execute and Stage 06 lifecycle. ProductionLifecycle reuses readiness/rollback an
 gateway sequencing; base disposable gates remain intact. The shared fixed Compose
 transport performs no build or implicit pull. Fixed manager-only bootstrap actions
 and exact-container Caddy validation/reload ports require installed attestors.
+
+[Operator approval verification](docs/operator-approval.md) implements a closed
+canonical JSON v1 envelope and OpenSSH SSHSIG Ed25519/SHA-512 authentication in
+`scripts/production_integration/operator_approval.py`. The namespace is fixed to
+`portfolio-deployment-operation-v1`. Exact principal/key allowlist and ssh-keygen
+pins come from independently approved external SealedInstallation inventory;
+no operator key or verifier is configured by the shipped bindings. Claims flow
+through existing review_approval and repeated under-lock authentication. The
+separate workstation `scripts.verify_operator_approval` only inspects local
+signatures/time with explicit independent pins; it creates no executor authority.
+
+Stage B2 adds [trusted installation components](docs/production-installation.md#stage-b2-trusted-components)
+verified offline: complete repeated Engine discovery matched to independently
+admitted current/historical contracts, local SourceTrust proofs bound to exact
+source objects/payloads/rounds, and readiness over an exact private network ID,
+membership and IPAM checked before/after numeric HTTP. PolicyHostContracts separates
+LocalHostSources facts, independently approved HostPolicy and mandatory external
+backup/console/allocation/budget/containment authority. ReadOnlyJournalSource uses
+the executor's existing lease via CandidatePreflight.prepare_locked, with no nested
+flock, and binds the real bootstrap authorization to its LKG and machine/daemon.
+The fixed composition recipe reuses SSHSIGVerifier, AuthenticatedReleaseCollector,
+ProductionStateReader, existing mutation ports and ProductionExecutor. Cache-only
+image preparation reuses ImagePreparation with that same installed Engine; a
+separately approved installed image-registry factory supplies CandidatePreflight.
+The provided ProjectRouter factory creates fresh bounded anonymous GHCR readers
+for the fixed repository, independently of release collection. Missing factory
+wiring blocks this scope; requests cannot select repositories/transports/authority,
+and Caddy remains excluded. Both shipped
+bindings and SealedInstallation.verify retain their gates. ACTIVE Caddy comparison
+checks two bounded reads against pinned official adaptation. Stage B3 supplies
+the opt-in local UDS channel and pinned runtime/storage verifier described below;
+public-route postconditions and bootstrap authorities still require installation. No disk fallback,
+new privileges, production authorization or real deployment is supplied.
+
+
+Stage B3 adds a fixed [trusted ACTIVE admin channel](docs/production-installation.md#stage-b3-trusted-caddy-active-admin-channel).
+`UnixActiveChannel` offers only HTTP/1.1 `GET /config/` over AF_UNIX. A separate
+root:root 0700 `/srv/portfolio/caddy-admin` directory is bound read/write, rprivate,
+without automatic creation, to `/run/portfolio-caddy-admin`. Caddy listens at
+`unix//run/portfolio-caddy-admin/admin.sock|0600`. NOFOLLOW descriptor traversal,
+root ownership/modes, socket type/link count/inode, peer host PID/UID/GID and
+before/after pinned Engine image/container/effective runtime/mount/network checks
+bind each read. Bodies are capped at 1MiB, HTTP headers at 16KiB, GETs at one second;
+two matching ACTIVE reads must equal sealed official adaptation within five seconds.
+Proof reuse expires after five seconds. There is no request-selected address or
+Admin API client. The separate granted reload port uses the sealed host Caddy
+binary at the corresponding host UDS address, exact private candidate bytes,
+existing CAS/LKG/journal and conservative unknown-outcome fencing. The image,
+capabilities and public port set are unchanged; no container helper is added.
+Fixed composition requires independently installed container/network/image pins.
+Both shipped bindings remain closed. Existing storage missing the new directory
+is rejected without migration; bootstrap requires that directory to be empty.
+Offline tests and official pinned-binary feasibility are distinct from the opt-in
+real bind-mount acceptance and from any separately authorized production install.
 
 SQLite schema v2 adds an irreversible nonce/candidate ledger in the same journal,
 with transactional migration preserving v1 events/LKG. Consumption precedes intent;
@@ -100,7 +158,7 @@ discovery cannot establish full Stage 03 registry/gateway evidence. See the
 | Owner / component | Responsibility | Status |
 | --- | --- | --- |
 | [Portfolio Server Infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure) | Ubuntu VPS, SSH/users/access policy, Docker Engine, system baseline, firewall and host security | External ownership; integration Planned; operation not verified here |
-| Service registry | Approved application identities, versioned multi-component contracts, references and storage declarations | Implemented offline; empty real registry |
+| Service registry | Approved application identities, versioned multi-component contracts, references and storage declarations | Implemented offline; one registered ProjectRouter desired manifest |
 | Desired state | Per-application manifests selecting component digests and references | Deeply immutable normalized model implemented offline |
 | Validator | Bounded YAML, closed schemas, semantic/global checks and separate admission policy | Implemented offline |
 | Planner | Pure desired/observed comparison using explicit local snapshots; reviewable plan only | Implemented offline |
@@ -203,8 +261,9 @@ ProjectRouter eligibility binds `DanilFaritovich/project-router`, its exact GHCR
 repository, `linux/amd64`, `danil-miftakhov.dev`, port 8080 and `/en/`. Canonical
 project/service/alias remain `portfolio-project-router` / `web` /
 `project-router-web`, on external `portfolio-proxy`; the producer's bare alias is
-translated at this boundary. The disabled template stays outside the registry
-until reviewed digest substitution. No production executor or trigger is added.
+translated at this boundary. The disabled placeholder template stays outside the
+registry; Stage C2 promoted the separately verified candidate into the registry.
+The Stage 09.1 contract itself adds no executor or trigger.
 Stage 09.3 adds an explicit per-component runtime-security projection; compatibility
 of the exact published producer image with that projection still requires evidence;
 complete observations, protected-source exact-SHA CI, verified OCI/origin evidence
@@ -659,7 +718,7 @@ manifest and config ID, and binds fresh Engine inspection. Source/protected-main
 exact-SHA CI/publish, provenance and build-origin verification is an injected trusted
 port with no success-producing default. Missing evidence blocks operation. Caddy
 runtime Compose is pinned and separate from applications, exposes TCP 80/443 only,
-keeps admin on container loopback and persists certificate/config storage under
+keeps admin on the private permissioned UDS and persists certificate/config storage under
 explicit operator paths. Exact proxy ownership, network ID and IPAM are required.
 
 The production gateway controller retains unrelated routes, validates full candidates,
@@ -737,7 +796,7 @@ internal DNS/TCP, PID security, mounts/ports, restart and owned-resource cleanup
 Persistent storage requires explicit disposable test-volume consent and collision-free
 preflight. Unsupported secrets/config and unavailable capabilities fail closed.
 Producer business/UI/PDF/SEO tests remain in application CI. ProjectRouter's exact
-v1.0.0 candidate stays disabled outside the registry with signed origin expectations.
+v1.0.0 declaration is registered with signed origin expectations after Stage C2 verification.
 
 The bounded sanitized report always has `productionAdmission: false` and is not
 accepted by the separate full production source/release verifier or operation gate.
@@ -777,11 +836,12 @@ The official Caddy 2.11.7 amd64 index/manifest/config bytes are pinned in separa
 acceptance fixtures. Raw bytes/provenance statements establish content linkage;
 cryptographic build-origin verification remains a production blocker. The harness
 substitutes temporary bind paths/project/network names, removes host publishing,
-uses internal networking and runs an exact HTTP-only fixture with loopback admin.
-Official validation also checks the existing bootstrap and full generated candidate
+uses internal networking and runs an exact HTTP-only fixture. Stage B3 changes
+its admin transport to a permissioned UDS and adds real ACTIVE-versus-adapt,
+reload and rejected-load preservation checks. Official validation also checks the existing bootstrap and full generated candidate
 without activation. Process capabilities, read-only paths, restart/persistence,
-peer reachability/admin denial, negative create-only configurations and cleanup
-after partial failure have offline coverage and passed 17/17 real Docker cases
+negative create-only configurations and cleanup have offline coverage. The
+original loopback-admin harness (before B3 UDS changes) passed 17/17 real Docker cases
 in run 39844325743 (Caddy 2.11.7 / Engine 28.0.4 / Compose 2.38.2), including cleanup.
 No fixture receipt can satisfy production trust, release verification or approval.
 
@@ -849,6 +909,27 @@ constraints, SLSA builder and signed origin/publish-run predicates precede
 `release_collector.py` constructing `ReleaseFacts`. There is no second OCI mapper,
 cryptographic signature implementation, facts deserializer or production authority.
 Trusted Python ports retain ADR 0001's installed-code boundary.
+
+`caddy-release-qa.yml` runs `make qa-release-check` on PRs into develop/main
+with read-only contents/attestation access and no App credentials. It pins the
+historical Caddy digest `sha256:cd65a6b7daa8029c9f367dcacb9dab14a5eb016c7e584e3ca7f1dbed89ed3800`,
+source `3d24ca2cefb723d8c8796940691bbbe31b19c1b2`, publication `40024294624/1`
+and attestations `59250326` / `59250361`. The shared `verify_caddy_artifact`
+contract checks OCI bytes/config and both pinned-root gh signatures, exact source
+and certificate workflow/ref identity, workflow-based SLSA builder, signed source
+and invocation, and the complete published input predicate. PR code supplies only
+QA evidence (`productionAuthorized=false`, protected source unverified); the
+production collector still calls full `ProtectedSource` policy B first. Operator
+approvals and production release verification remain independent mandatory gates.
+The transport accepts only the exact GitHub API-version deprecation Link notice;
+pagination, mixed or unknown Link headers still fail closed.
+
+Full `make check` runs once in Offline CI. Trusted Caddy image runs targeted
+producer/auth regressions, authenticates upstream inputs, checks toolchain drift,
+builds without network and validates the built image. Its unchanged publisher
+guard waits for successful exact-SHA main push Offline CI and full policy B
+before any registry write. Other isolated Docker/Caddy workflows stay separate.
+Real release QA is networked and never a dependency of offline `make check`.
 A manager SHA outside protected main remains blocked; develop/PR success cannot
 replace a separate reviewed main merge and exact-SHA checks.
 

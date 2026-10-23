@@ -16,6 +16,8 @@ from scripts.production_integration.artifacts import blob_digest, map_oci_bytes,
 from scripts.production_integration.caddy_image import inspect_caddy_contract, bind_caddy_engine
 from scripts.production_integration.caddy_runtime import verify_caddy_runtime
 from scripts.production_integration.gateway import content
+from scripts.production_integration.admin_contract import CONTAINER_ADDRESS, CONTAINER_DIRECTORY
+from scripts.production_integration.admin_socket import _read_socket
 from scripts.production_integration.runtime import CaddyRuntime, RuntimePaths
 from scripts.reconciliation import encode
 from scripts.runtime_integration import Harness, IntegrationFailure, InjectedFailure, require
@@ -65,7 +67,7 @@ def isolated_artifact(runtime, directory, session):
 def test_configuration():
     # Existing production global/admin renderer, plus a deliberately HTTP-only
     # fixture. No hostname, public DNS, TLS automation or ACME issuance.
-    return content(()).replace('admin 127.0.0.1:2019', 'admin 127.0.0.1:2019\n    auto_https off') + '\n:80 {\n    respond "caddy-acceptance" 200\n}\n'
+    return content(()).replace('admin ' + CONTAINER_ADDRESS, 'admin ' + CONTAINER_ADDRESS + '\n    auto_https off') + '\n:80 {\n    respond "caddy-acceptance" 200\n}\n'
 
 
 def validate_test_configuration(text):
@@ -120,6 +122,47 @@ class CaddyHarness(Harness):
         require(self.owned(doc, 'container') and expected in self.verify(doc), 'caddy-negative-case-failed')
         self.docker('container', 'rm', doc['Id'])
         self.completed.append('reject-' + name)
+
+    def active_acceptance(self, doc, config, fixture):
+        # Host GET through the actual bind-mounted UDS. No helper in the image.
+        mount = next(m for m in self.artifact.model['services']['caddy']['volumes']
+                     if m['target'] == CONTAINER_DIRECTORY)
+        path = Path(mount['source']) / 'admin.sock'
+        from scripts.production_integration.admin_socket import socket_metadata
+        socket_metadata(path.lstat())
+        pid = doc['State']['Pid']
+        def active():
+            return json.loads(_read_socket(str(path), pid, timeout=1, limit=1048576))
+        def adapted(name):
+            return json.loads(self.execute('caddy', 'adapt', '--config', '/etc/caddy/' + name, '--adapter', 'caddyfile'))
+        first = active()
+        require(first == adapted('Caddyfile') and first['admin']['listen'] == CONTAINER_ADDRESS,
+                'caddy-active-adapt-mismatch')
+        before = path.lstat()
+        # Same approved endpoint; HTTP-only fixture, zero published ports/ACME.
+        (config / 'reload.Caddyfile').write_text(fixture.replace('caddy-acceptance', 'caddy-reloaded'))
+        self.execute('caddy', 'reload', '--address', CONTAINER_ADDRESS,
+                     '--config', '/etc/caddy/reload.Caddyfile', '--adapter', 'caddyfile')
+        second = active()
+        require(second != first and second == adapted('reload.Caddyfile') and
+                path.lstat().st_ino == before.st_ino, 'caddy-active-reload-mismatch')
+        code, _ = self.attempt('exec', self.container, 'caddy', 'reload', '--address', CONTAINER_ADDRESS,
+                              '--config', '/etc/caddy/invalid.Caddyfile', '--adapter', 'caddyfile')
+        require(code != 0 and active() == second, 'caddy-invalid-reload-active-changed')
+        # Adapt succeeds, but Caddy cannot provision a logger on its read-only
+        # config mount. This exercises a real /load failure, not just CLI parsing.
+        (config / 'reload-failed.Caddyfile').write_text(fixture.replace(
+            '    auto_https off', '    auto_https off\n    log {\n        output file /etc/caddy/reload-forbidden.log\n    }'))
+        adapted('reload-failed.Caddyfile')
+        code, _ = self.attempt('exec', self.container, 'caddy', 'reload', '--address', CONTAINER_ADDRESS,
+                              '--config', '/etc/caddy/reload-failed.Caddyfile', '--adapter', 'caddyfile')
+        require(code != 0 and active() == second, 'caddy-failed-load-active-changed')
+
+        self.execute('caddy', 'reload', '--address', CONTAINER_ADDRESS,
+                     '--config', '/etc/caddy/Caddyfile', '--adapter', 'caddyfile')
+        require(active() == first, 'caddy-active-restore-unverified')
+        self.observations['activeAdminChannel'] = 'AF_UNIX-HTTP/1.1-GET-config'
+        self.completed.append('permissioned-uds-active-equals-adapt-reload-invalid-preserves-active')
 
     def run(self):
         require(not self.docker('ps', '-aq').strip(), 'caddy-disposable-daemon-not-empty')
@@ -193,18 +236,7 @@ class CaddyHarness(Harness):
                      'printf data-marker > /data/acceptance-marker; printf config-marker > /config/acceptance-marker')
         self.completed.append('read-only-root-and-config-no-docker-socket')
         self.stage = 'admin'
-        active = json.loads(self.execute('curl', '--noproxy', '*', '-fsS', '--max-time', '3', 'http://127.0.0.1:2019/config/'))
-        require(active['admin']['listen'] == '127.0.0.1:2019' and active['apps']['http']['servers'] and
-                all(s.get('automatic_https', {}).get('disable') is True for s in active['apps']['http']['servers'].values()),
-                'caddy-active-admin-or-https-mismatch')
-        ip = next(iter(doc['NetworkSettings']['Networks'].values()))['IPAddress']
-        # A second container on the isolated network can reach HTTP but not admin.
-        for port, success in ((80, True), (2019, False)):
-            code, _ = self.attempt('compose', '--project-name', self.project, '--file', str(self.file),
-                'run', '--rm', '--no-deps', '--pull', 'never', '--entrypoint', 'curl', 'caddy',
-                '--noproxy', '*', '-fsS', '--max-time', '3', f'http://{ip}:{port}/')
-            require((code == 0) == success, 'caddy-peer-access-mismatch')
-        self.completed.append('active-loopback-admin-peer-denied-http-reachable')
+        self.active_acceptance(doc, config, fixture)
         self.stage = 'validation'
         for name in ('Caddyfile', 'bootstrap.Caddyfile', 'candidate.Caddyfile'):
             self.execute('caddy', 'validate', '--config', '/etc/caddy/' + name, '--adapter', 'caddyfile')

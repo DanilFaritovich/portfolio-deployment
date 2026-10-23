@@ -21,7 +21,7 @@ from scripts.production_integration.locking import require_production_lease
 from scripts.production_integration.storage import validate_storage_directory
 
 PATHS = tuple('/srv/portfolio/' + n for n in ('locks', 'state', 'journal', 'requests', 'caddy-config',
-                                          'caddy-lkg', 'certificates', 'caddy-data', 'temporary'))
+                                          'caddy-lkg', 'certificates', 'caddy-data', 'caddy-admin', 'temporary'))
 JOURNAL_DIRECTORY = '/srv/portfolio/journal'
 COMMANDS = {
     'routes4': ('/usr/sbin/ip', '-j', '-4', 'route', 'show', 'table', 'all'),
@@ -170,6 +170,10 @@ class ReadOnlyJournalSource:
             result = {'database': 'present', 'incomplete': journal.incomplete(),
                       'authorizations': journal.authorization_recovery(),
                       'bootstrap': journal.last_good('manager-bootstrap', 'gateway')}
+            if result['bootstrap'] is not None:
+                row = db.execute('SELECT payload,state FROM authorizations WHERE nonce=?',
+                                 (result['bootstrap']['run'],)).fetchone()
+                result['bootstrapAuthorization'] = dict(row) if row is not None else None
         require_production_lease(lease)
         if (path.stat().st_dev, path.stat().st_ino) != (info.st_dev, info.st_ino):
             raise DockerError('production-journal-identity-changed')
