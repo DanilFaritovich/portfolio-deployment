@@ -163,12 +163,13 @@ def integrated(setup, verifier, monkeypatch):
         assert ref == reference and blob_digest(subject) == ref.split('@')[1]
         return ({'predicateType': SLSA, 'predicate': {'runDetails': {'builder': {'id': original.slsa_builder}}}},
                 {'predicateType': BUILD_ORIGIN, 'predicate': expectations[1]['expectedPredicate']})
+    s.release_arguments = dict(
+        github=SimpleNamespace(get=lambda repo,path:copy.deepcopy(updated[repo,path])),
+        registry=SimpleNamespace(collect=lambda ref:s.blobs), crypto=SimpleNamespace(verify=crypto),
+        checks=original.checks, publication_check=original.publication_check,
+        signer_sha=s.preflight.producer_sha, builder=builder, slsa_builder=original.slsa_builder)
     def release(candidate):
-        collector = AuthenticatedReleaseCollector(candidate,
-            github=SimpleNamespace(get=lambda repo,path:copy.deepcopy(updated[repo,path])),
-            registry=SimpleNamespace(collect=lambda ref:s.blobs), crypto=SimpleNamespace(verify=crypto),
-            checks=original.checks, publication_check=original.publication_check,
-            signer_sha=s.preflight.producer_sha, builder=builder, slsa_builder=original.slsa_builder)
+        collector = AuthenticatedReleaseCollector(candidate, **s.release_arguments)
         return ReleaseVerifier(candidate, required_checks=release_verifier.required_checks,
                                allowed_builders=[builder], collector=collector)
     s.executor.release_factory = release
@@ -358,13 +359,12 @@ def test_signed_bootstrap_then_separate_rollout_or_partial_fence(integrated, sig
         assert journal.last_good('project-router', 'web')['run'] == '1'*32
 
 
-def test_fixed_composition_wires_existing_ports_and_stays_inert(router, monkeypatch):
+@pytest.fixture
+def fixed_composition(router, monkeypatch):
     from scripts.production_integration import composition
     from scripts.production_integration.docker import EngineContract
     from scripts.production_integration.installation import SealedInstallation
     from scripts.production_integration.runtime import CaddyRuntime
-    from scripts.production_integration.operator_approval import SSHSIGVerifier
-    from scripts.production_integration.execution import ProductionExecutor
     from test_production_integration import state, paths
     monkeypatch.setattr(SealedInstallation, 'verify', lambda self:None)
     installation = SealedInstallation('a'*40, ())
@@ -379,7 +379,18 @@ def test_fixed_composition_wires_existing_ports_and_stays_inert(router, monkeypa
         producer_sha='b'*40, image=router.spec['components'][0]['image'], github=authority,
         registry=authority, crypto=authority, checks=(), publication_check=authority,
         signer_sha='b'*40, builder='unconfigured', slsa_builder='unconfigured')
+    return installation, arguments
+
+
+def test_fixed_composition_wires_existing_ports_and_stays_inert(fixed_composition):
+    from scripts.production_integration import composition
+    from scripts.production_integration.operator_approval import SSHSIGVerifier
+    from scripts.production_integration.execution import ProductionExecutor
+    installation, arguments = fixed_composition
     executor = composition.build(installation, **arguments)
+    assert executor.preflight.image_registry is None and executor.image_preparation is None
+    with pytest.raises(DockerError, match='production-image-registry-unavailable'):
+        executor.preflight.prepare('prepare-project-router-image')
     assert type(executor) is ProductionExecutor and type(executor.verifier) is SSHSIGVerifier
     assert isinstance(executor.preflight.provider.reader, ProductionStateReader)
     assert isinstance(executor.preflight.contracts, PolicyHostContracts)
@@ -463,3 +474,163 @@ def test_missing_public_postconditions_never_promotes(integrated, signer):
     calls = list(s.world.calls)
     assert s.executor.run(c, envelope).status == 'blocked'
     assert s.world.calls == calls
+
+
+@pytest.fixture
+def composed_image(integrated, fixed_composition, monkeypatch):
+    """Real fixed composition, preflight, release/SSHSIG and cache coordinator.
+
+    Substitute only independent host/installation facts and transport I/O. The
+    fixed GHCR factory and existing ImagePreparation implementation remain real.
+    """
+    from scripts.production_integration import composition, image_preparation
+    from scripts.production_integration.release_transport import IMAGE_REPOSITORY
+    from scripts.production_integration.image_preparation import ImagePreparation
+    s = integrated
+    _, arguments = fixed_composition
+    installation = s.executor.verifier.installation
+    monkeypatch.setattr(composition, 'installed_engine', lambda *a:s.engine)
+    monkeypatch.setattr(composition, 'InstalledContentReader', lambda *a:s.preflight.content_reader)
+    monkeypatch.setattr(composition, 'LocalHostSources', lambda *a:None)
+    monkeypatch.setattr(composition, 'PolicyHostContracts', lambda *a, **kw:s.host)
+    s.cache_calls, s.cache_present, s.cache_failure = [], False, None
+    class RegistryTransport:
+        def get(self, url, headers):
+            s.cache_calls.append('registry')
+            if url.startswith('https://ghcr.io/token?'):
+                assert url == 'https://ghcr.io/token?service=ghcr.io&scope=repository:danilfaritovich/project-router:pull'
+                assert headers == {}
+                return b'{"token":"synthetic"}'
+            prefix = 'https://ghcr.io/v2/danilfaritovich/project-router/'
+            assert url.startswith(prefix) and headers['Authorization'] == 'Bearer synthetic'
+            return s.blobs[url.rsplit('/', 1)[1]]
+    monkeypatch.setattr(composition, 'HTTPSRead', RegistryTransport)
+    def listing(args):
+        assert args == image_preparation.LIST
+        s.cache_calls.append('list')
+        if s.cache_failure == 'incomplete': return b'incomplete'
+        return encode({'Repository': IMAGE_REPOSITORY, 'Digest': s.preflight.image.split('@')[1],
+                       'ID': s.world.image.image_id}).encode() if s.cache_present else b''
+    s.engine._run = listing
+    original_inspect = s.engine.inspect
+    def inspect(kind, identity):
+        if kind != 'image': return original_inspect(kind, identity)
+        assert kind == 'image' and identity == s.preflight.image and s.cache_present
+        s.cache_calls.append('inspect')
+        raw = original_inspect(kind, identity)
+        if s.cache_failure == 'digest': raw['RepoDigests'] = [IMAGE_REPOSITORY + '@sha256:' + 'f'*64]
+        if s.cache_failure == 'platform': raw['Architecture'] = 'arm64'
+        return raw
+    s.engine.inspect = inspect
+    def pull(argv, **kw):
+        assert argv == ['/usr/bin/docker', '--host', 'unix:///run/docker.sock', 'image', 'pull',
+                        '--platform', 'linux/amd64', s.preflight.image]
+        assert kw['timeout'] == 120
+        s.cache_calls.append('pull')
+        if s.cache_failure == 'ambiguous': raise DockerError('docker-timeout', True)
+        s.cache_present = True
+    monkeypatch.setattr(image_preparation, 'run_bounded', pull)
+    arguments.update(s.release_arguments, image=s.preflight.image,
+                     image_registry=composition.project_router_image_registry)
+    s.executor = composition.build(installation, **arguments)
+    assert type(s.executor.image_preparation) is ImagePreparation
+    s.executor.directory, s.executor.clock = s.directory, lambda:100
+    s.preflight = s.executor.preflight
+    # Freshness clock is controlled, host attestor uses the same clock.
+    s.preflight.clock = lambda:0
+    def cache_candidate():
+        with s.lock() as lease:
+            return s.preflight.prepare_locked('prepare-project-router-image', lease).candidate
+    s.cache_candidate = cache_candidate
+    return s
+
+
+@pytest.mark.parametrize('already_present', [False, True])
+def test_fixed_composition_cache_only_signed_scope_and_replay(composed_image, signer, already_present):
+    s = composed_image
+    s.cache_present = already_present
+    def forbidden(*a, **kw): pytest.fail('cache scope attempted bootstrap/rollout')
+    s.executor.bootstrap.execute = s.executor.adapter_factory = forbidden
+    with s.lock() as lease, Journal(s.directory, lease) as journal:
+        bootstrap_good = journal.last_good('manager-bootstrap', 'gateway')
+    c, envelope = signed(s, signer, s.cache_candidate())
+    assert s.executor.run(c, envelope).status == 'succeeded'
+    assert s.cache_calls.count('pull') == (0 if already_present else 1)
+    assert s.cache_calls.count('inspect') >= 2
+    assert not s.world.calls and not s.world.present
+    assert s.executor.run(c, envelope).status == 'blocked'
+    # A newly signed candidate is also spent; registry reads do not authorize pull.
+    _, another = signed(s, signer, c, nonce='2'*32)
+    assert s.executor.run(c, another).status == 'blocked'
+    assert s.cache_calls.count('pull') == (0 if already_present else 1)
+    with s.lock() as lease, Journal(s.directory, lease) as journal:
+        assert not journal.authorization_recovery()
+        assert journal.last_good('project-router', 'web') is None
+        assert journal.last_good('manager-bootstrap', 'gateway') == bootstrap_good
+        assert journal.db.execute('SELECT state FROM authorizations WHERE nonce=?', ('1'*32,)).fetchone()[0] == 'succeeded'
+
+
+@pytest.mark.parametrize('missing', ['registry', 'cache'])
+def test_composed_cache_missing_dependency_blocks(composed_image, signer, missing):
+    s = composed_image
+    c, envelope = signed(s, signer, s.cache_candidate())
+    if missing == 'registry':
+        s.preflight.image_registry = None
+        with pytest.raises(DockerError, match='production-image-registry-unavailable'): s.cache_candidate()
+    else: s.executor.image_preparation = None
+    assert s.executor.run(c, envelope).status == 'blocked'
+    assert 'pull' not in s.cache_calls and not s.world.calls
+
+
+@pytest.mark.parametrize('failure', ['digest', 'platform', 'incomplete', 'ambiguous'])
+def test_composed_cache_unknown_outcome_fences_all_scopes(composed_image, signer, failure):
+    s = composed_image
+    c, envelope = signed(s, signer, s.cache_candidate())
+    rollout, rollout_envelope = signed(s, signer, replace(c, scope='first-project-router-rollout'), nonce='3'*32)
+    s.cache_failure = failure
+    assert s.executor.run(c, envelope).status == 'recovery-required'
+    pulls = s.cache_calls.count('pull')
+    assert s.executor.run(c, envelope).status == 'blocked'
+    _, another = signed(s, signer, c, nonce='2'*32)
+    assert s.executor.run(c, another).status == 'blocked'
+    assert s.executor.run(rollout, rollout_envelope).status == 'blocked'
+    with pytest.raises(DockerError, match='production-host-recovery-required'): s.prepare()
+    assert s.cache_calls.count('pull') == pulls and not s.world.calls
+    with s.lock() as lease, Journal(s.directory, lease) as journal:
+        assert journal.authorization_recovery()
+        assert journal.last_good('project-router', 'web') is None
+
+
+@pytest.mark.parametrize('failure', ['unapproved', 'caddy', 'digest', 'platform', 'unsigned', 'candidate'])
+def test_composed_cache_untrusted_image_never_pulls(composed_image, signer, failure):
+    s = composed_image
+    c, envelope = signed(s, signer, s.cache_candidate())
+    if failure == 'unapproved': s.release_arguments['crypto'].verify = lambda *a: ()
+    elif failure == 'caddy': s.preflight.image = 'ghcr.io/danilfaritovich/portfolio-caddy@sha256:' + 'f'*64
+    elif failure == 'digest': s.blobs[c.image.split('@')[1]] += b' '
+    elif failure == 'platform':
+        from scripts.production_integration.artifacts import blob_digest
+        manifest = json.loads(s.blobs[c.image.split('@')[1]])
+        config = json.loads(s.blobs[manifest['config']['digest']])
+        config['architecture'] = 'arm64'
+        raw = encode(config).encode()
+        manifest['config'].update(digest=blob_digest(raw), size=len(raw))
+        manifest_raw = encode(manifest).encode()
+        s.blobs.update({blob_digest(raw):raw, blob_digest(manifest_raw):manifest_raw})
+        s.preflight.image = c.image.split('@')[0] + '@' + blob_digest(manifest_raw)
+        with pytest.raises(DockerError): s.cache_candidate()
+    elif failure == 'unsigned': envelope = b'{}'
+    else: s.preflight.producer_sha = 'f'*40
+    assert s.executor.run(c, envelope).status == 'blocked'
+    assert 'pull' not in s.cache_calls and not s.world.calls
+
+
+def test_installed_registry_factory_is_fixed_fresh_and_bounded():
+    from scripts.production_integration.composition import project_router_image_registry
+    from scripts.production_integration.release_transport import GHCRRead, HTTPSRead, IMAGE_REPOSITORY
+    first, second = project_router_image_registry(), project_router_image_registry()
+    assert type(first) is GHCRRead and type(first.transport) is HTTPSRead
+    assert first.repository == IMAGE_REPOSITORY and first._registry_auth is None
+    assert first.transport is not second.transport and first.transport.remaining == 64
+    with pytest.raises(DockerError, match='production-release-image-rejected'):
+        first.collect('ghcr.io/danilfaritovich/portfolio-caddy@sha256:' + 'f'*64)

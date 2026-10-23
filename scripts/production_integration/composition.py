@@ -14,6 +14,7 @@ from scripts.production_integration.gateway_read import ManagedGatewayReadPort
 from scripts.production_integration.gateway_write import GatewayExecutionFactory
 from scripts.production_integration.host_policy import PolicyHostContracts
 from scripts.production_integration.http_read import InternalHTTPRead
+from scripts.production_integration.image_preparation import ImagePreparation
 from scripts.production_integration.installation import SealedInstallation
 from scripts.production_integration.local_sources import LocalHostSources, ReadOnlyJournalSource, installed_engine
 from scripts.production_integration.mutations import ManagedBootstrapPort, ScopedProductionDocker
@@ -22,17 +23,31 @@ from scripts.production_integration.operator_approval import SSHSIGVerifier
 from scripts.production_integration.readiness import ProductionProbes
 from scripts.production_integration.release import ReleaseVerifier
 from scripts.production_integration.release_collector import AuthenticatedReleaseCollector
+from scripts.production_integration.release_transport import GHCRRead, HTTPSRead, IMAGE_REPOSITORY
 from scripts.production_integration.runtime_sources import (RuntimeInventory, RuntimeSource, GatewaySource,
                                                             ReadinessSource, LocalSourceAttestor)
 from scripts.production_integration.trust import SourceBinding, SourceTrust
+
+
+def project_router_image_registry():
+    """Opt-in installed factory: fresh bounded anonymous reads, fixed repository.
+
+    Only independently reviewed bindings may select this dependency. Operation
+    requests cannot select its repository, transport or credentials.
+    """
+    return GHCRRead(HTTPSRead(), repository=IMAGE_REPOSITORY)
 
 
 def build(installation, *, engine_contract, host_policy, prerequisites, contracts,
           infrastructure, resolve_image, proxy, bootstrap_proxy, private_subnet, private_network_id,
           caddy, caddy_image, active_channel, gateway_runtime, gateway_postconditions, bootstrap_reader,
           bootstrap_attestor, bootstrap_resources, producer_sha, image,
-          github, registry, crypto, checks, publication_check, signer_sha, builder, slsa_builder):
+          github, registry, crypto, checks, publication_check, signer_sha, builder, slsa_builder,
+          image_registry=None):
     # This is an API for a reviewed fixed bindings.py, never a configuration loader.
+    # image_registry is an independently installed bounded factory (e.g. the
+    # fixed ProjectRouter factory above), separate from release collection.
+    # Missing approval/wiring leaves both candidate creation and cache execution closed.
     if type(installation) is not SealedInstallation or any(x is None for x in (
         prerequisites, active_channel, gateway_runtime, gateway_postconditions, bootstrap_reader, bootstrap_attestor,
         bootstrap_resources, github, registry, crypto, resolve_image)):
@@ -64,7 +79,7 @@ def build(installation, *, engine_contract, host_policy, prerequisites, contract
     preflight = CandidatePreflight(manager_sha=installation.manager_sha, producer_sha=producer_sha, image=image,
         content_reader=content_reader, engine=engine, contracts=host, attestor=host, provider=provider,
         bootstrap_reader=bootstrap_reader, bootstrap_attestor=bootstrap_attestor, proxy=bootstrap_proxy,
-        private_subnet=private_subnet, caddy=caddy)
+        private_subnet=private_subnet, caddy=caddy, image_registry=image_registry)
     checks = tuple(checks)
     def release(candidate):
         collector = AuthenticatedReleaseCollector(candidate, github=github, registry=registry, crypto=crypto,
@@ -81,4 +96,6 @@ def build(installation, *, engine_contract, host_policy, prerequisites, contract
     return ProductionExecutor(installation=installation, preflight=preflight,
         journal_directory='/srv/portfolio/journal', approval_verifier=SSHSIGVerifier(installation),
         release_factory=release, adapter_factory=adapter, probes=probes,
-        gateway=GatewayExecutionFactory(installation, gateway, engine), bootstrap=BootstrapExecution(bootstrap))
+        gateway=GatewayExecutionFactory(installation, gateway, engine), bootstrap=BootstrapExecution(bootstrap),
+        image_preparation=(ImagePreparation(installation=installation, engine=engine)
+                           if image_registry is not None else None))

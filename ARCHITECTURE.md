@@ -102,7 +102,13 @@ backup/console/allocation/budget/containment authority. ReadOnlyJournalSource us
 the executor's existing lease via CandidatePreflight.prepare_locked, with no nested
 flock, and binds the real bootstrap authorization to its LKG and machine/daemon.
 The fixed composition recipe reuses SSHSIGVerifier, AuthenticatedReleaseCollector,
-ProductionStateReader, existing mutation ports and ProductionExecutor. Both shipped
+ProductionStateReader, existing mutation ports and ProductionExecutor. Cache-only
+image preparation reuses ImagePreparation with that same installed Engine; a
+separately approved installed image-registry factory supplies CandidatePreflight.
+The provided ProjectRouter factory creates fresh bounded anonymous GHCR readers
+for the fixed repository, independently of release collection. Missing factory
+wiring blocks this scope; requests cannot select repositories/transports/authority,
+and Caddy remains excluded. Both shipped
 bindings and SealedInstallation.verify retain their gates. ACTIVE Caddy comparison
 checks two bounded reads against pinned official adaptation; the distroless local
 GET channel, exact runtime/storage authority, public-route postconditions and
