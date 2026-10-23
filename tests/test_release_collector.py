@@ -551,3 +551,87 @@ def test_readiness_uses_a_fresh_collection_and_never_saved_success(tmp_path, mon
     report = module.check_release_readiness(installation, authorize_read_only=True, github_token='test_read_only')
     assert report['blockers'] == ['production-release-api-denied-or-rate-limited']
     assert report['productionAuthorized'] is False
+
+
+def solo_rules_fixture():
+    result = fixture()
+    _, docs, *_ = result
+    rules = [{'type': kind, 'ruleset_id': 7} for kind in
+             ('pull_request', 'non_fast_forward', 'deletion', 'required_status_checks')]
+    rules[0]['parameters'] = {'required_approving_review_count': 0, 'dismiss_stale_reviews_on_push': True}
+    rules[3]['parameters'] = {'strict_required_status_checks_policy': True,
+                             'required_status_checks': [{'context': 'ci', 'integration_id': 15368}]}
+    docs[PRODUCER, '/rules/branches/main?per_page=100'] = rules
+    docs[PRODUCER, '/rulesets/7'] = {'id': 7, 'target': 'branch', 'enforcement': 'active', 'bypass_actors': []}
+    docs[PRODUCER, '/branches/main/protection'] = DockerError('production-release-api-not-found')
+    return result, rules
+
+
+def test_solo_policy_is_explicit_and_not_installed_in_release_collector():
+    from scripts.production_integration.release_source import ProtectedSource
+    (c, docs, transport, crypto, verifier, request), _ = solo_rules_fixture()
+    policy = (WorkflowCheck(PRODUCER, 'ci', 15368, '.github/workflows/ci.yml'),)
+    source = ProtectedSource(verifier.collector.github, review_policy='B')
+    assert source.collect(PRODUCER, c.producer_sha, policy) is None
+    with pytest.raises(DockerError, match='production-release-protection-insufficient'):
+        ProtectedSource(verifier.collector.github).collect(PRODUCER, c.producer_sha, policy)
+    with pytest.raises(DockerError, match='production-release-protection-insufficient'):
+        verifier.verify(request)
+    assert not crypto.called
+
+
+@pytest.mark.parametrize('failure', [
+    'no-pr', 'force', 'deletion', 'no-ci', 'non-strict', 'app-unbound', 'wrong-policy-app',
+    'bypass', 'disabled', 'evaluate', 'wrong-target', 'unreadable', 'stale', 'negative-reviews',
+    'bool-reviews', 'failed-ci', 'disabled-ci', 'workflow', 'event', 'sha', 'check-app',
+])
+def test_solo_policy_retains_source_and_ci_gates(failure):
+    from scripts.production_integration.release_source import ProtectedSource
+    (c, docs, _, _, verifier, _), rules = solo_rules_fixture()
+    p = rules[3]['parameters']
+    detail = docs[PRODUCER, '/rulesets/7']
+    run = docs[PRODUCER, '/actions/runs?head_sha='+c.producer_sha+'&per_page=100']['workflow_runs'][0]
+    check = docs[PRODUCER, '/commits/'+c.producer_sha+'/check-runs?filter=latest&per_page=100']['check_runs'][0]
+    removed = {'no-pr': 'pull_request', 'force': 'non_fast_forward', 'deletion': 'deletion',
+               'no-ci': 'required_status_checks'}
+    if failure in removed: rules[:] = [r for r in rules if r['type'] != removed[failure]]
+    if failure == 'non-strict': p['strict_required_status_checks_policy'] = False
+    if failure == 'app-unbound': p['required_status_checks'][0]['integration_id'] = None
+    if failure == 'wrong-policy-app': p['required_status_checks'][0]['integration_id'] = 42
+    if failure == 'bypass': detail['bypass_actors'] = [{'actor_type': 'RepositoryRole', 'actor_id': 5, 'bypass_mode': 'pull_request'}]
+    if failure in ('disabled', 'evaluate'): detail['enforcement'] = failure
+    if failure == 'wrong-target': detail['target'] = 'tag'
+    if failure == 'unreadable': docs[PRODUCER, '/rulesets/7'] = DockerError('production-release-api-denied-or-rate-limited')
+    if failure == 'stale': rules[0]['parameters']['dismiss_stale_reviews_on_push'] = False
+    if failure == 'negative-reviews': rules[0]['parameters']['required_approving_review_count'] = -1
+    if failure == 'bool-reviews': rules[0]['parameters']['required_approving_review_count'] = False
+    if failure == 'failed-ci': run['conclusion'] = 'failure'
+    if failure == 'disabled-ci': run['status'] = 'disabled'
+    if failure == 'workflow': run['path'] = '.github/workflows/substitute.yml'
+    if failure == 'event': run['event'] = 'workflow_dispatch'
+    if failure == 'sha': run['head_sha'] = '0'*40
+    if failure == 'check-app': check['app']['id'] = 42
+    with pytest.raises(DockerError, match='production-release-'):
+        ProtectedSource(verifier.collector.github, review_policy='B').collect(
+            PRODUCER, c.producer_sha, (WorkflowCheck(PRODUCER, 'ci', 15368, '.github/workflows/ci.yml'),))
+
+
+@pytest.mark.parametrize('policy', [None, False, 'solo', '', 'b'])
+def test_unknown_source_review_policy_blocks(policy):
+    from scripts.production_integration.release_source import ProtectedSource
+    with pytest.raises(DockerError, match='production-release-review-policy-invalid'):
+        ProtectedSource(None, review_policy=policy)
+
+
+def test_solo_classic_requires_admin_enforcement_and_pr():
+    from scripts.production_integration.release_source import ProtectedSource
+    c, docs, _, _, verifier, _ = fixture()
+    classic = docs[PRODUCER, '/branches/main/protection']
+    classic['required_pull_request_reviews']['required_approving_review_count'] = 0
+    source = ProtectedSource(verifier.collector.github, review_policy='B')
+    source.policy(PRODUCER, {('ci', 15368)})
+    classic['enforce_admins']['enabled'] = False
+    with pytest.raises(DockerError): source.policy(PRODUCER, {('ci', 15368)})
+    classic['enforce_admins']['enabled'] = True
+    classic['required_pull_request_reviews'] = None
+    with pytest.raises(DockerError): source.policy(PRODUCER, {('ci', 15368)})

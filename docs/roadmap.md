@@ -149,3 +149,14 @@ are tracked separately. ProjectRouter isolated acceptance run
 39837965499 and main Offline CI run 39839861288 are confirmed successful, superseding
 earlier pending-run notes. Caddy build-origin signature verification remains a
 production blocker; Stage 09.4B rollout and Stages 09.5–09.6 remain separately scoped.
+
+## Stage 09.4B.5 — Production trust readiness
+
+[Readiness handoff](production-trust-readiness.md) prepares unapproved solo-maintainer
+source policy B while strict A remains the production default. Current Rulesets
+need strict up-to-date checks; no Settings write occurred. Exact-digest official
+Caddy registry probes did not establish authenticated publisher/builder provenance;
+recommended signed rebuild and upstream-evidence alternative require operator choice.
+The handoff orders release, independent bundle review, separately permitted read-only
+VDS diagnostics, initial install, image preparation, Caddy bootstrap and first rollout.
+Bindings/real-host evidence remain missing; no production authorization or run follows.

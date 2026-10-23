@@ -445,3 +445,11 @@ live collection, independently authenticated Caddy provenance or separately
 reviewed security policy, privileged execution installation, authenticated actual
 state, operator approval issuance/replay protection, DNS/TLS/storage/recovery and
 explicit bootstrap/rollout authorization. None is supplied by this stage.
+
+## Stage 09.4B.5 follow-up
+
+[Production trust readiness](production-trust-readiness.md) records the newer
+read-only Rulesets and exact-digest Docker Hub investigation, the unapproved B
+policy contract, precise pending Settings edits and ordered release/install actions.
+Its observations supersede older diagnostic policy snapshots only; they are not
+live verification facts. Strict A remains installed in collector and bundle review.

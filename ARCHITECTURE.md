@@ -814,3 +814,15 @@ with alternative security policies left for separate review. Production executio
 authenticated actual state, operator issuance, DNS/TLS/storage/recovery and explicit
 first-operation approval remain separate prerequisites. Image digests and admission
 policy are unchanged.
+
+## Stage 09.4B.5 trust readiness boundary
+
+[Trust readiness](docs/production-trust-readiness.md) prepares explicit low-level
+`ProtectedSource` policy B with zero required PR approvals; every other source/CI
+constraint remains. The production collector and independent bundle reviewer still
+construct strict policy A, with no input selector for B. Activation requires separate
+operator approval and reviewed wiring in both paths. Read-only GitHub/official
+Caddy registry observations are diagnostic evidence only. The selected Caddy digest
+still lacks established cryptographic publisher/builder provenance; acquisition and
+bootstrap remain blocked. No administrative/approval/source attestor is installed,
+no new engine or crypto is added and no VDS operation is authorized or performed.
