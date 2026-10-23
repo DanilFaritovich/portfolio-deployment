@@ -794,6 +794,15 @@ remain required. ProductionGateway and ManagedGatewayReadPort write blockers sta
 
 ## Stage 09.4B.2 release/source trust boundary
 
+The Caddy reusable publisher authenticates protected-source reads with a GitHub
+App installation token minted immediately before its guard, scoped to the current
+repository and Administration/Actions/Checks/Contents read permissions. Repository
+Client ID variable and explicitly passed private-key secret are confined to the
+credential gate and official SHA-pinned token action. Only the guard receives the
+token via step-local `GH_TOKEN`; action post-job revocation remains enabled.
+Policy B, exact-SHA Offline CI and trusted workflow/check App identity are unchanged.
+Build, registry publication, signing and provenance receive no App credential.
+
 The [read-only release collector](docs/production-release-source-trust.md) implements
 the existing `ReleaseVerifier` port without installing it in CLI/CI.
 `release_readiness.py` adds a separately authorized read-only API over typed,

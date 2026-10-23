@@ -3,8 +3,8 @@ name: Trusted Caddy publication
 on:
   workflow_call:
     secrets:
-      source-policy-token:
-        description: Read-only repository credential for protected-source API evidence
+      source-app-private-key:
+        description: GitHub App private key for read-only protected-source API evidence
         required: true
 
 permissions:
@@ -37,9 +37,30 @@ jobs:
       - run: python -m pip install --quiet -r requirements-dev.txt
       - name: Reject runtime toolchain drift
         run: python -m scripts.caddy_producer toolchain-check
+      - name: Require source App credentials
+        env:
+          SOURCE_APP_CONFIGURED: ${{ vars.CADDY_SOURCE_APP_CLIENT_ID != '' && secrets.source-app-private-key != '' }}
+        run: |
+          if [ "$SOURCE_APP_CONFIGURED" != true ]; then
+            echo 'caddy-source-app-credentials-unavailable' >&2
+            exit 1
+          fi
+      - name: Create read-only source App token
+        id: source-app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.CADDY_SOURCE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.source-app-private-key }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-administration: read
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          skip-token-revoke: false
       - name: Fail closed on unapproved source policy
         env:
-          GH_TOKEN: ${{ secrets.source-policy-token }}
+          GH_TOKEN: ${{ steps.source-app.outputs.token }}
         run: python -m scripts.caddy_producer publish-guard
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:

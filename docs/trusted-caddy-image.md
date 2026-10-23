@@ -80,15 +80,30 @@ PR success cannot substitute for push success. Failed/cancelled CI, duplicate ru
 changed run/attempt, denied/incomplete API evidence or timeout block publication.
 Waiting never relaxes source protection, App-bound checks or signatures.
 
-The reusable publisher requires `source-policy-token`, explicitly passed by the
-caller from `CADDY_SOURCE_POLICY_TOKEN`. The ordinary `GITHUB_TOKEN` cannot read
-the required classic branch-protection evidence: GitHub requires repository
-Administration:read, which is unavailable in workflow `permissions`. The separate
-credential must be reviewed and restricted to this repository with read-only
-Administration, Actions, Checks and Contents access; it is exposed only to the
-guard step, never registry login, build, image, acceptance or signing. No credential
-is created or configured by this implementation. Missing credential is a release
-publication prerequisite, not permission to omit protection evidence.
+The reusable publisher creates a GitHub App installation token immediately before
+`publication_guard`, using official `actions/create-github-app-token` v3.3.0 pinned
+to [verified release commit](https://github.com/actions/create-github-app-token/commit/64ab729a6294000f5aa4a4bc0b73d1f32bc45510).
+The owner configures repository variable `CADDY_SOURCE_APP_CLIENT_ID` and secret
+`CADDY_SOURCE_APP_PRIVATE_KEY`; the caller explicitly passes only the private key
+as required reusable secret `source-app-private-key`. Install the App only in this
+repository with Administration, Actions, Checks and Contents **read** permissions.
+The action explicitly requests those four permissions and only the current
+repository; missing credentials, unavailable installation or insufficient App
+permissions stop publication. No PAT or custom JWT implementation is used.
+
+The ordinary `GITHUB_TOKEN` cannot read the required classic branch-protection
+evidence: Administration:read is unavailable in workflow `permissions`. The App
+read credential does not change the trusted GitHub Actions check App identity
+(`15368`) or policy B. Its only consumer is the guard's step-local `GH_TOKEN`;
+the private key is an action input, never a build/registry/signing input. Token
+creation failure cannot skip the guard or enable upload. Default action cleanup
+revokes the token at job completion, including failure; expiry bounds its lifetime
+if revocation cannot complete. No App credential enters Docker, GHCR publication,
+acceptance, artifacts, logs or provenance. Registry operations continue to use the
+separate ephemeral workflow token. Offline tests cover configuration and workflow
+failure gates plus real guard/transport denial and trust boundaries; they do not
+claim a live App token was minted. Recheck release readiness on the exact develop
+SHA after manual merge before preparing the separate develop → main PR.
 
 The checked image transfers through a same-run, attempt-specific immutable Actions
 artifact; publication does not rebuild. Loaded config ID/defaults must match.
