@@ -66,6 +66,14 @@ class CandidatePreflight:
         self.image_registry = image_registry
 
     def prepare(self, scope):
+        return self._prepare(scope, None)
+
+    def prepare_locked(self, scope, lease):
+        # Lease-aware installed host source validates the canonical lease through
+        # ReadOnlyJournalSource. Never acquire a second flock here.
+        return self._prepare(scope, lease)
+
+    def _prepare(self, scope, lease):
         if self.attestor is None:
             raise DockerError('production-host-contract-attestor-unavailable')
         image_evidence = None
@@ -78,7 +86,8 @@ class CandidatePreflight:
                                               self.image_registry().collect(self.image))
         start = self.clock()
         identity = self.engine.identity()
-        contracts = self.contracts.collect()
+        contracts = (self.contracts.collect_under_lease(lease) if hasattr(self.contracts, 'collect_under_lease')
+                     else self.contracts.collect())
         now = self.clock()
         if (type(contracts) is not HostContracts or
             self.attestor.verify(contracts, identity) != contracts or

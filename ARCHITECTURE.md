@@ -39,7 +39,7 @@ by default; no release or configuration file grants its authority.
 Concrete fixed local machine/kernel/storage and read-only SQLite sources emit
 bounded fresh facts for existing HostContracts/SourceTrust composition; they do
 not attest their own payloads or manufacture complete planner evidence. Independent
-runtime/gateway/readiness/host/bootstrap attestors remain missing. A local empty
+authority bindings and gateway/bootstrap attestors remain unconfigured. A local empty
 Caddy validation binding reuses existing ManagedBootstrapPort/BootstrapExecution;
 provenance and exact-image runtime acceptance remain mandatory external gates.
 
@@ -91,6 +91,29 @@ no operator key or verifier is configured by the shipped bindings. Claims flow
 through existing review_approval and repeated under-lock authentication. The
 separate workstation `scripts.verify_operator_approval` only inspects local
 signatures/time with explicit independent pins; it creates no executor authority.
+
+Stage B2 adds [trusted installation components](docs/production-installation.md#stage-b2-trusted-components)
+verified offline: complete repeated Engine discovery matched to independently
+admitted current/historical contracts, local SourceTrust proofs bound to exact
+source objects/payloads/rounds, and readiness over an exact private network ID,
+membership and IPAM checked before/after numeric HTTP. PolicyHostContracts separates
+LocalHostSources facts, independently approved HostPolicy and mandatory external
+backup/console/allocation/budget/containment authority. ReadOnlyJournalSource uses
+the executor's existing lease via CandidatePreflight.prepare_locked, with no nested
+flock, and binds the real bootstrap authorization to its LKG and machine/daemon.
+The fixed composition recipe reuses SSHSIGVerifier, AuthenticatedReleaseCollector,
+ProductionStateReader, existing mutation ports and ProductionExecutor. Cache-only
+image preparation reuses ImagePreparation with that same installed Engine; a
+separately approved installed image-registry factory supplies CandidatePreflight.
+The provided ProjectRouter factory creates fresh bounded anonymous GHCR readers
+for the fixed repository, independently of release collection. Missing factory
+wiring blocks this scope; requests cannot select repositories/transports/authority,
+and Caddy remains excluded. Both shipped
+bindings and SealedInstallation.verify retain their gates. ACTIVE Caddy comparison
+checks two bounded reads against pinned official adaptation; the distroless local
+GET channel, exact runtime/storage authority, public-route postconditions and
+bootstrap authorities remain mandatory unconfigured dependencies. No disk fallback,
+new privileges, production authorization or real deployment is supplied.
 
 SQLite schema v2 adds an irreversible nonce/candidate ledger in the same journal,
 with transactional migration preserving v1 events/LKG. Consumption precedes intent;

@@ -170,6 +170,10 @@ class ReadOnlyJournalSource:
             result = {'database': 'present', 'incomplete': journal.incomplete(),
                       'authorizations': journal.authorization_recovery(),
                       'bootstrap': journal.last_good('manager-bootstrap', 'gateway')}
+            if result['bootstrap'] is not None:
+                row = db.execute('SELECT payload,state FROM authorizations WHERE nonce=?',
+                                 (result['bootstrap']['run'],)).fetchone()
+                result['bootstrapAuthorization'] = dict(row) if row is not None else None
         require_production_lease(lease)
         if (path.stat().st_dev, path.stat().st_ino) != (info.st_dev, info.st_ino):
             raise DockerError('production-journal-identity-changed')
