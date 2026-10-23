@@ -194,18 +194,20 @@ must arrange that lease without nested flock. It is also usable for separate
 read-only recovery analysis. No journal or local source alone can synthesize a
 complete trusted planner snapshot. Runtime/gateway/readiness require independently
 installed `SourceBinding`/`SourceTrust` attestors and the existing
-ProductionStateReader/CompositeStateProvider composition. These dependencies are
-still missing; there is no automatically trusted production state reader.
+ProductionStateReader/CompositeStateProvider composition. Stage B2 supplies the local
+source implementations and proof binding below; there is still no automatically
+trusted or configured production state reader.
 
 
 The exact missing live bindings are: an authenticated bounded reader of Caddy's
 **active** admin configuration (the current admin endpoint is container-loopback,
-so reading a host file cannot implement it); a complete runtime source with
-approved historical component contracts/receipt provenance corroborated by actual
-Engine resources, including unexpected managed applications; and source attestors
-binding runtime/gateway/readiness payloads to exact port identity, host/daemon and
-sampling round. HostContracts also needs independently approved IPAM/host/VPN,
-quota/backup/restore/console/containment policy and a lease-aware recovery collector.
+so reading a host file cannot implement it); independent approval/provenance of the
+current/historical contract catalog and infrastructure identities consumed by the
+new Engine runtime source; and installation of fixed SourceTrust wiring binding
+runtime/gateway/readiness payloads to exact ports, host/daemon and sampling round.
+PolicyHostContracts now implements local compliance and lease-aware recovery reads,
+but still needs independently approved IPAM/host/VPN, quota/backup/restore/console/
+containment policy and a fresh external prerequisite-evidence authority.
 A separately reviewed bounded in-container admin reader or independent local
 attestor is a possible Caddy transport; this task introduces neither arbitrary
 container exec nor a fabricated empty active-config result. These are installation
@@ -323,3 +325,108 @@ pin `/usr/bin/ssh-keygen` and `/etc/portfolio-deployment/operator-keys.json`.
 No installer authority, trust key, host permission or production readiness is
 established by providing this implementation. Key selection/custody/revocation,
 external pins and all prerequisites above remain separate operator decisions.
+
+## Stage B2 trusted components
+
+Status: **verified offline implementation**, unconfigured production authorities.
+B1 PR #48 is an ancestor of the B2 base (`3edb3f59f3708631e20bfc78c7f5243c316aa21c`).
+No VDS contact, installation, activation, image pull/publication or VM E2E occurred.
+
+| Implemented | Tested offline | Requires operator decision | Requires VDS evidence |
+| --- | --- | --- | --- |
+| `runtime_sources.RuntimeInventory/RuntimeSource` reuse full Engine discovery, image binding, resource preflight and effective runtime comparator; exact current/historical contract matching, double inventory, unknown resources block | Real discovery over controlled Engine records, actual OCI byte/config-ID binding, old runtime versus changed desired, foreign/denied/incomplete/changing inventory | Independently admit the catalog including prior contracts; approve exact infrastructure identities and image resolver | Complete accessible Engine universe, actual IDs/images/security/networks/volumes; unknown old runtime cannot be reconstructed from desired or LKG |
+| `LocalSourceAttestor` binds fixed source instance, returned object, immutable payload digest, round and machine/daemon through existing SourceTrust | Replaced/mutated proof rejection; complete ProductionStateReader/CompositeStateProvider path | Independently review and seal source code/policy/port identities | Fresh local authenticated samples; JSON/README/fixtures establish no authority |
+| Existing numeric `InternalHTTPRead` plus strengthened ProductionProbes: pinned network ID, ownership, internal bridge/IPAM/member address before and after HTTP | Bounded admitted port/path; changed IP/container/network and unknown readiness prevent activation/LKG | Approve network ID/subnet and host-local reachability | Actual network membership, running exact container and bounded internal response |
+| `PolicyHostContracts` checks independently approved exact network/resource/storage hashes, capacity/inodes, protected contents and real journal/bootstrap authorization | Same lease with real temporary SQLite; missing authority/backup/console, storage/routes/IPAM, identity, stale facts and interrupted journal block | Approve phase-specific HostPolicy and separate authority for allocation, budget enforcement, backup restore, console and containment | Kernel routes/rules/listeners including host networking/VPN; complete IPAM; directory inode/owner/content, quotas/capacity; actual restore/console evidence |
+| `ActiveConfigTransport` compares two independent bounded active JSON reads with sealed local `caddy adapt`; ManagedGatewayReadPort retains its existing checks | Altered/foreign/changing JSON, unavailable channel, pins/identity and closed response parsing; official adapter invocation remains bounded | Choose/review local ACTIVE GET channel and independent exact runtime/storage authority; public postcondition authority is also required | Actual pinned gateway/container/image, storage and two matching ACTIVE reads; public readiness/DNS/TLS |
+| `composition.build` wires existing sealed installation, SSHSIG, release collector/verifier, host/source/probes/gateway/bootstrap/rollout ports and ProductionExecutor | Inert wiring; real SSHSIG + release/source policy + OCI + coordinator + lock/ledger/lifecycle acceptance | Fixed binding code and independent pins, operator key/custody/revocation, all external authorities; no request-selected module or env hook | Confirm protected installed dependency closure and identities before enabling any intake/start access |
+| Existing standalone operator bootstrap, InitialInstallationApproval and ManagerBundleVerifier retained | Existing installation suite: source/bundle review, conflicts, preservation, isolated helper and no autostart | Independent administrative channel/helper/binding/bundle approval outside install bundle | Actual host/machine/tool pins, protected destination and quiescent installation window |
+
+The runtime catalog contains independently admitted immutable application contracts,
+including any supported prior versions. Actual Engine runtime must uniquely match a
+catalog entry; current desired state never fills an unknown prior spec. Config/secret
+delivery remains unsupported. Infrastructure pins include kind, ID, name and facts;
+network membership is checked against complete separately classified containers.
+Missing pinned infrastructure blocks. An application private network can exist after
+bootstrap without pretending the application container already exists. Unknown
+managed containers still block; unrelated approved infrastructure is preserved.
+
+HostPolicy is trusted installation-code input, not a schema for promoting an inspection
+report. `network_hash` binds complete kernel routing/rules/listeners plus Engine network
+and host-networking facts; `resources_hash` binds the full Engine universe for that
+operation phase. `storage_hash` binds protected fixed-path metadata/content hashes.
+Capacity counters are threshold checks, not volatile candidate identity. Journal data
+is read with `ReadOnlyJournalSource` under the existing canonical lease; bootstrap LKG
+must match its successful first-bootstrap authorization and machine/daemon. Both
+unfinished runs and unresolved authorization consumption block. Request content/inodes
+are excluded from candidate identity to avoid self-reference; their protection is
+still checked. Journal contents use the existing bounded schema/history checks.
+Storage traversal is bounded; no files are adopted, initialized or deleted.
+
+`prerequisites.verify(policy, identity)` must independently authenticate exact policy,
+evidence origin, host binding, freshness and revocation. Backup/console/allocation/
+budget/containment reference strings cannot implement it. Exact policy hashes enforce
+comparison, not independent approval. Actual quotas, encrypted off-host backup,
+isolated restore and console drills remain mandatory external prerequisites.
+
+Caddy's [API](https://caddyserver.com/docs/api) exports active state via `GET /config/`.
+Its [CLI](https://caddyserver.com/docs/command-line) adapts local documents and reloads
+configuration; it supplies no active-config GET command. The shipped
+[`images/caddy/Dockerfile`](../images/caddy/Dockerfile) copies only Caddy into distroless,
+without curl/wget, shell or an admin-read helper. The current admin endpoint is
+container loopback. Host loopback/bridge HTTP cannot reach that listener; disk
+Caddyfile/autosave is not ACTIVE evidence. `UnconfiguredActiveChannel` therefore
+raises. No generic exec, nsenter, extra capabilities, public admin endpoint or
+successful placeholder was introduced. Offline adapter tests use controlled JSON;
+they do not prove the published Caddy's live admin behavior.
+
+Operator handoff: separately choose either a reviewed fixed bounded GET helper in
+a newly authenticated/accepted image, or a reviewed permissioned local socket
+channel with the corresponding runtime/config/mount and reload-contract changes.
+Neither option is selected or authorized here. Runtime/channel identity and storage
+must be independently verified before reads; active responses are capped at 1MiB,
+one second per GET, with a five-second comparison round. Foreign/unsupported configs
+block. GatewaySource additionally requires independent public-route postconditions
+before any nonempty route set can contribute release-success evidence.
+
+Run the new acceptance offline with installed pinned development dependencies:
+
+```sh
+make fix
+.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_trusted_bindings.py
+```
+
+Acceptance uses the real CandidatePreflight, SourceTrust, ReleaseVerifier and
+AuthenticatedReleaseCollector with controlled API/registry/crypto transports, real
+OCI hashes, temporary Ed25519 SSHSIG, coordinator, flock, durable SQLite consumption,
+existing lifecycle and simulated mutation ports. It covers bootstrap with two
+postcondition observations, separately signed rollout, partial bootstrap, changing
+state, missing trust, readiness/gateway failures and consumed-nonce fences. This is
+synthetic acceptance, **not a deployment or verified production provenance**.
+
+Shortest remaining sequence (each live step needs its separate existing approval):
+
+1. Approve administrative identity/channel, operator key/pins, recovery/backup/
+   network/storage policy and the Caddy ACTIVE-channel design. Implement/review
+   remaining channel, prerequisite/runtime/bootstrap/public-postcondition authorities.
+2. Separately authorize read-only VDS inspection. Establish actual machine/daemon,
+   complete Engine, kernel/VPN/listeners, storage/quotas and recovery evidence.
+   Translate reviewed facts into fixed phase policies; never import the report as
+   an attestation. Resolve denied access through the infrastructure owner.
+3. After separately reviewed protected-main integration/release and real manifest
+   admission, independently verify the exact bundle, helper, binding and dependency
+   closure with ManagerBundleVerifier. Approve InitialInstallationApproval through
+   the chosen external administrative channel; install without activation.
+4. Confirm installation.verify, protected spool and canonical lock. Separately
+   authorize image cache/acquisition and fresh release/Caddy runtime verification.
+   Collect first-bootstrap candidate under that lock, independently sign and submit
+   through the approved intake/start channel; require two actual postconditions.
+5. Reobserve the resulting baseline and approve its actual network/resource IDs in
+   the next fixed phase policy. Prepare and separately sign the first ProjectRouter
+   rollout; require internal readiness, full active gateway verification and real
+   public DNS/TLS/path postconditions before LKG promotion. On ambiguity retain
+   evidence and stop for recovery review; no replay/reset/deletion is available.
+
+Both shipped `installation/bindings.py` and `installation/admin_bindings.py` still
+raise. SealedInstallation.verify is unchanged. The fixed recipe is not installed,
+and no default working production authorization exists.
