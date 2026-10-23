@@ -1,8 +1,9 @@
 """Independent workstation review using existing protected-main/App-bound checks.
 
 Install/review this verifier independently of the candidate bundle. No CLI policy,
-approval issuer, VDS transport or new signature scheme. GitHub policy A/B remains
-unapproved; defaults cannot verify a release or authorize initial installation.
+approval issuer, VDS transport or new signature scheme. Approved source policy B
+is fixed in trusted code; independent dependency/binding pins remain mandatory.
+Unconfigured defaults cannot verify a release or authorize initial installation.
 """
 from dataclasses import dataclass
 import hashlib
@@ -13,7 +14,7 @@ from scripts.docker_adapter import DockerError
 from scripts.production_integration.candidate import hashed
 from scripts.production_integration.install_bundle import source_target
 from scripts.production_integration.release import MANAGER
-from scripts.production_integration.release_source import ProtectedSource
+from scripts.production_integration.release_source import ProtectedSource, PRODUCTION_REVIEW_POLICY
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,7 @@ class ManagerBundleVerifier:
             raise DockerError('production-manager-review-policy-invalid')
         manifest, files = read_bundle(raw)
         sha = manifest['manager_sha']
-        source = ProtectedSource(self.github)
+        source = ProtectedSource(self.github, review_policy=PRODUCTION_REVIEW_POLICY)
         source.collect(MANAGER, sha, self.checks)
         commit = self.github.get(MANAGER, '/git/commits/' + sha)
         tree_sha = commit['tree']['sha']

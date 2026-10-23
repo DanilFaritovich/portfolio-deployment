@@ -260,7 +260,8 @@ def bundle_review(monkeypatch):
                      'sha': hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()})
     calls = []
     class Source:
-        def __init__(self, github): pass
+        def __init__(self, github, *, review_policy):
+            assert review_policy == 'B'
         def collect(self, repo, sha, checks):
             assert (repo, sha) == (MANAGER, SHA)
             calls.append('protected-main-with-app-checks')
@@ -309,3 +310,54 @@ def test_installer_never_executes_bundle_code(admin, tmp_path, monkeypatch):
     approval = replace(admin, bundle_sha256=digest(raw))
     assert bootstrap.install(raw, approval)['executorStarted'] is False
     assert not sentinel.exists()
+
+
+@pytest.mark.parametrize('case', ['valid', 'no-pr', 'stale', 'strict', 'bypass', 'force', 'deletion',
+                                  'app', 'workflow', 'sha', 'api', 'bindings', 'artifact-policy'])
+def test_bundle_review_uses_real_source_policy_b_and_independent_pins(bundle_review, monkeypatch, case):
+    from scripts.docker_adapter import DockerError
+    from scripts.production_integration.release import MANAGER
+    from scripts.production_integration.release_source import ProtectedSource, WorkflowCheck
+    f = bundle_review
+    monkeypatch.setattr(f.module, 'ProtectedSource', ProtectedSource)
+    tree_api = f.verifier.github.get
+    protection = json.loads((ROOT/'tests/fixtures/release/protection.json').read_text())
+    protection['required_pull_request_reviews']['required_approving_review_count'] = 0
+    metadata = {'id': 43, 'full_name': MANAGER}
+    docs = {'': metadata, '/branches/main': {'name': 'main', 'commit': {'sha': SHA}},
+        '/compare/'+SHA+'...'+SHA: {'status': 'identical', 'base_commit': {'sha': SHA}, 'merge_base_commit': {'sha': SHA}},
+        '/rules/branches/main?per_page=100': [], '/branches/main/protection': protection,
+        '/actions/runs?head_sha='+SHA+'&per_page=100': {'total_count': 1, 'workflow_runs': [
+            {'id': 1, 'run_attempt': 1, 'head_sha': SHA, 'head_branch': 'main', 'path': '.github/workflows/ci.yml',
+             'event': 'push', 'repository': metadata, 'head_repository': metadata, 'check_suite_id': 2,
+             'status': 'completed', 'conclusion': 'success'}]},
+        '/commits/'+SHA+'/check-runs?filter=latest&per_page=100': {'total_count': 1, 'check_runs': [
+            {'head_sha': SHA, 'name': 'ci', 'app': {'id': 15368}, 'check_suite': {'id': 2},
+             'status': 'completed', 'conclusion': 'success'}]}}
+    if case == 'stale': protection['required_pull_request_reviews']['dismiss_stale_reviews'] = False
+    if case == 'no-pr': protection['required_pull_request_reviews'] = None
+    if case == 'strict': protection['required_status_checks']['strict'] = False
+    if case == 'bypass': protection['required_pull_request_reviews']['bypass_pull_request_allowances']['users'] = ['admin']
+    if case == 'force': protection['allow_force_pushes']['enabled'] = True
+    if case == 'deletion': protection['allow_deletions']['enabled'] = True
+    if case == 'app': protection['required_status_checks']['checks'][0]['app_id'] = 42
+    run = docs['/actions/runs?head_sha='+SHA+'&per_page=100']['workflow_runs'][0]
+    if case == 'workflow': run['path'] = '.github/workflows/evil.yml'
+    if case == 'sha': run['head_sha'] = 'f'*40
+    if case == 'api': docs['/branches/main'] = {}
+    if case == 'bindings': f.verifier.bindings_pin = 'f'*64
+    if case == 'artifact-policy':
+        manifest = read_bundle(f.raw)[0]
+        manifest['review_policy'] = 'B'
+        f.raw = rewrite(f.raw, 'bundle.json', canonical(manifest))
+    reads = []
+    def api(repo, path):
+        reads.append(path)
+        return tree_api(repo, path) if path.startswith('/git/') else docs[path]
+    f.verifier.github.get = api
+    f.verifier.checks = (WorkflowCheck(MANAGER, 'ci', 15368, '.github/workflows/ci.yml'),)
+    if case == 'valid':
+        assert f.verifier.verify(f.raw).manager_sha == SHA
+        assert reads.count('/branches/main/protection') == 4
+    else:
+        with pytest.raises((DockerError, InstallError)): f.verifier.verify(f.raw)

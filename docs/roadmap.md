@@ -31,7 +31,7 @@ repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
 | Stage 09.4A — Production Deployment Preparation | Stable Compose plugin >= 2 and capability policy, explicit source trust, canonical lock/storage, bootstrap and candidate/evidence interfaces, execution ADR | Implemented and checked offline: 1120 tests; privileged mechanism, authenticated collectors and real-image runtime evidence remain blocked; no production writes |
 | Stage 09.4B — First Authorized ProjectRouter Rollout | Review/install actual production wiring and separately approve bootstrap and exact rollout candidate | Planned; protected-main evidence, approved privileged mechanism, trusted fresh observations, isolated runtime acceptance, DNS/TLS/storage/recovery and operator approval required |
 | Stage 09.4B.3 — Production Execution & Authorization | Host-local one-shot mechanism, exact candidates, consumed authorization ledger, same engine/lock/lifecycle and installation handoff | Implemented/tested offline; installation, independent operator verifier/attestors and production operations remain blocked |
-| Stage 09.4B.4 — Installation & Production Integration | Exact install bundles, independent manager source review, administrative initial installer, local read sources and separately approved GHCR cache preparation in the existing executor | Implemented/tested offline; independent administrative channel, production bindings/attestors, GitHub policy A/B, Caddy provenance and actual host operations remain blocked |
+| Stage 09.4B.4 — Installation & Production Integration | Exact install bundles, independent manager source review, administrative initial installer, local read sources and separately approved GHCR cache preparation in the existing executor | Implemented/tested offline; independent administrative channel, production bindings/attestors, fresh source evidence, Caddy provenance and actual host operations remain blocked |
 | Stage 09.5 — Update, Rollback & Release Acceptance | Controlled production update/rollback and operational acceptance | Planned; separate task/operation authorization; no automatic merge/tag |
 | Stage 09.6 — Automated Continuous Deployment | Protected producer-main publish proposes a manager digest-update PR; policy-gated CD follows review | Planned after safe manual rollout/rollback acceptance; no automatic CD implemented in 09.3 |
 
@@ -152,9 +152,12 @@ production blocker; Stage 09.4B rollout and Stages 09.5–09.6 remain separately
 
 ## Stage 09.4B.5 — Production trust readiness
 
-[Readiness handoff](production-trust-readiness.md) prepares unapproved solo-maintainer
-source policy B while strict A remains the production default. Current Rulesets
-need strict up-to-date checks; no Settings write occurred. Exact-digest official
+[Readiness handoff](production-trust-readiness.md) prepared solo-maintainer source
+policy B. Stage 09.4B.6 activates the maintainer-approved B in the production release
+collector and independent bundle reviewer using one fixed trusted-code constant;
+low-level A remains available. Fresh read-only API checks confirm strict App-bound
+CI, stale-review dismissal, PRs and zero required approvals in both Rulesets.
+No Settings write occurred. Exact-digest official
 Caddy registry probes did not establish authenticated publisher/builder provenance;
 recommended signed rebuild and upstream-evidence alternative require operator choice.
 The handoff orders release, independent bundle review, separately permitted read-only

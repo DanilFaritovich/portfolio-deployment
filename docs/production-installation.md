@@ -82,7 +82,10 @@ asset. An optional replacement bindings file needs a separate independent pin.
 Unknown SHA/content, truncated trees, changed dependencies and missing policy
 block. Review code/pins must come from outside the candidate bundle. Neither its
 report nor a saved JSON file grants privileged installation or executor rights.
-GitHub policy A/B remains undecided; this verifier does not weaken that gate.
+Stage 09.4B.6 fixes approved solo-maintainer policy B in this verifier and the
+release collector; low-level ProtectedSource still defaults to A. B removes the
+mandatory human approval count and retains every other source/CI/artifact gate.
+It grants no installation or runtime authority.
 
 ## Resolve initial administrative trust explicitly
 
@@ -278,7 +281,8 @@ or changing a version string. No such image, policy exception or producer is add
 
 Before initial installation: establish/review the administrative channel, exact
 main release, independent dependency/tool/stdlib provenance, bootstrap helper and
-binding pins, source policy A/B, protected paths and quiescent installation window.
+binding pins, fresh protected-main evidence under approved B, protected paths and
+quiescent installation window.
 Do not run the unconfigured helper or copy a task/develop artifact as trusted code.
 
 Before actual read-only VDS preflight: separate host-contact permission, pinned
@@ -306,5 +310,5 @@ rollout permissions. No real host readiness, Docker, Caddy or TLS claim follows.
 
 The [Stage 09.4B.5 handoff](production-trust-readiness.md) consolidates the pending
 operator decisions, real-host evidence and separate release/diagnostic/install/
-image/bootstrap/rollout approvals. It prepares B without enabling it; installation
-and runtime authority bindings remain deliberately unconfigured.
+image/bootstrap/rollout approvals. Stage 09.4B.6 activates approved B only in source
+verification; installation and runtime authority bindings remain unconfigured.

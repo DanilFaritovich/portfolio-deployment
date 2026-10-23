@@ -7,6 +7,11 @@ from scripts.production_integration.release import PRODUCER, MANAGER
 from scripts.production_integration.release_transport import require, bounded_items
 
 
+# Approved solo-maintainer composition for collector and independent bundle review.
+# Trusted installed code only: never selected by request or installation artifacts.
+PRODUCTION_REVIEW_POLICY = 'B'
+
+
 @dataclass(frozen=True)
 class WorkflowCheck:
     repository: str
@@ -24,9 +29,8 @@ class WorkflowCheck:
 
 class ProtectedSource:
     def __init__(self, github, *, review_policy='A'):
-        # B is prepared for separate operator review only. Production collectors
-        # and bundle review intentionally use the strict A default; no request,
-        # environment or installation-file flag selects this policy.
+        # Keep A as the low-level default for callers requiring human review.
+        # Production composition explicitly selects the approved fixed policy.
         require(type(review_policy) is str and review_policy in ('A', 'B'),
                 'production-release-review-policy-invalid')
         self.github = github

@@ -1,90 +1,67 @@
-# Stage 09.4B.5 — Production trust readiness
+# Stages 09.4B.5–09.4B.6 — Production trust readiness
 
-Status: prepared for review; no production authorization, installation, main merge,
-Settings change or VDS contact. Policy B is **not approved or activated**.
+Status: policy B approved by the sole maintainer and activated in trusted-code
+composition for release and independent install-bundle verification. No production
+authorization, installation, main merge, Settings write or VDS contact occurred.
 [Source trust](production-release-source-trust.md),
 [installation](production-installation.md) and
 [execution](production-execution.md) remain the operative contracts.
 
-## Gap analysis and observed GitHub policy
+## Verified GitHub policy
 
-Read-only GET inspection on 2026-10-23 established:
+Fresh authenticated read-only GETs on 2026-10-23 confirmed the operator's manual Settings changes. Full Ruleset details and
+`/rules/branches/main?per_page=100` agree for both repositories:
 
-- Manager develop `bfc4c54e0d5dfadfd76c89ff8bbe77f1594c2ed8`, merge PR #32:
-  [Offline CI passed](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39946275697).
-- Manager ruleset [25628217](https://github.com/DanilFaritovich/portfolio-deployment/rules/25628217)
-  and producer ruleset [25629062](https://github.com/DanilFaritovich/project-router/rules/25629062)
-  are active, target `main` and `develop`, have no exclusions or bypass actors,
-  and forbid deletion/non-fast-forward updates. Effective main rules agree.
-  Classic main protection returns 404 in both repositories; rulesets supply protection.
-- Both require PRs with zero approvals, but have **strict up-to-date disabled**
-  and stale-review dismissal disabled. Neither satisfies current A or proposed B.
-- Manager requires `Offline checks`; producer requires `Quality and static build`
-  and `Docker build and container smoke`. All are bound to App ID `15368`.
-  Actual check runs identify that App as `github-actions`. Producer publication
-  check `Publish validated image / publish` uses the same App. These observations
-  must be independently reviewed before installation as trusted policy.
-- Producer main was `526c765f33932e163392dd1d512de4aa2f2a5260`; its named checks and
-  publication check were successful. This is metadata, not signature verification.
+| Repository | Active Ruleset | Required checks (GitHub Actions App ID 15368) |
+| --- | --- | --- |
+| Manager | [25628217](https://github.com/DanilFaritovich/portfolio-deployment/rules/25628217) | `Offline checks` |
+| ProjectRouter | [25629062](https://github.com/DanilFaritovich/project-router/rules/25629062) | `Quality and static build`; `Docker build and container smoke` |
 
-Reproduce using authenticated **GET only** for each fixed repository:
-`/rulesets`, `/rules/branches/main?per_page=100`, `/rulesets/<id>`,
-`/branches/main/protection`, `/branches/main`, and
-`/commits/<exact-sha>/check-runs?filter=latest&per_page=100` under
+Both target `main` and `develop`, have no exclusions or bypass actors, require PRs
+with `required_approving_review_count=0`, enable
+`strict_required_status_checks_policy=true` and
+`dismiss_stale_reviews_on_push=true`, and prohibit deletion/non-fast-forward
+updates. `do_not_enforce_on_create=false`; `current_user_can_bypass=never`.
+These observations supersede the earlier 09.4B.5 snapshot with strict/stale checks
+disabled. No Ruleset was changed by this task.
+
+Reproduce with authenticated **GET only** against each fixed repository:
+`/rulesets/<id>` and `/rules/branches/main?per_page=100` under
 `https://api.github.com/repos/DanilFaritovich/<repository>`.
-The existing bounded ProtectedSource handles effective applicability, details,
-main ancestry, exact-SHA workflow/App linkage and read-round closure; no parallel
-policy engine, OCI mapper, installer or journal is needed. Historical observations
-are not live evidence for release or installation.
+Historical observations are not live evidence for release or installation.
 
-## Policy B contract and manual Settings proposal
+## Approved solo-maintainer policy B
 
-A remains the default everywhere. `ProtectedSource(github, review_policy='B')`
-prepares the sole difference: minimum PR approvals becomes zero instead of one.
-PR enforcement, stale-review dismissal, strict checks, trusted App identity,
-no bypass, force-push/deletion prohibition, exact main ancestry/SHA and successful
-main push workflows remain required. Unknown selectors fail closed. Classic
-protection additionally retains enforced administrators and explicitly empty PR
-bypass allowances. Ruleset details must remain active/readable with no bypass.
+`release_source.PRODUCTION_REVIEW_POLICY = 'B'` is a fixed trusted-code constant.
+`AuthenticatedReleaseCollector` explicitly uses it for both manager and producer;
+`ManagerBundleVerifier`, installed/reviewed independently of its candidate bundle,
+uses the same constant. The low-level `ProtectedSource` default remains A for
+callers requiring at least one eligible human approval. There is no fallback from
+A to B and no request, manifest, environment, CLI, JSON, ReleaseInstallation or
+bundle policy selector. Installation artifacts cannot supply trust anchors.
 
-Neither AuthenticatedReleaseCollector nor ManagerBundleVerifier passes B; there
-is no CLI, request, environment or ReleaseInstallation policy selector. After
-operator approval, a scoped change must wire the reviewed policy consistently
-into **both** paths and cover the complete release/crypto integration under B.
-Changing Settings alone cannot activate B in the current production verifier.
-The prepared low-level tests exercise source collection under B; existing signed
-provenance/publication tests remain in the strict production composition.
+The only relaxed requirement is the minimum approval count. B retains PRs,
+stale-review dismissal, strict up-to-date App-bound checks, readable active
+protection, no bypass/force-push/deletion, exact main ancestry/SHA and successful
+exact-SHA push workflows. Publication still binds the successful attempt-specific
+job/check to the pinned reusable workflow. GHCR OCI digest/platform/config,
+signed SLSA, signer identity, SLSA builder, signed build origin and caller run/attempt
+remain mandatory. Source checks are repeated; unsafe changes, unavailable or
+incomplete API evidence block. Bundle review retains exact-SHA Git-tree/content
+verification, complete inventories and independent dependency/bindings pins.
 
-B loses independent review before protected code/workflow changes: a compromised
-maintainer may approve their own source changes through a PR and modify CI itself.
-App-bound checks identify the issuer; they do not provide independent human review
-of workflow semantics. Main/provenance/signature/installed workflow pins and
-independent install/operation approval remain essential. B does not waive any of
-those boundaries or select a production approval issuer.
+B provides no independent human review guarantee for source, workflows or policy.
+A compromised maintainer account or maintainer mistake can change source and CI
+through a passing PR. App identity alone does not establish workflow semantics.
+The sole maintainer explicitly accepts this tradeoff; signature/workflow pins and
+independent install review remain essential.
 
-**Pending explicit operator approval**, proposed Settings changes in each repo:
-
-1. Settings → Rules → Rulesets → `ProtectBranches` (IDs above). Keep enforcement
-   `Active`, includes `refs/heads/main`, `refs/heads/develop`, exclusions empty,
-   bypass list empty. Keep deletion and force-push blocked.
-2. Keep “Require a pull request before merging” enabled. For B retain required
-   approvals `0`; enable “Dismiss stale pull request approvals when new commits
-   are pushed” (`dismiss_stale_reviews_on_push=true`). Do not require last-push
-   approval or CODEOWNERS approval for this solo policy. Preserve other existing
-   restrictions; these are not reasons to disable PRs or CI.
-3. Keep all required status checks listed above. Enable “Require branches to be
-   up to date before merging” (`strict_required_status_checks_policy=true`).
-   Retain `do_not_enforce_on_create=false`. Each check's expected source must be
-   GitHub Actions (`integration_id=15368`), never “any source”. Do not make the
-   push-only publication job a PR-required check.
-4. Save only after approval. Reread effective rules and full details; compare the
-   exact check names/App IDs and empty bypass. Run the reviewed source verifier
-   against fresh exact main revisions. An unexpected extra required check needs
-   workflow policy review. Disabled/missing/failed CI, substituted workflows or
-   Apps, partial API results and unsafe rules must block.
-
-If choosing A instead, additionally require at least one independent approval;
-keep stale dismissal and strict checks enabled. No Settings write occurred here.
+`check_release_readiness()` inherits B through the production collector, always
+returns `productionAuthorized=false`, collects fresh evidence without saved-report
+fallback and issues no approval or installation/executor capability. Controlled
+offline tests cover the full release/crypto-adapter path with synthetic verifier
+output; no full live signed release verification was performed. Policy selection
+alone supplies none of the missing authority, host or artifact evidence below.
 
 ## Caddy: exact digest investigation and decision
 
@@ -167,9 +144,9 @@ trust anchors or real host values.
 
 Proceed in this order; each permission applies only to its named operation:
 
-1. **Before any VDS contact:** decide A/B and Caddy route; approve the administrative
-   identity/channel and pinned host trust, read-only account and diagnostic command
-   scope. Request separate permission for the first read-only inspection. A/B or
+1. **Before any VDS contact:** complete the separate Caddy provenance decision;
+   approve the administrative identity/channel and pinned host trust, read-only
+   account and diagnostic command scope. Request separate permission for the first read-only inspection.
    Caddy implementation may continue separately; diagnostics do not require a
    trusted executor installation or fabricated complete SourceTrust.
 2. **First read-only inspection, only after permission:** use the existing
@@ -217,5 +194,5 @@ Proceed in this order; each permission applies only to its named operation:
 - [ ] Separately approve image preparation/acquisition, Caddy bootstrap, then
   ProjectRouter rollout, with new candidates and fresh evidence at each boundary.
 
-This checklist produces no live release facts or production authorization. A/B
+This checklist produces no live release facts or production authorization. B
 source policy approval is not independent install review or operation approval.

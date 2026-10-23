@@ -15,7 +15,7 @@ policy/Caddy provenance evidence continues to block production execution.
 bundle review, separate administrative installation, bounded local sources and
 cache-only image preparation using the existing executor/release gates. Deployment
 owns manager installation/storage/Caddy/networks; Server Infrastructure owns the
-prepared host. Independent authentication/attestors, GitHub policy A/B and Caddy
+prepared host. Independent authentication/attestors, fresh source evidence and Caddy
 provenance remain blockers; no production operation was performed.
 
 ## Architecture and installation boundary
@@ -149,10 +149,10 @@ The authenticated API must establish all of the following for each repository:
    evaluate rules. Each applicable ruleset must have readable active branch
    details and an explicitly empty bypass list. No glob matching is invented.
 3. At least one adequate protection mechanism. Classical protection must enforce
-   admins, prevent force pushes/deletion, require a PR approval, dismiss stale
+   admins, prevent force pushes/deletion, require a PR, dismiss stale
    reviews, have explicitly empty review bypass allowances and strict App-bound
    required checks. Ruleset protection must prevent non-fast-forward updates and
-   deletion, require PR approval/stale-review dismissal and strict App-bound
+   deletion, require PRs/stale-review dismissal and strict App-bound
    required checks. Fields that are missing/unreadable block; `protected: true`
    has no evidentiary role. The narrow policy may reject otherwise valid but
    unsupported repository arrangements; it never silently weakens them.
@@ -209,50 +209,26 @@ separately supplied read-only credential; the stated grants do not guarantee the
 field will be returned. An omitted field blocks. Do not infer an empty list or
 automatically widen credentials to make the check pass.
 
-## Ruleset policy review — operator decision pending
+## Approved source policy B — Stage 09.4B.6
 
-Read-only API inspection on 2026-10-23 confirmed the following effective policies:
+The sole maintainer approved B: mandatory PRs and strict CI with zero required
+human approvals. The production collector (manager and producer) and independent
+bundle reviewer explicitly share `release_source.PRODUCTION_REVIEW_POLICY='B'`.
+`ProtectedSource` retains default A for callers requiring at least one eligible
+approval. No untrusted selector or automatic fallback exists.
 
-| Repository | Active Ruleset | Required checks (App ID 15368) |
-| --- | --- | --- |
-| Manager | [25628217](https://github.com/DanilFaritovich/portfolio-deployment/rules/25628217) | `Offline checks` |
-| ProjectRouter | [25629062](https://github.com/DanilFaritovich/project-router/rules/25629062) | `Quality and static build`; `Docker build and container smoke` |
+[Trust readiness](production-trust-readiness.md) records fresh authenticated GETs
+of both Rulesets and effective main rules after the operator's manual update:
+strict up-to-date checks and stale-review dismissal are enabled, approvals are zero,
+required checks are App-bound to 15368, bypass is empty and force-push/deletion are
+prohibited. These observations supersede the earlier disabled-strict/stale snapshot.
+No GitHub Settings write was performed by this task.
 
-Both Rulesets apply to `main` and `develop`, require a PR, prevent deletion and
-non-fast-forward updates, and explicitly return `bypass_actors: []`. Both currently
-have `strict_required_status_checks_policy: false`,
-`required_approving_review_count: 0` and `dismiss_stale_reviews_on_push: false`.
-Classical protection returned 404 for both during the preceding preflight; this
-does not negate their effective Rulesets. Their current settings fail the existing
-strict verifier contract with `production-release-protection-insufficient`.
-
-The following are policy alternatives for separate operator/security review.
-This change implements neither a solo-policy selector nor GitHub Settings writes.
-The current verifier continues to require option A's protection conditions.
-
-| Requirement / consequence | A: strict independent review | B: proposed solo-maintainer policy, NOT APPROVED |
-| --- | --- | --- |
-| PR before merge | Required | Required |
-| Approvals | At least one independent eligible reviewer; author self-review cannot satisfy it | Zero mandatory approvals, explicitly accepted by operator |
-| New commits after review | Dismiss stale approvals; new independent approval required | No independent approval guarantee; approval dismissal cannot restore one |
-| Checks | Strict up-to-date App-bound required checks | Same strict up-to-date App-bound required checks |
-| Force-push / deletion | Prohibited | Prohibited |
-| Bypass | Explicitly empty for every effective Ruleset | Same explicitly empty bypass requirement |
-| Release source and artifacts | Exact-main push CI, publication, signature, provenance and signed-origin gates remain mandatory | Identical gates; PR status or unsigned metadata never substitutes |
-| Workflow effect | A second eligible reviewer must be available; a single maintainer cannot complete merges alone | Maintainer may merge their own passing PR; PR history and CI remain, independent review does not |
-| Security guarantee | Independent review adds a human check on source, workflow and policy changes | One maintainer can alter source and its CI/trust configuration; less resistance to account compromise or mistakes |
-| Activation | Existing verifier supports the protection conditions; operator must separately approve/configure repository settings | Requires explicit risk acceptance and a separately reviewed installed policy contract, implementation and negative tests before use |
-
-For A, the operator must identify an independent reviewer and approve strict
-checks, at least one approval and stale-review dismissal on both repositories.
-For B, the operator must explicitly accept loss of independent review, identify
-the responsible maintainer and define how source/workflow/trust-policy changes
-will be audited, while approving strict checks and all unchanged safeguards.
-The chosen branch scope needs review: these existing Rulesets also cover `develop`,
-so enabling independent approvals affects ordinary development PRs as well.
-Do not encode B as a relaxed `>= 0` condition, a manifest flag, a missing-field
-fallback or an inferred exception. Until its separate review and implementation,
-B remains blocked by the same verifier. Neither option grants production authority.
+B retains all other source, exact-SHA push workflow, publication, OCI, signature,
+provenance and build-origin gates described here. It cannot provide independent
+human review of changes to code or CI; the maintainer accepts that tradeoff.
+Independent bundle/dependency/binding verification and separate operation approvals
+remain necessary. Readiness always returns `productionAuthorized=false`.
 
 ## Diagnostic preflight record and remaining stage boundary
 
@@ -449,7 +425,7 @@ explicit bootstrap/rollout authorization. None is supplied by this stage.
 ## Stage 09.4B.5 follow-up
 
 [Production trust readiness](production-trust-readiness.md) records the newer
-read-only Rulesets and exact-digest Docker Hub investigation, the unapproved B
-policy contract, precise pending Settings edits and ordered release/install actions.
-Its observations supersede older diagnostic policy snapshots only; they are not
-live verification facts. Strict A remains installed in collector and bundle review.
+read-only Rulesets and exact-digest Docker Hub investigation, approved B activation
+in 09.4B.6 and ordered release/install actions. Observations supersede older
+diagnostic policy snapshots only; they are not live verification facts. Both
+production source-verification paths use fixed B; no production authority follows.
