@@ -65,10 +65,11 @@ class ProductionExecutor:
     """
     def __init__(self, *, installation, preflight, journal_directory, approval_verifier=None,
                  release_factory=None, adapter_factory=None, probes=None, gateway=None,
-                 bootstrap=None, lifecycle_options=None, clock=time.time):
+                 bootstrap=None, image_preparation=None, lifecycle_options=None, clock=time.time):
         self.installation, self.preflight, self.directory = installation, preflight, journal_directory
         self.verifier, self.release_factory, self.adapter_factory = approval_verifier, release_factory, adapter_factory
         self.probes, self.gateway, self.bootstrap = probes, gateway, bootstrap
+        self.image_preparation = image_preparation
         self.lifecycle_options, self.clock = lifecycle_options or {}, clock
 
     def run(self, candidate, envelope):
@@ -88,7 +89,10 @@ class ProductionExecutor:
             if (not isinstance(proof, SourceVerification) or proof.request != request or proof.blockers or
                 not isinstance(proof.evidence_identity, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', proof.evidence_identity)):
                 raise DockerError('production-release-unverified')
-            if candidate.scope == 'first-bootstrap':
+            if candidate.scope == 'prepare-project-router-image':
+                if self.image_preparation is None:
+                    raise DockerError('production-image-preparation-unavailable')
+            elif candidate.scope == 'first-bootstrap':
                 if self.bootstrap is None or self.bootstrap.port is None:
                     raise DockerError('production-bootstrap-executor-unavailable')
             elif any(x is None for x in (self.adapter_factory, self.probes, self.gateway)):
@@ -105,11 +109,16 @@ class ProductionExecutor:
                         raise DockerError('production-bootstrap-journal-baseline-required')
                     if candidate.scope == 'first-bootstrap' and journal.last_good('manager-bootstrap', 'gateway') is not None:
                         raise DockerError('production-first-bootstrap-already-recorded')
+                    if candidate.scope == 'prepare-project-router-image':
+                        self.image_preparation.preflight(fresh)
                     journal.consume_authorization(claims, candidate)
                     consumed = True
                     grant = ExecutionGrant(candidate, lease, journal, claims)
                     try:
-                        if candidate.scope == 'first-bootstrap':
+                        if candidate.scope == 'prepare-project-router-image':
+                            self.image_preparation.execute(fresh, grant)
+                            results, success = (), True
+                        elif candidate.scope == 'first-bootstrap':
                             self.bootstrap.execute(fresh, grant)
                             results, success = (), True
                         else:

@@ -25,6 +25,35 @@ authorized first rollout. Stage 09.4B.3 implements a one-shot execution mechanis
 with durable one-time authorization over the same engine, plus protected installation
 artifacts; no production installation or live execution is configured/performed.
 
+Stage 09.4B.4 adds [operator installation/integration](docs/production-installation.md).
+Deployment owns its initial installation and manager resources; Server Infrastructure
+supplies only the prepared/hardened host. An unprivileged exact-Git-object bundle
+builder and independent ProtectedSource-based manager/tree/dependency reviewer
+feed a separately authenticated administrative bootstrap. The standalone stdlib
+helper never imports bundle code, accepts no argv, rejects writable checkouts,
+provisions only protected fixed paths and preserves existing data/lock inode.
+It installs the existing launcher/unit without starting or enabling anything.
+The administrative authentication binding is independently installed and blocks
+by default; no release or configuration file grants its authority.
+
+Concrete fixed local machine/kernel/storage and read-only SQLite sources emit
+bounded fresh facts for existing HostContracts/SourceTrust composition; they do
+not attest their own payloads or manufacture complete planner evidence. Independent
+runtime/gateway/readiness/host/bootstrap attestors remain missing. A local empty
+Caddy validation binding reuses existing ManagedBootstrapPort/BootstrapExecution;
+provenance and exact-image runtime acceptance remain mandatory external gates.
+
+`prepare-project-router-image` is a separate cache-only OperationCandidate scope
+in ProductionExecutor, using the same full ReleaseVerifier, signed operator approval,
+canonical lease and durable shared SQLite nonce/candidate ledger. Exact immutable
+GHCR OCI evidence binds the candidate; only approved linux/amd64 ProjectRouter
+references can be pulled. Complete cache inventory distinguishes no-op/absence;
+two fresh Engine inspections verify digest/config/platform afterward. Consumed
+ledger payload records cache intent before mutation; failures fence all scopes.
+This scope does not create application/gateway LKG or authorize first-bootstrap or
+first-project-router-rollout. Caddy acquisition stays blocked pending provenance
+policy. No production binding, administrative channel, VDS operation or CD is enabled.
+
 Python CLI, Docker Engine/Compose (stable plugin versions >= 2, with separate CLI/configuration gates),
 GHCR, Git and Caddy are selected technologies.
 There is no daemon, database server, Kubernetes or production deployment trigger.

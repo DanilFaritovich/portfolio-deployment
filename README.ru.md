@@ -142,8 +142,27 @@ Stage 09.1 выбирает ручное разрешение из защищё�
 проверяемое одноразовое разрешение, постоянную SQLite replay-защиту и canonical lock.
 Файлы установки подготовлены; доверенные production bindings не настроены.
 Установка на VDS, bootstrap и rollout не выполнялись. Полная live release
-verification, operator verifier/attestors, Caddy provenance и инфраструктурная
-установка остаются prerequisites; по умолчанию `productionAuthorized=false`.
+verification, operator verifier/attestors, Caddy provenance и независимо одобренная установка
+Deployment Manager остаются prerequisites; по умолчанию `productionAuthorized=false`.
+
+[Stage 09.4B.4](docs/production-installation.md) добавляет детерминированный offline
+install bundle, независимую проверку protected-main/source/dependencies,
+отдельный административный installer и ограниченные локальные read-only источники.
+Deployment Manager отвечает за собственную установку, private storage, Caddy и
+сети приложений; Server Infrastructure — только за подготовку и обслуживание
+хоста. Installer сохраняет существующие данные и inode lock, не запускает executor
+или Docker. `make installation-bundle` экспортирует явно выбранный SHA и заранее
+проверенные runtime assets; результат из develop остаётся недоверенным.
+Независимый административный канал и production bindings пока не настроены.
+
+Загрузка проверенного GHCR image cache имеет отдельное разрешение
+`prepare-project-router-image` в существующем one-shot executor/ledger, проверки
+точного digest/platform и no-op. Caddy provenance остаётся обязательным; проверка
+пустой конфигурации подготовлена для независимого resource attestor. Установка,
+image preparation, `first-bootstrap` и `first-project-router-rollout` требуют
+отдельных approvals. [Operator handoff](docs/production-installation.md#remaining-operator-prerequisites-and-acceptance)
+описывает blockers для installation, read-only VDS preflight и bootstrap.
+Production operations и автоматический CD не выполнялись и не включались.
 
 ## Структура репозитория
 

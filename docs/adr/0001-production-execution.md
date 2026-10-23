@@ -18,6 +18,16 @@ No daemon, broad sudo wrapper or new deployment engine is justified for one VPS.
 | One-shot controller/executor on VDS, separate approved service execution identity | Existing flock, SQLite and executor share a host/process; internal IP probes work; fewer remote unknown outcomes; future CD can submit bounded approved candidates | Requires infrastructure-owned installation/access policy, immutable trusted code and explicit root-equivalent execution review |
 | Workstation controller with pinned SSH and privileged remote mechanism | Reuses inventory and existing SSH trust; convenient operator previews | Still needs a privileged remote component; workstation flock does not serialize the daemon; remote disconnects complicate journal/lock ownership; local SQLite cannot prove remote operation outcomes |
 
+## Stage 09.4B.4 ownership clarification
+
+[Operator installation](../production-installation.md) supersedes references below
+to Infrastructure installing/owning the manager unit and storage. Server Infrastructure
+prepares the host only. Deployment supplies its own independently authenticated
+administrative initial bootstrap, because the uninstalled executor cannot authorize
+itself. This keeps the host-local one-shot root-equivalent decision and its trust
+boundaries; it does not delegate portfolio runtime lifecycle to infrastructure or
+introduce a remote shell. The channel and its trusted bindings remain unconfigured.
+
 ## Decision
 
 Recommend the first option. Inspection and planning remain unprivileged and
