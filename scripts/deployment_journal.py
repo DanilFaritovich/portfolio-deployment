@@ -1,4 +1,4 @@
-"""Private SQLite v1 journal. Requires the executor's live host-lock lease.
+"""Private SQLite journal v2, including irreversible authorization consumption.
 
 Only closed metadata is persisted, never runtime values, logs or arbitrary errors.
 DELETE journal + synchronous FULL gives SQLite crash durability on a functioning
@@ -13,6 +13,7 @@ import re
 import sqlite3
 import stat
 import time
+import json
 
 from scripts.deployment import host_lock, owns_host_lock
 
@@ -41,6 +42,9 @@ SCHEMA = (
     "CREATE TABLE events (sequence INTEGER PRIMARY KEY, run TEXT NOT NULL, component TEXT NOT NULL, state TEXT NOT NULL, reason TEXT NOT NULL, readiness TEXT NOT NULL, probes INTEGER NOT NULL, consecutive INTEGER NOT NULL, at REAL NOT NULL, FOREIGN KEY(run,component) REFERENCES attempts(run,component))",
     "CREATE TABLE good (application TEXT NOT NULL, component TEXT NOT NULL, run TEXT NOT NULL, PRIMARY KEY(application,component), FOREIGN KEY(run,component) REFERENCES attempts(run,component))",
 )
+AUTHORIZATION_SCHEMA = "CREATE TABLE authorizations (nonce TEXT PRIMARY KEY, candidate TEXT NOT NULL UNIQUE, operator TEXT NOT NULL, not_before REAL NOT NULL, expires REAL NOT NULL, state TEXT NOT NULL, payload TEXT NOT NULL)"
+LEGACY_SCHEMA = SCHEMA
+SCHEMA = (*SCHEMA, AUTHORIZATION_SCHEMA)
 IMAGE = r"ghcr\.io/[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}"
 NAME = r"[a-z][a-z0-9-]{0,62}"
 
@@ -129,9 +133,14 @@ class Journal:
                 with self.transaction():
                     for sql in SCHEMA:
                         self.db.execute(sql)
-                    self.db.execute("PRAGMA user_version=1")
+                    self.db.execute("PRAGMA user_version=2")
                     self.db.execute("PRAGMA application_id=1346651185")
-            elif version != 1:
+            elif version == 1 and {r[0] for r in tables} == set(LEGACY_SCHEMA) and self.db.execute("PRAGMA application_id").fetchone()[0] == 1346651185:
+                with self.transaction():
+                    self.db.execute(AUTHORIZATION_SCHEMA)
+                    self.db.execute("PRAGMA user_version=2")
+                    self.validate()  # invalid legacy history must roll back migration
+            elif version != 2:
                 raise JournalError("unsupported-journal-version")
             if (self.db.execute("PRAGMA application_id").fetchone()[0] != 1346651185 or
                 {r[0] for r in self.db.execute("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL")} != set(SCHEMA) or
@@ -173,6 +182,24 @@ class Journal:
         return [dict(r) for r in self.db.execute("SELECT attempts.*, runs.application, runs.revision, runs.status AS run_status, runs.reason AS run_reason, runs.updated AS run_updated FROM attempts JOIN runs ON runs.id=attempts.run ORDER BY run,component")]
 
     def validate(self):
+        approvals = self.db.execute('SELECT * FROM authorizations').fetchall()
+        if len(approvals) > 10000:
+            raise JournalError('authorization-retention-required')
+        for a in approvals:
+            from scripts.production_integration.authorization import OperationCandidate
+            try:
+                candidate = OperationCandidate(**json.loads(a['payload']))
+                if candidate.identity != a['candidate']:
+                    raise ValueError
+            except Exception:
+                raise JournalError('corrupt-authorization-candidate') from None
+            if (not re.fullmatch(r'[0-9a-f]{32}', a['nonce']) or
+                not re.fullmatch(r'sha256:[0-9a-f]{64}', a['candidate']) or
+                not re.fullmatch(r'[A-Za-z0-9@._-]{1,128}', a['operator']) or
+                not all(type(a[k]) in (float, int) and math.isfinite(a[k]) for k in ('not_before', 'expires')) or
+                not 0 < a['expires'] - a['not_before'] <= 3600 or
+                a['state'] not in ('consumed', 'succeeded', 'blocked', 'recovery-required')):
+                raise JournalError('corrupt-authorization-ledger')
         counts = [self.db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] for table in ("runs", "attempts", "events")]
         if any(n > cap for n, cap in zip(counts, (10000, 10000, 100000))):
             raise JournalError("journal-retention-required")
@@ -346,6 +373,50 @@ class Journal:
 
     def incomplete(self):
         return [r for r in self.rows() if r["run_status"] not in ("succeeded", "recovered")]
+
+    def consume_authorization(self, claims, candidate):
+        """Irreversible reservation, durable before intent or any host mutation.
+
+        An interrupted reservation blocks even a different candidate/nonce. No
+        reset/expiry/garbage collection can release an uncertain operation.
+        """
+        from dataclasses import asdict
+        from scripts.reconciliation import encode
+        if claims.candidate != candidate.identity:
+            raise JournalError('authorization-candidate-mismatch')
+        with self.transaction():
+            if self.incomplete() or self.db.execute("SELECT 1 FROM authorizations WHERE state IN ('consumed','recovery-required')").fetchone():
+                raise JournalError('production-recovery-analysis-required')
+            if self.db.execute('SELECT count(*) FROM authorizations').fetchone()[0] >= 10000:
+                raise JournalError('authorization-retention-required')
+            self.db.execute('INSERT INTO authorizations VALUES (?,?,?,?,?,?,?)',
+                            (claims.nonce, claims.candidate, claims.operator, claims.not_before, claims.expires, 'consumed', encode(asdict(candidate))))
+
+    def production_bootstrap(self, host, daemon):
+        """Journal success must match a consumed first-bootstrap authorization."""
+        good = self.last_good('manager-bootstrap', 'gateway')
+        if good is None:
+            return False
+        row = self.db.execute("SELECT payload FROM authorizations WHERE nonce=? AND state='succeeded'", (good['run'],)).fetchone()
+        if row is None:
+            return False
+        c = json.loads(row[0])
+        return c['scope'] == 'first-bootstrap' and (c['host'], c['daemon']) == (host, daemon)
+
+    def authorization_recovery(self):
+        """Analysis only, including death BEFORE an engine intent existed."""
+        self._locked()
+        return tuple({'nonce': r['nonce'], 'candidate': r['candidate'], 'state': r['state'],
+                      'decision': 'recovery-required', 'reason': 'authorization-consumed-outcome-unverified'}
+                     for r in self.db.execute("SELECT nonce,candidate,state FROM authorizations WHERE state IN ('consumed','recovery-required') ORDER BY nonce"))
+
+    def finish_authorization(self, nonce, state):
+        if state not in ('succeeded', 'blocked', 'recovery-required'):
+            raise JournalError('invalid-authorization-state')
+        with self.transaction():
+            cursor = self.db.execute("UPDATE authorizations SET state=? WHERE nonce=? AND state='consumed'", (state, nonce))
+            if cursor.rowcount != 1:
+                raise JournalError('authorization-already-consumed')
 
 
 @contextmanager

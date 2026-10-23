@@ -1,9 +1,22 @@
 # Stage 09.4B.2 — Production release and source trust
 
-Status: read-only implementation and controlled offline integration tests. No
-real release collection was authorized/run during implementation. Production
+Status: read-only implementation and controlled offline integration tests, with
+separate diagnostic GitHub/GHCR preflight recorded below. Full live release
+verification has not run. Production
 execution, approval issuance, deployment and automatic CD remain unavailable.
 ProjectRouter and Caddy selected digests, registry and admission policy are unchanged.
+
+[Stage 09.4B.3](production-execution.md) adds one-shot execution and durable approval
+consumption over this unchanged verifier. It does not establish a production issuer,
+install trusted bindings or perform full live release verification. Missing GitHub
+policy/Caddy provenance evidence continues to block production execution.
+
+[Stage 09.4B.4 installation/integration](production-installation.md) adds exact
+bundle review, separate administrative installation, bounded local sources and
+cache-only image preparation using the existing executor/release gates. Deployment
+owns manager installation/storage/Caddy/networks; Server Infrastructure owns the
+prepared host. Independent authentication/attestors, fresh source evidence and Caddy
+provenance remain blockers; no production operation was performed.
 
 ## Architecture and installation boundary
 
@@ -136,18 +149,25 @@ The authenticated API must establish all of the following for each repository:
    evaluate rules. Each applicable ruleset must have readable active branch
    details and an explicitly empty bypass list. No glob matching is invented.
 3. At least one adequate protection mechanism. Classical protection must enforce
-   admins, prevent force pushes/deletion, require a PR approval, dismiss stale
+   admins, prevent force pushes/deletion, require a PR, dismiss stale
    reviews, have explicitly empty review bypass allowances and strict App-bound
    required checks. Ruleset protection must prevent non-fast-forward updates and
-   deletion, require PR approval/stale-review dismissal and strict App-bound
+   deletion, require PRs/stale-review dismissal and strict App-bound
    required checks. Fields that are missing/unreadable block; `protected: true`
    has no evidentiary role. The narrow policy may reject otherwise valid but
    unsupported repository arrangements; it never silently weakens them.
 4. Every effective required check must exactly match the reviewed check/App policy.
    Extra mandatory checks require workflow policy review rather than being ignored.
-   Each latest check must succeed on the selected SHA and have the expected App
-   ID. Its check-suite ID must link to exactly one successful run from the exact
-   repository/head repository, SHA, `main`, workflow path and `push` event.
+   Select exactly one same-source `push` run by repository/head repository, SHA,
+   `main` and workflow path, and require it to succeed. Exactly one required check
+   must link to its check suite and succeed with the reviewed issuing App ID.
+   Same-name PR checks may coexist only when each independently links to one
+   same-repository, same-SHA, same-workflow `pull_request` run in a different suite;
+   their result does not replace or override the required push result. PR source
+   branch names may differ from `main`. Every same-name check must have the exact
+   App and SHA. Duplicate checks within a suite, duplicate/failed push runs,
+   ambiguous suite links and unrelated same-name claims block; list order never
+   selects a winner. A failed independently linked PR run is not a failed push.
 5. Producer publication must be a successful unique same-SHA `push` run of
    caller `.github/workflows/ci.yml` on `main`. Its `referenced_workflows` must
    include the exact producer `publish.yml@<signer-sha>`, SHA and main ref.
@@ -177,12 +197,99 @@ rulesets are independently readable. It cannot prove absence or grant permission
 Denied ruleset/bypass details, unknown App bindings, unsupported checks/events,
 truncated lists, API denial, timeout and rate limit produce blockers.
 
-Minimal token permissions are repository metadata, contents, checks and Actions
+Minimal token permissions are repository metadata, contents, checks, Actions and attestations
 **read** for the two repositories, plus
 [administration read](https://docs.github.com/en/rest/branches/branch-protection#get-branch-protection)
 where necessary to inspect classical protection/bypass details. No write,
 production environment, deployment, secret or package-publish permission is needed.
 GHCR uses an anonymous pull-only token for the fixed public image repository.
+GitHub [limits visibility of `bypass_actors`](https://docs.github.com/en/rest/repos/rules#get-a-repository-ruleset)
+to callers with write access to the ruleset. Validate this capability with the
+separately supplied read-only credential; the stated grants do not guarantee the
+field will be returned. An omitted field blocks. Do not infer an empty list or
+automatically widen credentials to make the check pass.
+
+## Approved source policy B — Stage 09.4B.6
+
+The sole maintainer approved B: mandatory PRs and strict CI with zero required
+human approvals. The production collector (manager and producer) and independent
+bundle reviewer explicitly share `release_source.PRODUCTION_REVIEW_POLICY='B'`.
+`ProtectedSource` retains default A for callers requiring at least one eligible
+approval. No untrusted selector or automatic fallback exists.
+
+[Trust readiness](production-trust-readiness.md) records fresh authenticated GETs
+of both Rulesets and effective main rules after the operator's manual update:
+strict up-to-date checks and stale-review dismissal are enabled, approvals are zero,
+required checks are App-bound to 15368, bypass is empty and force-push/deletion are
+prohibited. These observations supersede the earlier disabled-strict/stale snapshot.
+No GitHub Settings write was performed by this task.
+
+B retains all other source, exact-SHA push workflow, publication, OCI, signature,
+provenance and build-origin gates described here. It cannot provide independent
+human review of changes to code or CI; the maintainer accepts that tradeoff.
+Independent bundle/dependency/binding verification and separate operation approvals
+remain necessary. Readiness always returns `productionAuthorized=false`.
+
+## Diagnostic preflight record and remaining stage boundary
+
+The preceding read-only preflight used manager main
+`9e48475f41050827bcac61ac39d3a61f92f857c2` and producer main
+`526c765f33932e163392dd1d512de4aa2f2a5260`. Both compare endpoints returned identical
+with matching base/merge-base SHAs; closing reads retained the same heads.
+These are historical observations, not fresh release evidence for this PR.
+
+Manager `.github/workflows/offline.yml` had successful same-SHA `push` run
+`39853229945` (check `120084630137`, suite `108018386375`) and `pull_request` run
+`39853946547` (check `120087128838`, suite `108020410506`), both named
+`Offline checks` and issued by App `15368`. This is the duplicate-name case fixed
+here; offline regressions exercise it without treating API snapshots as facts.
+
+ProjectRouter caller `.github/workflows/ci.yml`, `push` on main, publication run
+`39776962924`, attempt `1`, referenced reusable `.github/workflows/publish.yml` at
+the exact producer SHA. Publication job/check `119819781254`, suite `107801677419`,
+App `15368`, source SHA and fixed job/check URLs matched. Both required producer
+checks succeeded in that run; the caller requires both before publication.
+Publication metadata is not cryptographic proof.
+
+Existing `GHCRRead` from that manager main verified anonymous exact-digest OCI
+bytes without Docker or image-layer downloads:
+
+| Diagnostic object | SHA256 |
+| --- | --- |
+| Selected index | `a393d592331cd556650695f57db74075359d9223c9ebbda080f1a372e9d64853` |
+| Unique linux/amd64 manifest | `e24e8a7d68f341199ae90ffba8e15d225c9ce38b7a45ebd547ec918136ce72da` |
+| Image config | `115af1631e16774d114aa857130086e0a32711720895195c52d0b30ce68df102` |
+| Official gh 2.102.0 linux/amd64 archive | `bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386` |
+| Extracted gh executable | `7469124f706944133d6a169691dd1c6c3511b12e85878d255e044e2948df4c9b` |
+| Prepared trusted_root.jsonl | `65ca537f6ed8a47fd0e560c421baa1f6c1efb8b25fc200d8c5c02c0e92eb2b9c` |
+
+The archive matched the trusted manager-main pin and official immutable
+[gh release metadata](https://github.com/cli/cli/releases/tag/v2.102.0). The extracted
+binary's version was checked. With a fresh isolated HOME and no credentials,
+its official `gh attestation trusted-root` successfully validated the normal
+Sigstore/GitHub TUF repositories and produced two roots (34634 bytes).
+The sampled TUF timestamp expiries were 2026-10-29T13:30:37Z (Sigstore) and
+2026-10-30T01:37:55Z (GitHub). These dated temporary preparation results are not
+installed trust pins, perpetual freshness evidence or operator installation review.
+
+Two embedded exact-digest bundles were available for SLSA v1 and build-origin v1.
+Their signatures/certificate identities were **not verified**. The decoded SLSA
+builder claim `https://github.com/DanilFaritovich/project-router/.github/workflows/publish.yml@refs/heads/main`
+remains untrusted payload data, not an independently established builder pin.
+No `ReleaseFacts` or successful readiness report was produced. Existing broad
+user credentials were used only for explicit GitHub GET diagnostics; they were
+not supplied to the full verifier or crypto subprocesses.
+
+A genuine `OperationCandidate` still requires independently established host and
+daemon identities plus plan, gateway, runtime, network, storage and recovery
+hashes. Those belong to the next separately scoped production-preflight stage
+(09.4B.3), with its own authorization for any actual host observations. No dummy
+values or saved diagnostic reports may satisfy that contract. A reviewed complete
+`ReleaseInstallation`, separately supplied limited read-only credential, and new
+explicit operator permission are required before the first full
+`check_release_readiness(..., authorize_read_only=True)` invocation. It was not
+run in this task. `productionAuthorized` remains **false**; production execution,
+GitHub Settings changes and CD remain outside this task.
 
 ## Cryptographic evidence
 
@@ -314,3 +421,11 @@ live collection, independently authenticated Caddy provenance or separately
 reviewed security policy, privileged execution installation, authenticated actual
 state, operator approval issuance/replay protection, DNS/TLS/storage/recovery and
 explicit bootstrap/rollout authorization. None is supplied by this stage.
+
+## Stage 09.4B.5 follow-up
+
+[Production trust readiness](production-trust-readiness.md) records the newer
+read-only Rulesets and exact-digest Docker Hub investigation, approved B activation
+in 09.4B.6 and ordered release/install actions. Observations supersede older
+diagnostic policy snapshots only; they are not live verification facts. Both
+production source-verification paths use fixed B; no production authority follows.

@@ -16,6 +16,7 @@ class GatewaySnapshot:
     runtime_verified: bool
     ownership_verified: bool
     certificates_storage_verified: bool
+    container_id: str | None = None
 
 
 class ManagedGatewayReadPort:
@@ -39,6 +40,7 @@ class ManagedGatewayReadPort:
         routes = route_set(sample.routes)
         if sample.active_caddyfile != content(routes):
             raise DockerError('production-gateway-foreign-or-unsupported-config')
+        self.last_snapshot = sample
         return routes
 
     def compare_and_reload(self, old, new):

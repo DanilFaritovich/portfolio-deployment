@@ -55,6 +55,7 @@ def fixture():
                                                     'base_commit': {'sha': sha}}
         docs[repo, '/rules/branches/main?per_page=100'] = []
         docs[repo, '/branches/main/protection'] = json.loads((ROOT/'fixtures/release/protection.json').read_text())
+        docs[repo, '/branches/main/protection']['required_pull_request_reviews']['required_approving_review_count'] = 0
         run = {'id': 100, 'run_attempt': 1, 'head_sha': sha, 'head_branch': 'main', 'path': '.github/workflows/ci.yml',
                'event': 'push', 'status': 'completed', 'conclusion': 'success', 'repository': metadata,
                'head_repository': metadata, 'check_suite_id': 20}
@@ -131,12 +132,91 @@ def test_authenticated_round_through_release_verifier():
     assert len(transport.calls) < 64
 
 
+def manager_push_pr_evidence():
+    result = fixture()
+    c, docs, *_ = result
+    runs = docs[MANAGER, '/actions/runs?head_sha='+c.manager_sha+'&per_page=100']
+    checks = docs[MANAGER, '/commits/'+c.manager_sha+'/check-runs?filter=latest&per_page=100']
+    pr_run = copy.deepcopy(runs['workflow_runs'][0])
+    pr_run.update(id=101, check_suite_id=21, event='pull_request', head_branch='develop')
+    pr_check = copy.deepcopy(checks['check_runs'][0])
+    pr_check['check_suite']['id'] = 21
+    runs['workflow_runs'].append(pr_run)
+    checks['check_runs'].append(pr_check)
+    runs['total_count'] = checks['total_count'] = 2
+    return result, runs, checks
+
+
+@pytest.mark.parametrize('pr_failed', [False, True])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_required_push_check_coexists_with_independently_linked_pr(pr_failed, reverse):
+    result, runs, checks = manager_push_pr_evidence()
+    if pr_failed:
+        runs['workflow_runs'][1]['conclusion'] = 'failure'
+        checks['check_runs'][1]['conclusion'] = 'failure'
+    if reverse:
+        runs['workflow_runs'].reverse()
+        checks['check_runs'].reverse()
+    _, _, _, crypto, verifier, request = result
+    assert not verifier.verify(request).blockers
+    assert crypto.called
+
+
+@pytest.mark.parametrize('change', [
+    'pr-only', 'push-check-missing', 'duplicate-push-check', 'duplicate-pr-check',
+    'duplicate-push-run', 'duplicate-pr-run', 'second-failed-push',
+    'push-app', 'pr-app', 'push-sha', 'pr-sha', 'push-suite', 'pr-suite',
+    'push-check-failed', 'push-check-pending', 'push-run-failed', 'push-run-pending',
+    'push-run-sha', 'push-run-suite', 'push-run-branch', 'push-run-path',
+    'push-run-repository', 'push-run-head-repository', 'pr-run-sha', 'pr-run-path',
+    'pr-run-event', 'pr-run-repository', 'pr-run-head-repository',
+])
+def test_required_push_check_rejects_ambiguous_or_contradictory_evidence(change):
+    result, runs, checks = manager_push_pr_evidence()
+    push_run, pr_run = runs['workflow_runs']
+    push_check, pr_check = checks['check_runs']
+    if change == 'pr-only':
+        runs['workflow_runs'].remove(push_run)
+        checks['check_runs'].remove(push_check)
+    if change == 'push-check-missing': checks['check_runs'].remove(push_check)
+    if change.startswith('duplicate-'):
+        target = runs['workflow_runs'] if change.endswith('run') else checks['check_runs']
+        target.append(copy.deepcopy(target[0 if 'push' in change else 1]))
+    if change == 'second-failed-push':
+        extra = copy.deepcopy(push_run)
+        extra.update(id=102, check_suite_id=22, conclusion='failure')
+        runs['workflow_runs'].append(extra)
+    for label, check in (('push', push_check), ('pr', pr_check)):
+        if change == label+'-app': check['app']['id'] = 42
+        if change == label+'-sha': check['head_sha'] = '0'*40
+        if change == label+'-suite': check['check_suite']['id'] = 99
+    if change == 'push-check-failed': push_check['conclusion'] = 'failure'
+    if change == 'push-check-pending': push_check['status'] = 'in_progress'
+    if change == 'push-run-failed': push_run['conclusion'] = 'failure'
+    if change == 'push-run-pending': push_run['status'] = 'in_progress'
+    if change == 'push-run-suite': push_run['check_suite_id'] = 99
+    if change == 'push-run-branch': push_run['head_branch'] = 'develop'
+    for label, run in (('push', push_run), ('pr', pr_run)):
+        if change == label+'-run-sha': run['head_sha'] = '0'*40
+        if change == label+'-run-path': run['path'] = '.github/workflows/other.yml'
+        if change == label+'-run-repository': run['repository'] = {'id': 999, 'full_name': 'other/repo'}
+        if change == label+'-run-head-repository': run['head_repository'] = {'id': 999, 'full_name': 'other/repo'}
+    if change == 'pr-run-event': pr_run['event'] = 'workflow_dispatch'
+    runs['total_count'] = len(runs['workflow_runs'])
+    checks['total_count'] = len(checks['check_runs'])
+    _, _, transport, crypto, verifier, request = result
+    with pytest.raises(DockerError, match='production-release-'):
+        verifier.verify(request)
+    assert not crypto.called
+    assert all('ghcr.io' not in url for url, _ in transport.calls)
+
+
 @pytest.mark.parametrize('failure', [
     'ancestry', 'protected-flag-only', 'no-protection', 'checks-policy', 'unbound-app', 'admins', 'force', 'bypass',
     'check-app', 'check-sha', 'check-status', 'check-workflow', 'check-event', 'check-repository',
     'publish-event', 'publish-workflow', 'publish-sha', 'rate-limit', 'timeout', 'incomplete',
     'unknown-rules', 'partial-checks', 'partial-runs', 'content', 'unsigned', 'bad-signature', 'wrong-digest',
-    'builder', 'moving-main',
+    'builder', 'moving-main', 'missing-provenance',
 ])
 def test_collection_fails_closed(failure):
     c, docs, transport, crypto, verifier, request = fixture()
@@ -169,6 +249,7 @@ def test_collection_fails_closed(failure):
     if failure in ('unsigned', 'bad-signature'):
         def reject(*args): raise DockerError('production-release-signature-unverified')
         crypto.verify = reject
+    if failure == 'missing-provenance': docs[PRODUCER, '/attestations/'+c.image.split('@')[1]+'?per_page=100'] = {'attestations': []}
     if failure == 'wrong-digest': verifier.collector.registry.collect = lambda image: {image.split('@')[1]: b'evil'}
     if failure == 'builder': verifier.collector.slsa_builder = 'https://github.com/evil/builder'
     if failure == 'moving-main':
@@ -205,7 +286,7 @@ def test_signed_selector_rejects_substitutions(change):
     with pytest.raises(acceptance.AcceptanceError): acceptance.verified_statement(raw, c.image, expectation)
 
 
-@pytest.mark.parametrize('mode', ['valid', 'no-classic', 'bypass', 'disabled', 'unavailable', 'app', 'review', 'unenforced-checks'])
+@pytest.mark.parametrize('mode', ['valid', 'no-classic', 'bypass', 'disabled', 'unavailable', 'app', 'unenforced-checks'])
 def test_effective_ruleset_applicability_and_details(mode):
     c, docs, transport, crypto, verifier, request = fixture()
     rules = [{'type': kind, 'ruleset_id': 7} for kind in ('pull_request', 'non_fast_forward', 'deletion', 'required_status_checks')]
@@ -220,7 +301,6 @@ def test_effective_ruleset_applicability_and_details(mode):
     if mode == 'disabled': detail['enforcement'] = 'evaluate'
     if mode == 'unavailable': docs[PRODUCER, '/rulesets/7'] = DockerError('production-release-api-denied-or-rate-limited')
     if mode == 'app': rules[3]['parameters']['required_status_checks'][0]['integration_id'] = -1
-    if mode == 'review': rules[0]['parameters']['required_approving_review_count'] = 0
     if mode == 'unenforced-checks':
         rules.pop()
         docs[PRODUCER, '/branches/main/protection']['enforce_admins']['enabled'] = False
@@ -237,7 +317,7 @@ def installed_crypto(tmp_path):
                                root, hashlib.sha256(root.read_bytes()).hexdigest())
 
 
-@pytest.mark.parametrize('mode', ['success', 'unsigned', 'invalid-signature', 'source', 'signer', 'origin', 'binary', 'root'])
+@pytest.mark.parametrize('mode', ['success', 'unsigned', 'invalid-signature', 'source', 'signer', 'origin', 'binary', 'root', 'substituted-provenance', 'subject', 'slsa-builder'])
 def test_crypto_adapter_only_accepts_successful_pinned_verifier_output(tmp_path, monkeypatch, mode):
     from scripts.production_integration import release_crypto as module
     c, docs, transport, crypto, verifier, request = fixture()
@@ -263,16 +343,22 @@ def test_crypto_adapter_only_accepts_successful_pinned_verifier_output(tmp_path,
         expectation = next(e for e in crypto.expectations if e['predicateType'] == predicate)
         statement = {'predicateType': predicate, 'predicate': copy.deepcopy(expectation.get('expectedPredicate', {})),
                      'subject': [{'name': c.image.split('@')[0], 'digest': {'sha256': c.image.split(':')[-1]}}]}
+        if predicate == SLSA:
+            statement['predicate'] = {'runDetails': {'builder': {'id': verifier.collector.slsa_builder}}}
+            if mode == 'slsa-builder': statement['predicate']['runDetails']['builder']['id'] = 'https://untrusted.test/builder'
+        if mode == 'substituted-provenance': statement['predicateType'] = 'https://untrusted.test/provenance'
+        if mode == 'subject': statement['subject'][0]['digest']['sha256'] = '0'*64
         if mode == 'origin' and predicate == BUILD_ORIGIN: statement['predicate']['buildArguments'] = {}
         return encode([{'verificationResult': {'statement': statement}}]).encode()
     monkeypatch.setattr(module, 'bounded_process', process)
     identity = {'signerWorkflow': '.github/workflows/publish.yml', 'signerSha': c.producer_sha,
                 'sourceSha': c.producer_sha, 'sourceRef': 'refs/heads/main'}
+    verifier.collector.crypto = adapter
     if mode == 'success':
-        assert len(adapter.verify(b'subject', c.image, identity, crypto.expectations, [{}])) == 2
+        assert not verifier.verify(request).blockers
         assert len(calls) == 3
     else:
-        with pytest.raises(DockerError): adapter.verify(b'subject', c.image, identity, crypto.expectations, [{}])
+        with pytest.raises(DockerError): verifier.verify(request)
         if mode in ('binary', 'root'): assert not calls
 
 
@@ -472,3 +558,127 @@ def test_readiness_uses_a_fresh_collection_and_never_saved_success(tmp_path, mon
     report = module.check_release_readiness(installation, authorize_read_only=True, github_token='test_read_only')
     assert report['blockers'] == ['production-release-api-denied-or-rate-limited']
     assert report['productionAuthorized'] is False
+
+
+def solo_rules_fixture(repo=PRODUCER):
+    result = fixture()
+    _, docs, *_ = result
+    rules = [{'type': kind, 'ruleset_id': 7} for kind in
+             ('pull_request', 'non_fast_forward', 'deletion', 'required_status_checks')]
+    rules[0]['parameters'] = {'required_approving_review_count': 0, 'dismiss_stale_reviews_on_push': True}
+    rules[3]['parameters'] = {'strict_required_status_checks_policy': True,
+                             'required_status_checks': [{'context': 'ci', 'integration_id': 15368}]}
+    docs[repo, '/rules/branches/main?per_page=100'] = rules
+    docs[repo, '/rulesets/7'] = {'id': 7, 'target': 'branch', 'enforcement': 'active', 'bypass_actors': []}
+    docs[repo, '/branches/main/protection'] = DockerError('production-release-api-not-found')
+    return result, rules
+
+
+def test_solo_policy_is_installed_in_collector_while_low_level_default_remains_a():
+    from scripts.production_integration.release_source import ProtectedSource
+    (c, docs, transport, crypto, verifier, request), _ = solo_rules_fixture()
+    policy = (WorkflowCheck(PRODUCER, 'ci', 15368, '.github/workflows/ci.yml'),)
+    source = ProtectedSource(verifier.collector.github, review_policy='B')
+    assert source.collect(PRODUCER, c.producer_sha, policy) is None
+    with pytest.raises(DockerError, match='production-release-protection-insufficient'):
+        ProtectedSource(verifier.collector.github).collect(PRODUCER, c.producer_sha, policy)
+    assert not verifier.verify(request).blockers
+    assert crypto.called
+
+
+@pytest.mark.parametrize('repo', [PRODUCER, MANAGER])
+@pytest.mark.parametrize('failure', [
+    'no-pr', 'force', 'deletion', 'no-ci', 'non-strict', 'app-unbound', 'wrong-policy-app',
+    'bypass', 'disabled', 'evaluate', 'wrong-target', 'unreadable', 'stale', 'negative-reviews',
+    'bool-reviews', 'failed-ci', 'disabled-ci', 'workflow', 'event', 'sha', 'check-app',
+])
+def test_solo_policy_retains_source_and_ci_gates(failure, repo):
+    (c, docs, transport, crypto, verifier, request), rules = solo_rules_fixture(repo)
+    sha = c.producer_sha if repo == PRODUCER else c.manager_sha
+    p = rules[3]['parameters']
+    detail = docs[repo, '/rulesets/7']
+    run = docs[repo, '/actions/runs?head_sha='+sha+'&per_page=100']['workflow_runs'][0]
+    check = docs[repo, '/commits/'+sha+'/check-runs?filter=latest&per_page=100']['check_runs'][0]
+    removed = {'no-pr': 'pull_request', 'force': 'non_fast_forward', 'deletion': 'deletion',
+               'no-ci': 'required_status_checks'}
+    if failure in removed: rules[:] = [r for r in rules if r['type'] != removed[failure]]
+    if failure == 'non-strict': p['strict_required_status_checks_policy'] = False
+    if failure == 'app-unbound': p['required_status_checks'][0]['integration_id'] = None
+    if failure == 'wrong-policy-app': p['required_status_checks'][0]['integration_id'] = 42
+    if failure == 'bypass': detail['bypass_actors'] = [{'actor_type': 'RepositoryRole', 'actor_id': 5, 'bypass_mode': 'pull_request'}]
+    if failure in ('disabled', 'evaluate'): detail['enforcement'] = failure
+    if failure == 'wrong-target': detail['target'] = 'tag'
+    if failure == 'unreadable': docs[repo, '/rulesets/7'] = DockerError('production-release-api-denied-or-rate-limited')
+    if failure == 'stale': rules[0]['parameters']['dismiss_stale_reviews_on_push'] = False
+    if failure == 'negative-reviews': rules[0]['parameters']['required_approving_review_count'] = -1
+    if failure == 'bool-reviews': rules[0]['parameters']['required_approving_review_count'] = False
+    if failure == 'failed-ci': run['conclusion'] = 'failure'
+    if failure == 'disabled-ci': run['status'] = 'disabled'
+    if failure == 'workflow': run['path'] = '.github/workflows/substitute.yml'
+    if failure == 'event': run['event'] = 'workflow_dispatch'
+    if failure == 'sha': run['head_sha'] = '0'*40
+    if failure == 'check-app': check['app']['id'] = 42
+    with pytest.raises(DockerError, match='production-release-'):
+        verifier.verify(request)
+    assert not crypto.called
+    assert all('ghcr.io' not in url for url, _ in transport.calls)
+
+
+@pytest.mark.parametrize('policy', [None, False, 'solo', '', 'b'])
+def test_unknown_source_review_policy_blocks(policy):
+    from scripts.production_integration.release_source import ProtectedSource
+    with pytest.raises(DockerError, match='production-release-review-policy-invalid'):
+        ProtectedSource(None, review_policy=policy)
+
+
+def test_solo_classic_requires_admin_enforcement_and_pr():
+    from scripts.production_integration.release_source import ProtectedSource
+    c, docs, _, _, verifier, _ = fixture()
+    classic = docs[PRODUCER, '/branches/main/protection']
+    classic['required_pull_request_reviews']['required_approving_review_count'] = 0
+    source = ProtectedSource(verifier.collector.github, review_policy='B')
+    source.policy(PRODUCER, {('ci', 15368)})
+    classic['enforce_admins']['enabled'] = False
+    with pytest.raises(DockerError): source.policy(PRODUCER, {('ci', 15368)})
+    classic['enforce_admins']['enabled'] = True
+    classic['required_pull_request_reviews'] = None
+    with pytest.raises(DockerError): source.policy(PRODUCER, {('ci', 15368)})
+
+
+@pytest.mark.parametrize('repo', [PRODUCER, MANAGER])
+@pytest.mark.parametrize('change', ['policy', 'missing', 'denied', 'incomplete'])
+def test_production_b_rechecks_source_policy_and_blocks_unavailable_evidence(repo, change):
+    (_, docs, _, crypto, verifier, request), _ = solo_rules_fixture(repo)
+    original = verifier.collector.github.get
+    reads = 0
+    def api(repository, path):
+        nonlocal reads
+        if repository == repo and path == '/rules/branches/main?per_page=100':
+            reads += 1
+            if reads == 2:
+                if change == 'policy':
+                    docs[repo, path][3]['parameters']['strict_required_status_checks_policy'] = False
+                elif change == 'missing': raise DockerError('production-release-api-not-found')
+                elif change == 'denied': raise DockerError('production-release-api-denied-or-rate-limited')
+                else: return [{}]
+        return original(repository, path)
+    verifier.collector.github.get = api
+    with pytest.raises(DockerError): verifier.verify(request)
+    assert reads == 2 and not crypto.called
+
+
+def test_production_b_has_no_untrusted_policy_selector(tmp_path, monkeypatch):
+    from scripts.production_integration.bundle_review import ManagerBundleVerifier
+    module, installation, docs, transport, crypto = readiness_installation(tmp_path, monkeypatch)
+    # Neither an environment override nor extra JSON/typed request fields select policy.
+    monkeypatch.setenv('PRODUCTION_REVIEW_POLICY', 'A')
+    monkeypatch.setenv('REVIEW_POLICY', 'A')
+    for repo in (PRODUCER, MANAGER):
+        assert docs[repo, '/branches/main/protection']['required_pull_request_reviews']['required_approving_review_count'] == 0
+    assert module.check_release_readiness(installation, authorize_read_only=True, github_token='test_read_only') == {
+        'readOnly': True, 'releaseVerified': True, 'productionAuthorized': False, 'blockers': []}
+    with pytest.raises(TypeError): replace(installation, review_policy='B')
+    with pytest.raises(TypeError): ManagerBundleVerifier(review_policy='B')
+    with pytest.raises(TypeError): AuthenticatedReleaseCollector(installation.candidate, review_policy='B')
+    with pytest.raises(TypeError): replace(installation.candidate, review_policy='B')
+    assert module.check_release_readiness({'review_policy': 'B'}, authorize_read_only=True)['releaseVerified'] is False

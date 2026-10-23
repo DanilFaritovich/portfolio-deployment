@@ -6,7 +6,20 @@ empty; ProjectRouter's template remains disabled. Stage 09.2 inspection is a
 private diagnostic snapshot, never fresh planner state. No VDS, SSH, Docker
 runtime, GHCR production download, DNS, TLS or certificate operation was performed.
 
+[Stage 09.4B.4 installation/integration](production-installation.md) adds exact
+bundle review, separate administrative installation, bounded local sources and
+cache-only image preparation using the existing executor/release gates. Deployment
+owns manager installation/storage/Caddy/networks; Server Infrastructure owns the
+prepared host. Independent authentication/attestors, GitHub policy A/B and Caddy
+provenance remain blockers; no production operation was performed.
+
 ## Components and trust boundaries
+
+[Stage 09.4B.3](production-execution.md) now implements the separate one-shot
+execution gate and protected installation contract over these ports and the same
+Stage 05/06 engine. Historical preparation-only write restrictions below describe
+the base read/test adapters; granted production adapters are separate and remain
+unconfigured until independently reviewed installation. No production run occurred.
 
 `Application CI → GHCR immutable digest → admitted desired state → Stage 03 plan
 → Stage 05 Compose executor → Stage 06 readiness/journal/LKG → managed Caddy`.

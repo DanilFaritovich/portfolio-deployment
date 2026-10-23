@@ -136,6 +136,33 @@ The journal uses standard-library SQLite; no database server, daemon or Kubernet
 is implemented. Stage 09.1 selects manual approval from protected `main`; GitHub enforcement and
 exact-SHA production validation remain prerequisites. No automatic activation exists.
 
+[Stage 09.4B.3](docs/production-execution.md) implements the host-local one-shot
+execution mechanism over the existing engine: exact candidates, independently
+verified one-time approval, durable SQLite replay protection and canonical lock.
+Installation artifacts are prepared; trusted production bindings are unconfigured.
+No VDS installation, bootstrap or rollout was performed. Full live release
+verification, operator verifier/attestors, Caddy provenance and independently approved manager
+installation remain prerequisites; `productionAuthorized=false` by default.
+
+[Stage 09.4B.4](docs/production-installation.md) adds deterministic offline install
+bundles, independent protected-main/source/dependency review, a standalone
+administrative installer and concrete bounded local read sources. Deployment
+Manager owns its installation, private storage, Caddy and application networks;
+Server Infrastructure owns only host preparation and maintenance. The installer
+preserves existing state/lock inode and never starts the executor or Docker.
+`make installation-bundle` exports an explicitly selected SHA and preverified
+runtime assets; develop output remains untrusted. Independent administrative
+channel and production bindings are still unconfigured.
+
+Verified GHCR cache preparation has its own `prepare-project-router-image`
+approval in the existing one-shot executor/ledger, exact digest/platform checks
+and no-op handling. Caddy provenance remains mandatory; empty-config validation
+is wired for an independent resource attestor. Installation, image preparation,
+`first-bootstrap` and `first-project-router-rollout` require separate approvals.
+The [operator handoff](docs/production-installation.md#remaining-operator-prerequisites-and-acceptance)
+lists installation, read-only VDS preflight and bootstrap blockers. No production
+operation or automated CD was performed/enabled.
+
 ## Repository structure
 
 ```text
@@ -301,7 +328,7 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Implemented; real local VM E2E passed, 15/15; production acceptance pending |
 | Stage 08 | GitHub Actions & Automation | Implemented offline; manual VM completion procedure awaiting live review |
-| Stage 09 | Production Integration & Release | 09.1 implemented offline; 09.2 implemented offline; 09.3/09.4A implemented offline; 09.4B/09.5/09.6 Planned; separate operation approvals required |
+| Stage 09 | Production Integration & Release | 09.1–09.4A and 09.4B.3 mechanism implemented offline; production installation/first rollout and 09.5/09.6 Planned; separate operation approvals required |
 
 Stage 05 selects Python CLI without changing Stage 02–04 contracts. Real
 ProjectRouter registration still requires a confirmed digest. Stage 06 owns
@@ -353,7 +380,9 @@ automatically. `make e2e-check` and `make check` remain fully offline.
 **Verified local acceptance (2026-10-21):** session `4963fe050c4567f2`, receipt
 `complete/passed`, `realE2E=performed`, **15/15 real scenarios passed**; the accepted
 implementation also passed **779 offline tests**. Production deployment was not
-performed. Stage 08 adds offline CI; Stage 09.1 adds offline contracts/security, while 09.2 is implemented offline; 09.3/09.4A are implemented offline; 09.4B/09.5/09.6 remain Planned. Earlier failed attempts and their
+performed. Stage 08 adds offline CI; Stages 09.1–09.4A and the 09.4B.3 execution
+mechanism are implemented offline. Production installation/first rollout and
+09.5/09.6 remain Planned. Earlier failed attempts and their
 closure evidence are retained; intentional crash/unknown journals remain
 analysis-only, without replay. See [acceptance and history](docs/local-e2e.md#verified-local-acceptance).
 
@@ -373,6 +402,6 @@ Shared proxy networks need lateral-access review. Image rollback cannot reverse
 database migrations or replace data backups; persistent data must never be
 automatically deleted.
 
-No project license has been selected. Vendored standards retain their upstream
-[MIT notice](.agents/skills/UPSTREAM-LICENSE.txt); this does not assign a license
-to the rest of this repository. Choose a project license before release.
+Project code is licensed under the [MIT License](LICENSE), copyright 2026
+Danil Miftakhov. Vendored standards retain their upstream
+[MIT notice](.agents/skills/UPSTREAM-LICENSE.txt); third-party notices remain applicable.

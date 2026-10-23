@@ -21,11 +21,76 @@ a fake-adapter lifecycle rehearsal. Production write transports and source/opera
 authorization remain blocked. Stage 09.4A adds offline first-host bootstrap,
 explicit source trust, canonical production lock/storage, release evidence and
 operator candidate/approval review contracts. Stage 09.4B remains the separately
-authorized first rollout; no production apply is exposed.
+authorized first rollout. Stage 09.4B.3 implements a one-shot execution mechanism
+with durable one-time authorization over the same engine, plus protected installation
+artifacts; no production installation or live execution is configured/performed.
+
+Stage 09.4B.4 adds [operator installation/integration](docs/production-installation.md).
+Deployment owns its initial installation and manager resources; Server Infrastructure
+supplies only the prepared/hardened host. An unprivileged exact-Git-object bundle
+builder and independent ProtectedSource-based manager/tree/dependency reviewer
+feed a separately authenticated administrative bootstrap. The standalone stdlib
+helper never imports bundle code, accepts no argv, rejects writable checkouts,
+provisions only protected fixed paths and preserves existing data/lock inode.
+It installs the existing launcher/unit without starting or enabling anything.
+The administrative authentication binding is independently installed and blocks
+by default; no release or configuration file grants its authority.
+
+Concrete fixed local machine/kernel/storage and read-only SQLite sources emit
+bounded fresh facts for existing HostContracts/SourceTrust composition; they do
+not attest their own payloads or manufacture complete planner evidence. Independent
+runtime/gateway/readiness/host/bootstrap attestors remain missing. A local empty
+Caddy validation binding reuses existing ManagedBootstrapPort/BootstrapExecution;
+provenance and exact-image runtime acceptance remain mandatory external gates.
+
+`prepare-project-router-image` is a separate cache-only OperationCandidate scope
+in ProductionExecutor, using the same full ReleaseVerifier, signed operator approval,
+canonical lease and durable shared SQLite nonce/candidate ledger. Exact immutable
+GHCR OCI evidence binds the candidate; only approved linux/amd64 ProjectRouter
+references can be pulled. Complete cache inventory distinguishes no-op/absence;
+two fresh Engine inspections verify digest/config/platform afterward. Consumed
+ledger payload records cache intent before mutation; failures fence all scopes.
+This scope does not create application/gateway LKG or authorize first-bootstrap or
+first-project-router-rollout. Caddy acquisition remains outside this scope.
+No production binding, administrative channel, VDS operation or CD is enabled.
+
+Stage 09.4B.7 adds a separate [trusted Caddy image producer](docs/trusted-caddy-image.md):
+the Sigstore-authenticated Caddy 2.11.7 static release is packaged over an authenticated
+digest-pinned Distroless rootfs, without compilation or package installation.
+Read-only PR builds precede protected-main GHCR publication, isolated exact-digest
+acceptance and signed SLSA/input attestations. A separate CaddyReleaseCollector reuses
+ProtectedSource, OCI mapping and pinned gh/Sigstore, binding source SHA, signer/builder,
+inputs and successful publication attempt. CaddyRuntime additionally accepts only
+the fixed producer GHCR repository by digest; runtime hardening is unchanged.
+Publication waits boundedly for exact main-push Offline CI, then rechecks full
+source policy with a separately supplied repository-scoped read-only credential;
+the workflow token cannot supply Administration:read branch-protection evidence.
+First main publication, signed digest, real exact-image acceptance and installed
+production attestation remain pending; no Caddy acquisition/rollout is authorized.
 
 Python CLI, Docker Engine/Compose (stable plugin versions >= 2, with separate CLI/configuration gates),
 GHCR, Git and Caddy are selected technologies.
 There is no daemon, database server, Kubernetes or production deployment trigger.
+
+Stage 09.4B.3's [execution contract](docs/production-execution.md) separates sealed
+root-owned installation, authenticated read-only collection/attestation, deterministic
+candidate creation and independent signed operator approval. ProductionExecutor
+revalidates the exact candidate under `/srv/portfolio/locks/host.lock`, consumes
+authorization durably, then passes that issued lease to the existing Stage 05
+execute and Stage 06 lifecycle. ProductionLifecycle reuses readiness/rollback and
+gateway sequencing; base disposable gates remain intact. The shared fixed Compose
+transport performs no build or implicit pull. Fixed manager-only bootstrap actions
+and exact-container Caddy validation/reload ports require installed attestors.
+
+SQLite schema v2 adds an irreversible nonce/candidate ledger in the same journal,
+with transactional migration preserving v1 events/LKG. Consumption precedes intent;
+unfinished consumption fences new work even if a crash left no engine intent.
+Success, blocked and recovery-required results retain spent identities; unknown
+outcomes have no replay/reset API. Bootstrap authorization/LKG must match the actual
+host/daemon before the independently approved first application rollout. Installation
+launcher/unit specifications live in `installation/`; shipped bindings always block.
+No issuer, production attestor, code installation or live release verification is
+configured by CLI/CI or a saved report. Source/Caddy provenance gates are unchanged.
 The local durable journal uses standard-library SQLite schema v1. Ordinary live apply is unavailable: Docker-only
 discovery cannot establish full Stage 03 registry/gateway evidence. See the
 [Stage 05 contract](docs/docker-deployment-engine.md) for exact safe boundaries.
@@ -729,6 +794,15 @@ remain required. ProductionGateway and ManagedGatewayReadPort write blockers sta
 
 ## Stage 09.4B.2 release/source trust boundary
 
+The Caddy reusable publisher authenticates protected-source reads with a GitHub
+App installation token minted immediately before its guard, scoped to the current
+repository and Administration/Actions/Checks/Contents read permissions. Repository
+Client ID variable and explicitly passed private-key secret are confined to the
+credential gate and official SHA-pinned token action. Only the guard receives the
+token via step-local `GH_TOKEN`; action post-job revocation remains enabled.
+Policy B, exact-SHA Offline CI and trusted workflow/check App identity are unchanged.
+Build, registry publication, signing and provenance receive no App credential.
+
 The [read-only release collector](docs/production-release-source-trust.md) implements
 the existing `ReleaseVerifier` port without installing it in CLI/CI.
 `release_readiness.py` adds a separately authorized read-only API over typed,
@@ -763,3 +837,17 @@ with alternative security policies left for separate review. Production executio
 authenticated actual state, operator issuance, DNS/TLS/storage/recovery and explicit
 first-operation approval remain separate prerequisites. Image digests and admission
 policy are unchanged.
+
+## Stages 09.4B.5–09.4B.6 trust readiness boundary
+
+[Trust readiness](docs/production-trust-readiness.md) prepares explicit low-level
+`ProtectedSource` policy B with zero required PR approvals; every other source/CI
+constraint remains. The sole maintainer approved B; the production collector (both
+repositories) and independent bundle reviewer explicitly share the fixed trusted-code
+`PRODUCTION_REVIEW_POLICY` constant. Low-level ProtectedSource still defaults to A;
+no untrusted input selects policy. Independent human review is not guaranteed.
+Readiness inherits B and always returns `productionAuthorized=false`. Read-only
+GitHub/official Caddy registry observations are diagnostic evidence only. The selected Caddy digest
+still lacks established cryptographic publisher/builder provenance; acquisition and
+bootstrap remain blocked. No administrative/approval/source attestor is installed,
+no new engine or crypto is added and no VDS operation is authorized or performed.

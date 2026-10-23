@@ -12,7 +12,7 @@ and admission policy remain empty.
 | --- | --- |
 | `scripts/readiness.py` | `ReadinessPolicy`, `ProbeAdapter`, `ProbeResult`, `verify_readiness` |
 | `scripts/composite_state.py` | `SourceEvidence`, `CompositeSample`, `CompositeStateProvider.refresh()` |
-| `scripts/deployment_journal.py` | `Intent`, `Journal`, `locked_journal`, closed schema v1 and transactional state transitions |
+| `scripts/deployment_journal.py` | `Intent`, `Journal`, `locked_journal`, closed schema v2 (v1 migration), transactional state transitions and authorization ledger |
 | `scripts/deployment_lifecycle.py` | `DeploymentLifecycle`, `runtime_identity`, pure `plan_rollback`, `analyze_recovery` |
 | `scripts/deployment.py` | Existing `execute(..., lifecycle=None)` orchestration, preflight, scoped adapter and host lock |
 
@@ -263,3 +263,16 @@ recovery limits are unchanged.
 ## Stage 09.4A preparation
 
 Journal now verifies an issued live host-lock lease and its inode before operations; a fabricated `LockLease(active=True)` is rejected. ProductionGateway additionally requires the canonical production path by default. First deployment has no previous application LKG: empty gateway configuration is only a gateway baseline. See [production preparation](production-preparation.md) for backups, storage, first-release containment and blocked production wiring.
+
+## Stage 09.4B.3 execution integration
+
+[Production execution](production-execution.md) reuses the same engine and lifecycle
+steps under an existing canonical lease. A separate ProductionLifecycle opens the
+same journal only inside an independently authenticated, durably consumed grant;
+the base disposable gate is unchanged. Journal v2 adds authorization consumption,
+transactionally migrating valid v1 history without replacing attempts/events/LKG.
+Consumed and recovery-required ledger rows fence production work even before an
+engine intent exists; authorization_recovery reports these read-only decisions.
+Result-write failure after mutation remains recovery-required. No nonce release,
+post-crash replay or automatic recovery is introduced. Production bindings remain
+unconfigured; offline tests do not establish host/release/runtime trust.

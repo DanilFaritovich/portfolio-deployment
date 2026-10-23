@@ -9,7 +9,7 @@ import re
 from scripts.docker_adapter import DockerError
 from scripts.production_integration.artifacts import blob_digest, verify_oci_bytes
 from scripts.production_integration.release import ReleaseFacts, PRODUCER, MANAGER, ORIGIN
-from scripts.production_integration.release_source import ProtectedSource
+from scripts.production_integration.release_source import ProtectedSource, PRODUCTION_REVIEW_POLICY
 from scripts.production_integration.release_transport import require, IMAGE_REPOSITORY, LIMIT
 
 SLSA = 'https://slsa.dev/provenance/v1'
@@ -69,7 +69,7 @@ class AuthenticatedReleaseCollector:
                 'production-release-candidate-mismatch')
         require(set(required_checks) == {(p.repository, p.name, p.app_id) for p in self.checks} and
                 self.builder in builders, 'production-release-verification-policy-incomplete')
-        source = ProtectedSource(self.github)
+        source = ProtectedSource(self.github, review_policy=PRODUCTION_REVIEW_POLICY)
         publication = None
         for repo, sha in ((PRODUCER, c.producer_sha), (MANAGER, c.manager_sha)):
             run = source.collect(repo, sha, [p for p in self.checks if p.repository == repo],

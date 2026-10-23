@@ -1,4 +1,4 @@
-"""Candidate binding and approval verification only. No production apply API."""
+"""Candidate binding and independent operator signature verification contract."""
 from dataclasses import asdict, dataclass
 import math
 import re
@@ -31,7 +31,7 @@ class OperationCandidate:
             not re.fullmatch(r'[A-Za-z0-9:_-]{1,128}', self.daemon) or
             not all(re.fullmatch(r'[0-9a-f]{40}', s) for s in (self.manager_sha, self.producer_sha)) or
             not re.fullmatch(r'ghcr.io/danilfaritovich/project-router@sha256:[0-9a-f]{64}', self.image) or
-            self.scope not in ('first-bootstrap', 'first-project-router-rollout')):
+            self.scope not in ('first-bootstrap', 'first-project-router-rollout', 'prepare-project-router-image')):
             raise DockerError('production-candidate-identity-invalid')
         for key, value in asdict(self).items():
             if key.endswith('_hash') and not re.fullmatch(r'sha256:[0-9a-f]{64}', value):
@@ -57,7 +57,8 @@ def review_approval(candidate, envelope, *, verifier=None, now):
 
     This returns validated claims for review, never an executor capability. A
     fixture, merge, CI or plain dict cannot become an approval by parsing it.
-    Consumption/replay ledger and real write authorization belong to 09.4B.
+    The one-shot coordinator consumes these claims in the durable journal ledger
+    before creating an in-process execution grant. This function alone grants none.
     """
     identity = candidate.identity
     if verifier is None:

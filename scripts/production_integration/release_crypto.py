@@ -57,9 +57,12 @@ class AttestationVerifier:
     gh verifies the DSSE signature, certificate identity and witnessed timestamps;
     policy constraints reuse acceptance's exact signer/source flags and selector.
     """
-    def __init__(self, binary, binary_sha256, trusted_root, root_sha256):
+    def __init__(self, binary, binary_sha256, trusted_root, root_sha256, *, repository=PRODUCER):
         self.binary, self.binary_hash = Path(binary), binary_sha256
         self.root, self.root_hash = Path(trusted_root), root_sha256
+        require(repository in (PRODUCER, 'DanilFaritovich/portfolio-deployment'),
+                'production-release-crypto-repository-invalid')
+        self.repository = repository
 
     def verify(self, subject, image, identity, expectations, bundles):
         require(type(subject) is bytes and len(subject) <= LIMIT)
@@ -92,7 +95,7 @@ class AttestationVerifier:
             bundle_file.write_bytes(raw)
             statements = []
             for expectation in expectations:
-                args = attestation_command(image, PRODUCER, identity, expectation['predicateType'], str(binary))
+                args = attestation_command(image, self.repository, identity, expectation['predicateType'], str(binary))
                 # Local bytes have the exact selected digest; no registry resolver,
                 # tag lookup, authentication or outbound request is needed by gh.
                 args[3] = str(artifact)

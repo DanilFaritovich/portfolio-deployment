@@ -137,6 +137,33 @@ SQLite стандартной библиотеки; сервер БД, daemon и
 Stage 09.1 выбирает ручное разрешение из защищённой `main`; настройка защиты GitHub
 и production-валидация точного SHA остаются prerequisites. Автоактивации нет.
 
+[Stage 09.4B.3](docs/production-execution.md) реализует host-local one-shot
+механизм выполнения поверх существующего engine: точный кандидат, независимо
+проверяемое одноразовое разрешение, постоянную SQLite replay-защиту и canonical lock.
+Файлы установки подготовлены; доверенные production bindings не настроены.
+Установка на VDS, bootstrap и rollout не выполнялись. Полная live release
+verification, operator verifier/attestors, Caddy provenance и независимо одобренная установка
+Deployment Manager остаются prerequisites; по умолчанию `productionAuthorized=false`.
+
+[Stage 09.4B.4](docs/production-installation.md) добавляет детерминированный offline
+install bundle, независимую проверку protected-main/source/dependencies,
+отдельный административный installer и ограниченные локальные read-only источники.
+Deployment Manager отвечает за собственную установку, private storage, Caddy и
+сети приложений; Server Infrastructure — только за подготовку и обслуживание
+хоста. Installer сохраняет существующие данные и inode lock, не запускает executor
+или Docker. `make installation-bundle` экспортирует явно выбранный SHA и заранее
+проверенные runtime assets; результат из develop остаётся недоверенным.
+Независимый административный канал и production bindings пока не настроены.
+
+Загрузка проверенного GHCR image cache имеет отдельное разрешение
+`prepare-project-router-image` в существующем one-shot executor/ledger, проверки
+точного digest/platform и no-op. Caddy provenance остаётся обязательным; проверка
+пустой конфигурации подготовлена для независимого resource attestor. Установка,
+image preparation, `first-bootstrap` и `first-project-router-rollout` требуют
+отдельных approvals. [Operator handoff](docs/production-installation.md#remaining-operator-prerequisites-and-acceptance)
+описывает blockers для installation, read-only VDS preflight и bootstrap.
+Production operations и автоматический CD не выполнялись и не включались.
+
 ## Структура репозитория
 
 ```text
@@ -304,7 +331,7 @@ references; читать references нужно только для текуще�
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Реализован; реальный локальный VM E2E пройден, 15/15; production acceptance ожидается |
 | Stage 08 | GitHub Actions & Automation | Реализован офлайн; ручная процедура завершения VM ожидает live review |
-| Stage 09 | Production Integration & Release | 09.1 реализован офлайн; 09.2 реализован офлайн; 09.3/09.4A реализованы офлайн; 09.4B/09.5/09.6 Planned; операции требуют отдельных разрешений |
+| Stage 09 | Production Integration & Release | 09.1–09.4A и механизм 09.4B.3 реализованы офлайн; production-установка/первый rollout и 09.5/09.6 Planned; операции требуют отдельных разрешений |
 
 Stage 05 выбирает Python CLI без изменений контрактов Stage 02–04. Реальному
 ProjectRouter всё ещё нужен подтверждённый digest. Stage 06 отвечает за readiness,
@@ -356,7 +383,9 @@ CLI: `python -m scripts.e2e.cli`; отдельные prepare/images/test/status/
 **Подтверждённая локальная приёмка (2026-10-21):** сессия `4963fe050c4567f2`, receipt
 `complete/passed`, `realE2E=performed`, **15/15 реальных сценариев passed**; принятая
 реализация также прошла **779 offline tests**. Production deployment не выполнялся,
-Stage 08 добавляет offline CI; Stage 09.1 — офлайн-контракты/security, а 09.2 реализован офлайн; 09.3/09.4A реализованы офлайн; 09.4B/09.5/09.6 остаются Planned. Предыдущие неудачные попытки и evidence их закрытия
+Stage 08 добавляет offline CI; Stages 09.1–09.4A и механизм выполнения 09.4B.3
+реализованы офлайн. Production-установка/первый rollout и 09.5/09.6 остаются Planned.
+Предыдущие неудачные попытки и evidence их закрытия
 сохранены; journals намеренных crash/unknown сценариев остаются analysis-only,
 без replay. См. [результаты приёмки и историю](docs/local-e2e.md#verified-local-acceptance).
 
@@ -375,6 +404,6 @@ Stage 07 разрешает только отдельно авторизован
 образа не отменяет миграции базы и не заменяет резервные копии; постоянные данные
 нельзя удалять автоматически.
 
-Лицензия проекта пока не выбрана. Для vendored standards сохранён upstream
-[MIT notice](.agents/skills/UPSTREAM-LICENSE.txt); он не задаёт лицензию остального
-репозитория. Лицензию проекта необходимо определить до release.
+Код проекта распространяется по [лицензии MIT](LICENSE), copyright 2026
+Danil Miftakhov. Для vendored standards сохранён upstream
+[MIT notice](.agents/skills/UPSTREAM-LICENSE.txt); сторонние notices продолжают действовать.

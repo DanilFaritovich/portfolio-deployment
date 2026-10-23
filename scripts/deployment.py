@@ -219,7 +219,7 @@ def deployment_preview(desired, observed, plan, application):
     return tuple(operations)
 
 
-def execute(desired, observed, plan, application, adapter, provider, *, lock_directory="/tmp/portfolio-deployment-locks", lifecycle=None):
+def execute(desired, observed, plan, application, adapter, provider, *, lock_directory="/tmp/portfolio-deployment-locks", lifecycle=None, lease=None):
     """Provider refresh() -> (admitted desired, full observed, DockerObservation).
 
     Local live provider cannot supply complete Stage 03 evidence yet. Offline fake
@@ -230,7 +230,7 @@ def execute(desired, observed, plan, application, adapter, provider, *, lock_dir
     def all_blocked(code):
         return tuple(ExecutionResult(o, "blocked", (code,)) for o in operations)
     try:
-        with host_lock(lock_directory) as lease, ExitStack() as stack:
+        with existing_or_host_lock(lease, lock_directory) as lease, ExitStack() as stack:
             if lifecycle is not None:
                 stack.enter_context(lifecycle.open(lease, adapter, provider))
             fresh_desired, fresh_observed, docker = provider.refresh()
@@ -328,3 +328,15 @@ def execute(desired, observed, plan, application, adapter, provider, *, lock_dir
         return all_blocked(error.code)
     except (RegistryValidationError, PlanningInputError, OSError):
         return all_blocked("fresh-state-unavailable")
+
+
+@contextmanager
+def existing_or_host_lock(lease, directory):
+    """Trusted in-process caller may retain its issued lease across preflight."""
+    if lease is None:
+        with host_lock(directory) as acquired:
+            yield acquired
+    else:
+        if not owns_host_lock(lease):
+            raise DockerError('host-lock-ownership-required')
+        yield lease

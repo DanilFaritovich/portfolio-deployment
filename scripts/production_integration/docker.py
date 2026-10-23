@@ -67,7 +67,8 @@ class ProductionDockerAdapter:
         inventories = ([kind, 'ls', *(['--all'] if kind == 'container' else []), '--quiet',
                         *(['--no-trunc'] if kind != 'volume' else [])]
                        for kind in ('container', 'network', 'volume'))
-        allowed = (args in inventories or
+        allowed = (args == ['image', 'ls', '--all', '--digests', '--no-trunc', '--format', '{{json .}}'] or
+                   args in inventories or
                    (len(args) == 3 and args[0] in ('container', 'network', 'volume', 'image') and
                     args[1] == 'inspect' and isinstance(args[2], str) and
                     re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_./:@-]{0,255}', args[2]) is not None))
