@@ -67,6 +67,7 @@ jobs:
           name: caddy-build-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/caddy-build
       - name: Load exactly the checked build
+        id: loaded
         run: |
           docker load --input "$RUNNER_TEMP/caddy-build/image.tar" > /dev/null
           docker image inspect "$IMAGE:sha-$SOURCE_SHA" > "$RUNNER_TEMP/loaded-image.json"
@@ -111,7 +112,7 @@ jobs:
           predicate-path: ${{ runner.temp }}/caddy-build/publication-inputs.json
           push-to-registry: true
       - name: Preserve publication evidence
-        if: always()
+        if: ${{ always() && steps.loaded.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: caddy-publication-${{ github.sha }}-${{ github.run_attempt }}

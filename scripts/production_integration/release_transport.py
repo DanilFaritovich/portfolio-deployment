@@ -24,6 +24,12 @@ def require(condition, code='production-release-api-incomplete'):
         raise DockerError(code)
 
 
+def valid_bearer_token(token):
+    # Credentials are opaque, including stateless ghs_APPID_JWT tokens. Check
+    # only bounded HTTP-header safety, never decode or authenticate a JWT here.
+    return isinstance(token, str) and re.fullmatch(r'[!-~]{1,4096}', token) is not None
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
@@ -67,6 +73,8 @@ class HTTPSRead:
                 '/blobs/sha256:' in parsed.path and target.scheme == 'https' and
                 target.netloc == 'pkg-containers.githubusercontent.com' and not target.fragment):
                 return self.get(location, {})
+            if error.code == 401:
+                raise DockerError('production-release-api-authentication-failed') from None
             if error.code in (403, 429):
                 raise DockerError('production-release-api-denied-or-rate-limited') from None
             if error.code == 404:
@@ -79,8 +87,7 @@ class HTTPSRead:
 class GitHubRead:
     """Authenticated fixed-repository REST reads, never response-provided URLs."""
     def __init__(self, token, transport):
-        require(isinstance(token, str) and 0 < len(token) <= 4096 and
-                re.fullmatch(r'[A-Za-z0-9_]+', token) is not None, 'production-release-token-unavailable')
+        require(valid_bearer_token(token), 'production-release-token-unavailable')
         self._token, self.transport = token, transport
 
     def get(self, repository, path):
@@ -117,7 +124,7 @@ class GHCRRead:
                 type(registry_auth) is tuple and len(registry_auth) == 2 and
                 all(isinstance(v, str) for v in registry_auth) and
                 re.fullmatch(r'[A-Za-z0-9_\[\]-]{1,128}', registry_auth[0]) is not None and
-                re.fullmatch(r'[A-Za-z0-9_]{1,4096}', registry_auth[1]) is not None),
+                valid_bearer_token(registry_auth[1])),
                 'production-release-registry-credential-invalid')
         self._registry_auth = registry_auth
 

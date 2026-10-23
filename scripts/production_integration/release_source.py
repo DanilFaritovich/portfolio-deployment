@@ -67,6 +67,9 @@ class ProtectedSource:
             # Never follow _links.self; the repository endpoint also resolves
             # applicable parent rulesets. Denied/incomplete details block.
             detail = api('/rulesets/' + str(identifier))
+            # GitHub may omit bypass_actors for a credential unable to inspect
+            # bypass policy. Missing is never evidence of an empty allowlist.
+            require('bypass_actors' in detail, 'production-release-protection-bypass-unreadable')
             require(detail['id'] == identifier and detail['enforcement'] == 'active' and
                     detail['target'] == 'branch' and detail['bypass_actors'] == [],
                     'production-release-protection-unverifiable')
