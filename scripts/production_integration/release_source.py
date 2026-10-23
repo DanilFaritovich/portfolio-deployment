@@ -23,8 +23,14 @@ class WorkflowCheck:
 
 
 class ProtectedSource:
-    def __init__(self, github):
+    def __init__(self, github, *, review_policy='A'):
+        # B is prepared for separate operator review only. Production collectors
+        # and bundle review intentionally use the strict A default; no request,
+        # environment or installation-file flag selects this policy.
+        require(type(review_policy) is str and review_policy in ('A', 'B'),
+                'production-release-review-policy-invalid')
         self.github = github
+        self.minimum_approvals = 1 if review_policy == 'A' else 0
 
     def policy(self, repo, required):
         api = lambda path: self.github.get(repo, path)
@@ -72,7 +78,7 @@ class ProtectedSource:
                     classic_checks.add((check['context'], check['app_id']))
             strong_classic = bool(isinstance(checks, dict) and checks.get('strict') is True and
                 isinstance(reviews, dict) and type(reviews.get('required_approving_review_count')) is int and
-                reviews['required_approving_review_count'] >= 1 and reviews.get('dismiss_stale_reviews') is True and
+                reviews['required_approving_review_count'] >= self.minimum_approvals and reviews.get('dismiss_stale_reviews') is True and
                 reviews.get('bypass_pull_request_allowances') == {'users': [], 'teams': [], 'apps': []} and
                 classic.get('enforce_admins', {}).get('enabled') is True and
                 classic.get('allow_force_pushes', {}).get('enabled') is False and
@@ -85,7 +91,7 @@ class ProtectedSource:
                 if rule['type'] == 'pull_request':
                     p = rule['parameters']
                     require(type(p['required_approving_review_count']) is int and
-                            p['required_approving_review_count'] >= 1 and p['dismiss_stale_reviews_on_push'] is True,
+                            p['required_approving_review_count'] >= self.minimum_approvals and p['dismiss_stale_reviews_on_push'] is True,
                             'production-release-protection-insufficient')
         require(strong_classic or strong_rules, 'production-release-protection-insufficient')
         enforced = (classic_checks if strong_classic else set()) | (rule_checks if strong_rules else set())

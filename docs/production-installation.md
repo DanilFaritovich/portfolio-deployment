@@ -303,3 +303,8 @@ empty-config validation, cache scope/digest/platform restrictions, no-op and
 partial/dead-process recovery/replay fences. Existing execution tests retain
 network/port/storage conflicts, Docker/Caddy partial failure and separate bootstrap/
 rollout permissions. No real host readiness, Docker, Caddy or TLS claim follows.
+
+The [Stage 09.4B.5 handoff](production-trust-readiness.md) consolidates the pending
+operator decisions, real-host evidence and separate release/diagnostic/install/
+image/bootstrap/rollout approvals. It prepares B without enabling it; installation
+and runtime authority bindings remain deliberately unconfigured.
