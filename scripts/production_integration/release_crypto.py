@@ -18,7 +18,7 @@ from scripts.production_integration.release import PRODUCER
 from scripts.production_integration.release_transport import LIMIT, require
 
 
-def bounded_process(args, directory):
+def bounded_process(args, directory, *, limit=4 * LIMIT, timeout=30):
     env = {'HOME': str(directory), 'GH_CONFIG_DIR': str(directory), 'GH_HOST': 'github.com',
            'GH_PROMPT_DISABLED': '1', 'GH_NO_UPDATE_NOTIFIER': '1', 'GH_NO_EXTENSION_UPDATE_NOTIFIER': '1'}
     try:
@@ -26,7 +26,7 @@ def bounded_process(args, directory):
                               stderr=subprocess.DEVNULL) as process:
             try:
                 output = bytearray()
-                deadline = time.monotonic() + 30
+                deadline = time.monotonic() + timeout
                 with selectors.DefaultSelector() as selector:
                     selector.register(process.stdout, selectors.EVENT_READ)
                     while True:
@@ -38,7 +38,7 @@ def bounded_process(args, directory):
                         if not chunk:
                             break
                         output.extend(chunk)
-                        require(len(output) <= 4 * LIMIT, 'production-release-crypto-output-limit')
+                        require(len(output) <= limit, 'production-release-crypto-output-limit')
                 require(process.wait(timeout=max(.01, deadline - time.monotonic())) == 0,
                         'production-release-signature-unverified')
                 return bytes(output)
@@ -101,6 +101,11 @@ class AttestationVerifier:
                 args[3] = str(artifact)
                 args.extend(['--bundle', str(bundle_file), '--custom-trusted-root', str(directory / 'root.jsonl'),
                              '--cert-oidc-issuer', 'https://token.actions.githubusercontent.com'])
+                if 'signerIdentity' in identity:
+                    # gh makes exact cert identity and signer-workflow mutually
+                    # exclusive. The exact identity includes workflow AND ref.
+                    offset = args.index('--signer-workflow')
+                    args[offset:offset + 2] = ['--cert-identity', identity['signerIdentity']]
                 raw = bounded_process(args, directory)
                 try:
                     statements.append(verified_statement(raw, image, expectation))

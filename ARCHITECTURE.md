@@ -849,6 +849,27 @@ constraints, SLSA builder and signed origin/publish-run predicates precede
 `release_collector.py` constructing `ReleaseFacts`. There is no second OCI mapper,
 cryptographic signature implementation, facts deserializer or production authority.
 Trusted Python ports retain ADR 0001's installed-code boundary.
+
+`caddy-release-qa.yml` runs `make qa-release-check` on PRs into develop/main
+with read-only contents/attestation access and no App credentials. It pins the
+historical Caddy digest `sha256:cd65a6b7daa8029c9f367dcacb9dab14a5eb016c7e584e3ca7f1dbed89ed3800`,
+source `3d24ca2cefb723d8c8796940691bbbe31b19c1b2`, publication `40024294624/1`
+and attestations `59250326` / `59250361`. The shared `verify_caddy_artifact`
+contract checks OCI bytes/config and both pinned-root gh signatures, exact source
+and certificate workflow/ref identity, workflow-based SLSA builder, signed source
+and invocation, and the complete published input predicate. PR code supplies only
+QA evidence (`productionAuthorized=false`, protected source unverified); the
+production collector still calls full `ProtectedSource` policy B first. Operator
+approvals and production release verification remain independent mandatory gates.
+The transport accepts only the exact GitHub API-version deprecation Link notice;
+pagination, mixed or unknown Link headers still fail closed.
+
+Full `make check` runs once in Offline CI. Trusted Caddy image runs targeted
+producer/auth regressions, authenticates upstream inputs, checks toolchain drift,
+builds without network and validates the built image. Its unchanged publisher
+guard waits for successful exact-SHA main push Offline CI and full policy B
+before any registry write. Other isolated Docker/Caddy workflows stay separate.
+Real release QA is networked and never a dependency of offline `make check`.
 A manager SHA outside protected main remains blocked; develop/PR success cannot
 replace a separate reviewed main merge and exact-SHA checks.
 
