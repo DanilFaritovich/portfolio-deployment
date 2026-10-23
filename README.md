@@ -141,8 +141,27 @@ execution mechanism over the existing engine: exact candidates, independently
 verified one-time approval, durable SQLite replay protection and canonical lock.
 Installation artifacts are prepared; trusted production bindings are unconfigured.
 No VDS installation, bootstrap or rollout was performed. Full live release
-verification, operator verifier/attestors, Caddy provenance and infrastructure
+verification, operator verifier/attestors, Caddy provenance and independently approved manager
 installation remain prerequisites; `productionAuthorized=false` by default.
+
+[Stage 09.4B.4](docs/production-installation.md) adds deterministic offline install
+bundles, independent protected-main/source/dependency review, a standalone
+administrative installer and concrete bounded local read sources. Deployment
+Manager owns its installation, private storage, Caddy and application networks;
+Server Infrastructure owns only host preparation and maintenance. The installer
+preserves existing state/lock inode and never starts the executor or Docker.
+`make installation-bundle` exports an explicitly selected SHA and preverified
+runtime assets; develop output remains untrusted. Independent administrative
+channel and production bindings are still unconfigured.
+
+Verified GHCR cache preparation has its own `prepare-project-router-image`
+approval in the existing one-shot executor/ledger, exact digest/platform checks
+and no-op handling. Caddy provenance remains mandatory; empty-config validation
+is wired for an independent resource attestor. Installation, image preparation,
+`first-bootstrap` and `first-project-router-rollout` require separate approvals.
+The [operator handoff](docs/production-installation.md#remaining-operator-prerequisites-and-acceptance)
+lists installation, read-only VDS preflight and bootstrap blockers. No production
+operation or automated CD was performed/enabled.
 
 ## Repository structure
 

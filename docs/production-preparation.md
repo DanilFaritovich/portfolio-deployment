@@ -4,6 +4,13 @@ Status: implemented preparation interfaces and offline acceptance. **Production
 apply is unavailable.** Stage 09.4B is the separate first authorized rollout;
 09.5 update/rollback acceptance and 09.6 automatic CD remain future work.
 
+[Stage 09.4B.4 installation/integration](production-installation.md) adds exact
+bundle review, separate administrative installation, bounded local sources and
+cache-only image preparation using the existing executor/release gates. Deployment
+owns manager installation/storage/Caddy/networks; Server Infrastructure owns the
+prepared host. Independent authentication/attestors, GitHub policy A/B and Caddy
+provenance remain blockers; no production operation was performed.
+
 ## Architecture and implemented interfaces
 
 The historical preparation-only boundaries below are extended by

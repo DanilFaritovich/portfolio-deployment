@@ -165,7 +165,7 @@ production-plan:
 	@$(PYTHON) -c 'import os,sys; from scripts.production_integration.cli import main; sys.exit(main(["plan","--contract",os.environ.get("PRODUCTION_CONTRACT",""),"--root",os.environ["REGISTRY_ROOT"],"--git-revision",os.environ.get("GIT_REVISION",""),"--observed",os.environ.get("OBSERVED","")]))'
 
 production-integration-check:
-	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_production_integration.py tests/test_production_ports.py tests/test_production_preparation.py tests/test_release_collector.py tests/test_production_execution.py
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_production_integration.py tests/test_production_ports.py tests/test_production_preparation.py tests/test_release_collector.py tests/test_production_execution.py tests/test_production_installation.py tests/test_production_image_preparation.py tests/test_production_local_sources.py
 
 # Candidate declarations only: never Docker, registry requests or workflow dispatch.
 .PHONY: acceptance-check
@@ -184,3 +184,9 @@ runtime-integration-test:
 export CADDY_TEST_ENDPOINT CADDY_TEST_AUTHORIZE
 caddy-integration-test:
 	@$(PYTHON) -c 'import os,sys; from scripts.caddy_integration import main; sys.exit(main(["--endpoint",os.environ.get("CADDY_TEST_ENDPOINT",""),"--authorize",os.environ.get("CADDY_TEST_AUTHORIZE","")]))'
+
+# Offline artifact export only. Never installs or contacts Docker/VDS.
+.PHONY: installation-bundle
+export MANAGER_REVISION INSTALL_VENDOR INSTALL_CADDY INSTALL_DEPENDENCY_PINS INSTALL_BUNDLE
+installation-bundle:
+	@$(PYTHON) -c 'import os,sys; from scripts.production_integration.install_bundle import main; sys.exit(main(["--revision",os.environ.get("MANAGER_REVISION",""),"--vendor",os.environ.get("INSTALL_VENDOR",""),"--caddy",os.environ.get("INSTALL_CADDY",""),"--dependency-pins",os.environ.get("INSTALL_DEPENDENCY_PINS",""),"--output",os.environ.get("INSTALL_BUNDLE","")]))'

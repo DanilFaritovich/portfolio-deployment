@@ -11,6 +11,13 @@ consumption over this unchanged verifier. It does not establish a production iss
 install trusted bindings or perform full live release verification. Missing GitHub
 policy/Caddy provenance evidence continues to block production execution.
 
+[Stage 09.4B.4 installation/integration](production-installation.md) adds exact
+bundle review, separate administrative installation, bounded local sources and
+cache-only image preparation using the existing executor/release gates. Deployment
+owns manager installation/storage/Caddy/networks; Server Infrastructure owns the
+prepared host. Independent authentication/attestors, GitHub policy A/B and Caddy
+provenance remain blockers; no production operation was performed.
+
 ## Architecture and installation boundary
 
 The existing `ReleaseVerifier` consumes `ReleaseFacts` only from installed trusted

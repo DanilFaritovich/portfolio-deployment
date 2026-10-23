@@ -7,6 +7,14 @@ release verification has **not** run; earlier acceptance and diagnostic prefligh
 are not `releaseVerified` evidence. GitHub policy A/B and Caddy provenance remain
 independent operator/security decisions, unchanged by this implementation.
 
+[Stage 09.4B.4](production-installation.md) extends this contract with operator-owned
+initial installation (outside the not-yet-installed executor), independent bundle
+source/dependency verification and bounded fresh local sources. It adds the separate
+cache-only `prepare-project-router-image` scope to the same executor/ledger. The
+installation handoff below is historical: Deployment now owns its helper, unit,
+storage and Caddy; Server Infrastructure only prepares/maintains the host. Default
+administrative/production bindings remain blocking. No VDS installation occurred.
+
 ## One-shot boundary
 
 [ADR 0001](adr/0001-production-execution.md) is implemented by
@@ -168,11 +176,12 @@ rollback remains conservative and defaults to excluding automatic restoration
 without explicit side-effect evidence. Public-route uncertainty retains the old
 gateway LKG and requires analysis; it never triggers automatic replay or deletion.
 
-## Exact installation and infrastructure handoff
+## Exact installation and operator handoff
 
-This is a specification for the **next separately authorized infrastructure task**.
+This is the Stage 09.4B.3 handoff, implemented safely in
+[Stage 09.4B.4](production-installation.md) under separate operator authority.
 No other repository, users, sudoers, units, socket permissions or host paths were
-changed here. Before installation the infrastructure owner must:
+changed here. Before installation the Deployment operator must:
 
 1. Review root-equivalent execution, the exact unit/start access policy and
    authenticated operator submission. Do not allow callers to choose argv,

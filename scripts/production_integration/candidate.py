@@ -43,6 +43,7 @@ class PreparedOperation:
     plan: object
     bootstrap: object = None
     resource_contract: str | None = None
+    image_evidence: object = None
 
 
 class CandidatePreflight:
@@ -56,16 +57,25 @@ class CandidatePreflight:
     def __init__(self, *, manager_sha, producer_sha, image, content_reader, engine,
                  contracts, attestor=None, provider=None, bootstrap_reader=None,
                  bootstrap_attestor=None, proxy=None, private_subnet=None,
-                 caddy=None, clock=time.monotonic):
+                 caddy=None, image_registry=None, clock=time.monotonic):
         self.manager_sha, self.producer_sha, self.image = manager_sha, producer_sha, image
         self.content_reader, self.engine = content_reader, engine
         self.contracts, self.attestor, self.provider = contracts, attestor, provider
         self.bootstrap_reader, self.bootstrap_attestor = bootstrap_reader, bootstrap_attestor
         self.proxy, self.private_subnet, self.caddy, self.clock = proxy, private_subnet, caddy, clock
+        self.image_registry = image_registry
 
     def prepare(self, scope):
         if self.attestor is None:
             raise DockerError('production-host-contract-attestor-unavailable')
+        image_evidence = None
+        if scope == 'prepare-project-router-image':
+            if self.image_registry is None:
+                raise DockerError('production-image-registry-unavailable')
+            from scripts.production_integration.artifacts import verify_oci_bytes
+            from scripts.production_integration.release_transport import IMAGE_REPOSITORY
+            image_evidence = verify_oci_bytes(self.image, IMAGE_REPOSITORY,
+                                              self.image_registry().collect(self.image))
         start = self.clock()
         identity = self.engine.identity()
         contracts = self.contracts.collect()
@@ -89,7 +99,12 @@ class CandidatePreflight:
         if desired.git_revision != self.manager_sha or type(manifest) is not bytes or type(policy) is not bytes or not manifest or not policy:
             raise DockerError('production-manager-content-unverified')
         bootstrap = None
-        if scope == 'first-bootstrap':
+        if scope == 'prepare-project-router-image':
+            plan_doc = {'operation': scope, 'image': self.image, 'platform': 'linux/amd64'}
+            runtime = asdict(image_evidence)
+            gateway = {'activation': False}
+            observed, plan = None, None
+        elif scope == 'first-bootstrap':
             if self.bootstrap_reader is None or self.caddy is None:
                 raise DockerError('production-bootstrap-dependencies-unavailable')
             sample = self.bootstrap_reader.collect()
@@ -137,7 +152,7 @@ class CandidatePreflight:
                                        hashed(runtime), hashed(extra[0]), hashed(extra[1]), hashed(extra[2]), scope)
         candidate.validate()
         return PreparedOperation(candidate, desired, observed, plan, bootstrap,
-                                 encode(plan_doc) if bootstrap is not None else None)
+                                 encode(plan_doc) if bootstrap is not None else None, image_evidence)
 
 
 class InstalledContentReader:
