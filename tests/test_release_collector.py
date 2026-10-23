@@ -131,6 +131,85 @@ def test_authenticated_round_through_release_verifier():
     assert len(transport.calls) < 64
 
 
+def manager_push_pr_evidence():
+    result = fixture()
+    c, docs, *_ = result
+    runs = docs[MANAGER, '/actions/runs?head_sha='+c.manager_sha+'&per_page=100']
+    checks = docs[MANAGER, '/commits/'+c.manager_sha+'/check-runs?filter=latest&per_page=100']
+    pr_run = copy.deepcopy(runs['workflow_runs'][0])
+    pr_run.update(id=101, check_suite_id=21, event='pull_request', head_branch='develop')
+    pr_check = copy.deepcopy(checks['check_runs'][0])
+    pr_check['check_suite']['id'] = 21
+    runs['workflow_runs'].append(pr_run)
+    checks['check_runs'].append(pr_check)
+    runs['total_count'] = checks['total_count'] = 2
+    return result, runs, checks
+
+
+@pytest.mark.parametrize('pr_failed', [False, True])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_required_push_check_coexists_with_independently_linked_pr(pr_failed, reverse):
+    result, runs, checks = manager_push_pr_evidence()
+    if pr_failed:
+        runs['workflow_runs'][1]['conclusion'] = 'failure'
+        checks['check_runs'][1]['conclusion'] = 'failure'
+    if reverse:
+        runs['workflow_runs'].reverse()
+        checks['check_runs'].reverse()
+    _, _, _, crypto, verifier, request = result
+    assert not verifier.verify(request).blockers
+    assert crypto.called
+
+
+@pytest.mark.parametrize('change', [
+    'pr-only', 'push-check-missing', 'duplicate-push-check', 'duplicate-pr-check',
+    'duplicate-push-run', 'duplicate-pr-run', 'second-failed-push',
+    'push-app', 'pr-app', 'push-sha', 'pr-sha', 'push-suite', 'pr-suite',
+    'push-check-failed', 'push-check-pending', 'push-run-failed', 'push-run-pending',
+    'push-run-sha', 'push-run-suite', 'push-run-branch', 'push-run-path',
+    'push-run-repository', 'push-run-head-repository', 'pr-run-sha', 'pr-run-path',
+    'pr-run-event', 'pr-run-repository', 'pr-run-head-repository',
+])
+def test_required_push_check_rejects_ambiguous_or_contradictory_evidence(change):
+    result, runs, checks = manager_push_pr_evidence()
+    push_run, pr_run = runs['workflow_runs']
+    push_check, pr_check = checks['check_runs']
+    if change == 'pr-only':
+        runs['workflow_runs'].remove(push_run)
+        checks['check_runs'].remove(push_check)
+    if change == 'push-check-missing': checks['check_runs'].remove(push_check)
+    if change.startswith('duplicate-'):
+        target = runs['workflow_runs'] if change.endswith('run') else checks['check_runs']
+        target.append(copy.deepcopy(target[0 if 'push' in change else 1]))
+    if change == 'second-failed-push':
+        extra = copy.deepcopy(push_run)
+        extra.update(id=102, check_suite_id=22, conclusion='failure')
+        runs['workflow_runs'].append(extra)
+    for label, check in (('push', push_check), ('pr', pr_check)):
+        if change == label+'-app': check['app']['id'] = 42
+        if change == label+'-sha': check['head_sha'] = '0'*40
+        if change == label+'-suite': check['check_suite']['id'] = 99
+    if change == 'push-check-failed': push_check['conclusion'] = 'failure'
+    if change == 'push-check-pending': push_check['status'] = 'in_progress'
+    if change == 'push-run-failed': push_run['conclusion'] = 'failure'
+    if change == 'push-run-pending': push_run['status'] = 'in_progress'
+    if change == 'push-run-suite': push_run['check_suite_id'] = 99
+    if change == 'push-run-branch': push_run['head_branch'] = 'develop'
+    for label, run in (('push', push_run), ('pr', pr_run)):
+        if change == label+'-run-sha': run['head_sha'] = '0'*40
+        if change == label+'-run-path': run['path'] = '.github/workflows/other.yml'
+        if change == label+'-run-repository': run['repository'] = {'id': 999, 'full_name': 'other/repo'}
+        if change == label+'-run-head-repository': run['head_repository'] = {'id': 999, 'full_name': 'other/repo'}
+    if change == 'pr-run-event': pr_run['event'] = 'workflow_dispatch'
+    runs['total_count'] = len(runs['workflow_runs'])
+    checks['total_count'] = len(checks['check_runs'])
+    _, _, transport, crypto, verifier, request = result
+    with pytest.raises(DockerError, match='production-release-'):
+        verifier.verify(request)
+    assert not crypto.called
+    assert all('ghcr.io' not in url for url, _ in transport.calls)
+
+
 @pytest.mark.parametrize('failure', [
     'ancestry', 'protected-flag-only', 'no-protection', 'checks-policy', 'unbound-app', 'admins', 'force', 'bypass',
     'check-app', 'check-sha', 'check-status', 'check-workflow', 'check-event', 'check-repository',
