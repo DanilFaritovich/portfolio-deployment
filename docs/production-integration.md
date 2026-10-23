@@ -8,6 +8,12 @@ runtime, GHCR production download, DNS, TLS or certificate operation was perform
 
 ## Components and trust boundaries
 
+[Stage 09.4B.3](production-execution.md) now implements the separate one-shot
+execution gate and protected installation contract over these ports and the same
+Stage 05/06 engine. Historical preparation-only write restrictions below describe
+the base read/test adapters; granted production adapters are separate and remain
+unconfigured until independently reviewed installation. No production run occurred.
+
 `Application CI → GHCR immutable digest → admitted desired state → Stage 03 plan
 → Stage 05 Compose executor → Stage 06 readiness/journal/LKG → managed Caddy`.
 Public traffic is `Internet → Caddy 80/443 → portfolio-proxy → ingress component`.

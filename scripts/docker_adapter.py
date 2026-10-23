@@ -186,16 +186,21 @@ class LocalDockerAdapter:
         self.authorize(artifact)
         if service not in artifact.model["services"]:
             raise DockerError("unknown-service")
-        with tempfile.TemporaryDirectory(prefix="pd-compose-") as directory:
-            path = Path(directory) / "compose.json"
-            path.write_text(artifact.to_json())
-            self._run(["compose", "--project-name", artifact.project, "--project-directory", directory,
-                       "--env-file", "/dev/null", "--file", str(path), "config", "-q"], cwd=directory)
-            self._run(["compose", "--project-name", artifact.project, "--project-directory", directory,
-                       "--env-file", "/dev/null", "--file", str(path), "up", "-d", "--no-deps",
-                       "--no-build", "--pull", "never", service], timeout=60, cwd=directory)
+        scoped_compose_up(artifact, service, self._run)
 
     # Cleanup is intentionally absent from the ordinary execution interface.
+
+
+def scoped_compose_up(artifact, service, run):
+    """Shared fixed Stage 05 config/up sequence; callers supply scoped transports."""
+    with tempfile.TemporaryDirectory(prefix="pd-compose-") as directory:
+        path = Path(directory) / "compose.json"
+        path.write_text(artifact.to_json())
+        argv = ["compose", "--project-name", artifact.project, "--project-directory", directory,
+                "--env-file", "/dev/null", "--file", str(path)]
+        run([*argv, "config", "-q"], cwd=directory)
+        run([*argv, "up", "-d", "--no-deps", "--no-build", "--pull", "never", service],
+            timeout=60, cwd=directory)
 
 
 def official_validate(artifact):

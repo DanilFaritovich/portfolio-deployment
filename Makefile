@@ -165,7 +165,7 @@ production-plan:
 	@$(PYTHON) -c 'import os,sys; from scripts.production_integration.cli import main; sys.exit(main(["plan","--contract",os.environ.get("PRODUCTION_CONTRACT",""),"--root",os.environ["REGISTRY_ROOT"],"--git-revision",os.environ.get("GIT_REVISION",""),"--observed",os.environ.get("OBSERVED","")]))'
 
 production-integration-check:
-	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_production_integration.py tests/test_production_ports.py tests/test_production_preparation.py tests/test_release_collector.py
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_production_integration.py tests/test_production_ports.py tests/test_production_preparation.py tests/test_release_collector.py tests/test_production_execution.py
 
 # Candidate declarations only: never Docker, registry requests or workflow dispatch.
 .PHONY: acceptance-check

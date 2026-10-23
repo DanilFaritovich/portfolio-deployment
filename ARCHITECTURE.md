@@ -21,11 +21,33 @@ a fake-adapter lifecycle rehearsal. Production write transports and source/opera
 authorization remain blocked. Stage 09.4A adds offline first-host bootstrap,
 explicit source trust, canonical production lock/storage, release evidence and
 operator candidate/approval review contracts. Stage 09.4B remains the separately
-authorized first rollout; no production apply is exposed.
+authorized first rollout. Stage 09.4B.3 implements a one-shot execution mechanism
+with durable one-time authorization over the same engine, plus protected installation
+artifacts; no production installation or live execution is configured/performed.
 
 Python CLI, Docker Engine/Compose (stable plugin versions >= 2, with separate CLI/configuration gates),
 GHCR, Git and Caddy are selected technologies.
 There is no daemon, database server, Kubernetes or production deployment trigger.
+
+Stage 09.4B.3's [execution contract](docs/production-execution.md) separates sealed
+root-owned installation, authenticated read-only collection/attestation, deterministic
+candidate creation and independent signed operator approval. ProductionExecutor
+revalidates the exact candidate under `/srv/portfolio/locks/host.lock`, consumes
+authorization durably, then passes that issued lease to the existing Stage 05
+execute and Stage 06 lifecycle. ProductionLifecycle reuses readiness/rollback and
+gateway sequencing; base disposable gates remain intact. The shared fixed Compose
+transport performs no build or implicit pull. Fixed manager-only bootstrap actions
+and exact-container Caddy validation/reload ports require installed attestors.
+
+SQLite schema v2 adds an irreversible nonce/candidate ledger in the same journal,
+with transactional migration preserving v1 events/LKG. Consumption precedes intent;
+unfinished consumption fences new work even if a crash left no engine intent.
+Success, blocked and recovery-required results retain spent identities; unknown
+outcomes have no replay/reset API. Bootstrap authorization/LKG must match the actual
+host/daemon before the independently approved first application rollout. Installation
+launcher/unit specifications live in `installation/`; shipped bindings always block.
+No issuer, production attestor, code installation or live release verification is
+configured by CLI/CI or a saved report. Source/Caddy provenance gates are unchanged.
 The local durable journal uses standard-library SQLite schema v1. Ordinary live apply is unavailable: Docker-only
 discovery cannot establish full Stage 03 registry/gateway evidence. See the
 [Stage 05 contract](docs/docker-deployment-engine.md) for exact safe boundaries.

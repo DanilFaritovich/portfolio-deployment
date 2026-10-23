@@ -8,7 +8,9 @@ on 2026-10-21; all six GHCR fixture digests were published and anonymously verif
 The Stage 07 implementation passed **779 offline tests**. Stage 08 adds offline
 PR CI, the Caddy retained-route regression fix and a manual successful-session VM
 completion procedure; its final offline check passed **785 tests**. Stage 09.1 adds offline production contracts/security; Stage 09.2 adds an offline-tested read-only diagnostics interface; Stage 09.3 adds offline-tested production integration ports (1055 tests);
-Stages 09.4–09.6 and production execution remain **Planned**; the separate Stage 05 smoke was not run.
+Stage 09.4B.3 implements the offline-tested production execution mechanism;
+production installation/first rollout and Stages 09.5–09.6 remain **Planned**;
+the separate Stage 05 smoke was not run.
 Each stage needs its own scoped task, validation evidence and review. This roadmap
 does not authorize production actions, merges, release tags or changes to other
 repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
@@ -28,6 +30,7 @@ repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
 | Stage 09.3 — Production Docker & Caddy Integration | Runtime security, Engine read adapter, complete-source composition, OCI/source gates, managed gateway contracts and same-engine rehearsal | Implemented/tested offline: 1055 tests; production writes and unconfigured live transports remain blocked; no VDS deployment |
 | Stage 09.4A — Production Deployment Preparation | Stable Compose plugin >= 2 and capability policy, explicit source trust, canonical lock/storage, bootstrap and candidate/evidence interfaces, execution ADR | Implemented and checked offline: 1120 tests; privileged mechanism, authenticated collectors and real-image runtime evidence remain blocked; no production writes |
 | Stage 09.4B — First Authorized ProjectRouter Rollout | Review/install actual production wiring and separately approve bootstrap and exact rollout candidate | Planned; protected-main evidence, approved privileged mechanism, trusted fresh observations, isolated runtime acceptance, DNS/TLS/storage/recovery and operator approval required |
+| Stage 09.4B.3 — Production Execution & Authorization | Host-local one-shot mechanism, exact candidates, consumed authorization ledger, same engine/lock/lifecycle and installation handoff | Implemented/tested offline; installation, independent operator verifier/attestors and production operations remain blocked |
 | Stage 09.5 — Update, Rollback & Release Acceptance | Controlled production update/rollback and operational acceptance | Planned; separate task/operation authorization; no automatic merge/tag |
 | Stage 09.6 — Automated Continuous Deployment | Protected producer-main publish proposes a manager digest-update PR; policy-gated CD follows review | Planned after safe manual rollout/rollback acceptance; no automatic CD implemented in 09.3 |
 
