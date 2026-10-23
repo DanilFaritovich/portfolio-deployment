@@ -6,6 +6,8 @@ No constructors perform Engine/network access. build verifies the sealed bundle.
 """
 from scripts.docker_adapter import DockerError
 from scripts.gateway import desired_routes
+from scripts.production_integration.admin_socket import UnixActiveChannel
+from scripts.production_integration.active_runtime import PinnedCaddyRuntime
 from scripts.production_integration.active_config import ActiveConfigTransport, InstalledConfigAdapter
 from scripts.production_integration.bootstrap_bindings import BootstrapValidationBinding
 from scripts.production_integration.candidate import CandidatePreflight, InstalledContentReader
@@ -38,22 +40,36 @@ def project_router_image_registry():
     return GHCRRead(HTTPSRead(), repository=IMAGE_REPOSITORY)
 
 
+def installed_active_channel(installation, engine, caddy, image, *, container_id, network_id):
+    """Opt-in trusted binding recipe. Pins originate outside operation requests."""
+    runtime = PinnedCaddyRuntime(installation, engine, caddy, image,
+                                 container_id=container_id, network_id=network_id)
+    return UnixActiveChannel(runtime), runtime
+
+
 def build(installation, *, engine_contract, host_policy, prerequisites, contracts,
           infrastructure, resolve_image, proxy, bootstrap_proxy, private_subnet, private_network_id,
           caddy, caddy_image, active_channel, gateway_runtime, gateway_postconditions, bootstrap_reader,
           bootstrap_attestor, bootstrap_resources, producer_sha, image,
           github, registry, crypto, checks, publication_check, signer_sha, builder, slsa_builder,
-          image_registry=None):
+          image_registry=None, active_pins=None):
     # This is an API for a reviewed fixed bindings.py, never a configuration loader.
     # image_registry is an independently installed bounded factory (e.g. the
     # fixed ProjectRouter factory above), separate from release collection.
     # Missing approval/wiring leaves both candidate creation and cache execution closed.
     if type(installation) is not SealedInstallation or any(x is None for x in (
-        prerequisites, active_channel, gateway_runtime, gateway_postconditions, bootstrap_reader, bootstrap_attestor,
+        prerequisites, gateway_postconditions, bootstrap_reader, bootstrap_attestor,
         bootstrap_resources, github, registry, crypto, resolve_image)):
         raise DockerError('production-fixed-composition-authority-incomplete')
     installation.verify()
     engine = installed_engine(installation, engine_contract)
+    if active_pins is not None:
+        if active_channel is not None or gateway_runtime is not None or type(active_pins) is not tuple or len(active_pins) != 2:
+            raise DockerError('production-active-composition-conflict')
+        active_channel, gateway_runtime = installed_active_channel(installation, engine, caddy, caddy_image,
+            container_id=active_pins[0], network_id=active_pins[1])
+    if active_channel is None or gateway_runtime is None:
+        raise DockerError('production-fixed-composition-authority-incomplete')
     content_reader = InstalledContentReader(installation)
     gateway_transport = ActiveConfigTransport(engine, active_channel, gateway_runtime,
         InstalledConfigAdapter(installation), lambda: desired_routes(content_reader()[0]))

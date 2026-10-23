@@ -8,6 +8,8 @@ from scripts.docker_adapter import DockerError, run_bounded
 from scripts.gateway import desired_routes, make_route, route_set
 from scripts.production_integration.gateway import ProductionGateway, content
 from scripts.production_integration.installation import protected
+from scripts.production_integration.admin_contract import HOST_ADDRESS
+from scripts.production_integration.active_config import BINARY
 from scripts.production_integration.storage import validate_storage_directory
 
 
@@ -105,9 +107,21 @@ class GrantedGatewayPort:
         protected(active_file)
         if active_file.read_bytes() != old.encode():
             raise DockerError('production-gateway-disk-state-changed')
-        durable_replace('/srv/portfolio/caddy-config', 'Caddyfile', new.encode())
-        self._require()
-        with tempfile.TemporaryDirectory(prefix='pd-caddy-reload-') as directory:
-            run_bounded(['/usr/bin/docker', '--host', 'unix:///run/docker.sock', 'exec', identity,
-                         'caddy', 'reload', '--address', '127.0.0.1:2019', '--config', '/etc/caddy/Caddyfile',
-                         '--adapter', 'caddyfile'], timeout=20, cwd=directory)
+        self.read_port.verify_current()
+        if BINARY not in dict(self.installation.files):
+            raise DockerError('production-caddy-validation-pin-required')
+        protected(BINARY)
+        # From disk publication onward, every failure has an uncertain outcome.
+        try:
+            durable_replace('/srv/portfolio/caddy-config', 'Caddyfile', new.encode())
+            self._require()
+            self.read_port.verify_current()
+            with tempfile.TemporaryDirectory(prefix='pd-caddy-reload-') as directory:
+                candidate = Path(directory) / 'Caddyfile'
+                candidate.write_bytes(new.encode())
+                run_bounded([BINARY, 'reload', '--address', HOST_ADDRESS, '--config', str(candidate),
+                             '--adapter', 'caddyfile'], timeout=20, cwd=directory)
+            self._require()
+            self.read_port.verify_current()
+        except Exception:
+            raise DockerError('production-gateway-reload-outcome-unknown', True) from None

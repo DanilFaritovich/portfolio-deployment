@@ -82,8 +82,12 @@ class ManagedBootstrapPort:
             raise DockerError('production-bootstrap-resource-contract-mismatch')
         if (self.attestor is None or self.attestor.preflight(prepared, self.caddy) != prepared):
             raise DockerError('production-bootstrap-resource-attestor-unavailable')
-        for path in (self.caddy.paths.gateway_config, self.caddy.paths.certificate_data, self.caddy.paths.gateway_data):
+        for path in (self.caddy.paths.gateway_config, self.caddy.paths.certificate_data, self.caddy.paths.gateway_data,
+                     self.caddy.paths.admin_socket_directory):
             validate_storage_directory(path, uid=os.geteuid())
+        # Never adopt a preexisting listener or foreign file as initial state.
+        if any(Path(self.caddy.paths.admin_socket_directory).iterdir()):
+            raise DockerError('production-bootstrap-admin-directory-not-empty')
         # Infrastructure provisions directories; bootstrap refuses existing config.
         if (Path(self.caddy.paths.gateway_config) / 'Caddyfile').exists():
             raise DockerError('production-bootstrap-config-already-present')

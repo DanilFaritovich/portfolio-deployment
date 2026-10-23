@@ -532,7 +532,8 @@ def test_actual_process_death_retains_consumption_and_releases_flock(setup):
     assert not s.world.calls
 
 
-def test_gateway_positive_commands_are_fixed_and_lkg_precedes_reload(setup, monkeypatch):
+@pytest.mark.parametrize('reload_failure', [False, True])
+def test_gateway_positive_commands_are_fixed_and_lkg_precedes_reload(setup, monkeypatch, reload_failure):
     from pathlib import Path
     from scripts.production_integration import gateway_write as module
     s = setup
@@ -542,24 +543,40 @@ def test_gateway_positive_commands_are_fixed_and_lkg_precedes_reload(setup, monk
     class Read:
         last_snapshot = SimpleNamespace(container_id='d'*64)
         def read(self): return ()
+        def verify_current(self): events.append(('runtime',))
     grant = SimpleNamespace(candidate=c,require=lambda:None,claims=SimpleNamespace(nonce='1'*32))
     installation = SimpleNamespace(verify=lambda:None,files=(('/opt/portfolio-deployment/tools/caddy','a'*64),))
     port = module.GrantedGatewayPort(installation,Read(),grant,prepared,
                                     SimpleNamespace(identity=lambda:(c.host,c.daemon)))
     monkeypatch.setattr(module,'protected',lambda *args:None)
     monkeypatch.setattr(module,'validate_storage_directory',lambda *args,**kwargs:None)
-    monkeypatch.setattr(module,'run_bounded',lambda argv,**kwargs:events.append(('command',argv)))
+    def run(argv, **kwargs):
+        events.append(('command', argv))
+        if argv[1] == 'reload':
+            assert Path(argv[5]).read_bytes() == port.new.encode()
+            if reload_failure: raise DockerError('command-failed')
+    monkeypatch.setattr(module,'run_bounded',run)
     monkeypatch.setattr(module,'durable_replace',lambda directory,name,raw:events.append(('durable',directory,name)))
     original_read = Path.read_bytes
     monkeypatch.setattr(Path,'read_bytes',lambda path:port.old.encode() if str(path)=='/srv/portfolio/caddy-config/Caddyfile' else original_read(path))
     port.validate(port.new)
     port.preserve_lkg(port.old)
-    port.compare_and_reload(port.old,port.new)
+    if reload_failure:
+        with pytest.raises(DockerError, match='outcome-unknown') as error:
+            port.compare_and_reload(port.old,port.new)
+        assert error.value.unknown
+    else:
+        port.compare_and_reload(port.old,port.new)
     assert events[0][1][1] == 'adapt' and events[1][1][1] == 'validate'
     assert events[2] == ('durable','/srv/portfolio/caddy-lkg','1'*32+'.Caddyfile')
-    assert events[3] == ('durable','/srv/portfolio/caddy-config','Caddyfile')
-    assert events[4][1] == ['/usr/bin/docker','--host','unix:///run/docker.sock','exec','d'*64,
-                            'caddy','reload','--address','127.0.0.1:2019','--config','/etc/caddy/Caddyfile','--adapter','caddyfile']
+    assert events[3] == ('runtime',)
+    assert events[4] == ('durable','/srv/portfolio/caddy-config','Caddyfile')
+    assert events[5] == ('runtime',)
+    argv = events[6][1]
+    assert argv[:5] == ['/opt/portfolio-deployment/tools/caddy', 'reload', '--address',
+                        'unix//srv/portfolio/caddy-admin/admin.sock|0600', '--config']
+    assert argv[5].endswith('/Caddyfile') and argv[6:] == ['--adapter','caddyfile']
+    if not reload_failure: assert events[7] == ('runtime',)
 
 
 def test_receipt_write_failure_after_mutation_never_reports_blocked(setup,monkeypatch):
@@ -585,3 +602,40 @@ def test_invalid_legacy_journal_rolls_back_migration(setup):
     with sqlite3.connect(s.directory/'journal.sqlite3') as db:
         assert db.execute('PRAGMA user_version').fetchone()[0] == 1
         assert db.execute("SELECT name FROM sqlite_master WHERE name='authorizations'").fetchone() is None
+
+
+def test_granted_uds_reload_failure_never_promotes_lkg_and_fences_replay(setup, monkeypatch):
+    from pathlib import Path
+    from scripts.production_integration import gateway_write as module
+    s = setup
+    c, envelope = approve(s)
+    events = []
+    class Read:
+        last_snapshot = SimpleNamespace(container_id='d'*64)
+        def read(self): return ()
+        def verify_current(self): pass
+    installation = SimpleNamespace(verify=lambda:None, files=((module.BINARY, 'a'*64),))
+    from functools import partial
+    monkeypatch.setattr(module, 'ProductionGateway', partial(module.ProductionGateway,
+        lease_verifier=lambda lease: owns_host_lock(lease)))
+    s.executor.gateway = module.GatewayExecutionFactory(installation, Read(), s.preflight.engine)
+    monkeypatch.setattr(module, 'protected', lambda *a:None)
+    monkeypatch.setattr(module, 'validate_storage_directory', lambda *a, **kw:None)
+    monkeypatch.setattr(module, 'durable_replace', lambda directory, name, raw: events.append(('preserve', directory, raw)))
+    original = Path.read_bytes
+    monkeypatch.setattr(Path, 'read_bytes', lambda p: module.content(()).encode()
+        if str(p) == '/srv/portfolio/caddy-config/Caddyfile' else original(p))
+    def run(argv, **kwargs):
+        events.append(('command', argv[1]))
+        if argv[1] == 'reload': raise DockerError('caddy-load-rejected')
+    monkeypatch.setattr(module, 'run_bounded', run)
+    result = s.executor.run(c, envelope)
+    assert result.status == 'recovery-required'
+    assert ('command', 'reload') in events
+    assert next(e for e in events if e[0] == 'preserve')[1] == '/srv/portfolio/caddy-lkg'
+    with s.lock() as lease, Journal(s.directory, lease) as journal:
+        assert journal.last_good('project-router', 'web') is None
+        assert journal.authorization_recovery()
+    count = len(events)
+    assert s.executor.run(c, envelope).status == 'blocked'
+    assert len(events) == count

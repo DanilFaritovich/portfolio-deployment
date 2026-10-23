@@ -135,7 +135,7 @@ def test_first_host_proposal_is_ordered_bound_and_always_blocked():
     assert not any('deploy-application' in op or 'activate-first-public-route' in op for op in plan.operations)
     assert plan.blockers and 'no-previous-release' in plan.rollback
     assert plan.identity != bootstrap(private_subnet='172.29.0.0/24').identity
-    assert content(()) == '{\n    admin 127.0.0.1:2019\n}\n'
+    assert content(()) == '{\n    admin unix//run/portfolio-caddy-admin/admin.sock|0600\n}\n'
     assert 'reverse_proxy' not in content(())
 
 

@@ -254,7 +254,7 @@ def test_gateway_retains_routes_and_image_only_no_reload(router):
     spec['enabled']=True; unrelated=replace(unrelated,spec_json=encode(spec)); d=replace(d,applications=(router,unrelated))
     assert ProductionGateway(port, lease_verifier=lambda lease: None).activate(d,load_observed_state(doc),router.id,ready=True,lease=LockLease())
     assert port.calls==['validate','lkg','reload'] and port.lkg==content((other,))
-    assert other in port.routes and 'admin 127.0.0.1:2019' in content(port.routes)
+    assert other in port.routes and 'admin unix//run/portfolio-caddy-admin/admin.sock|0600' in content(port.routes)
 
 
 @pytest.mark.parametrize('failure',['validate','reload'])
@@ -295,7 +295,7 @@ def test_caddy_runtime_and_operator_contract():
     assert service['networks']==['proxy'] and service['read_only'] is True
     assert all('docker.sock' not in v['source'] for v in service['volumes'])
     assert service['volumes'][0]['read_only'] is True
-    assert {v['target'] for v in service['volumes']}=={'/etc/caddy','/data','/config'}
+    assert {v['target'] for v in service['volumes']}=={'/etc/caddy','/data','/config','/run/portfolio-caddy-admin'}
     assert '2019' not in encode(model)
 
 

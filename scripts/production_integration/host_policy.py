@@ -16,6 +16,8 @@ from scripts.docker_discovery import discover
 from scripts.planning_inputs import parse_snapshot
 from scripts.production_integration.candidate import HostContracts, hashed
 from scripts.production_integration.installation import protected
+from scripts.production_integration.admin_contract import HOST_DIRECTORY, HOST_SOCKET
+from scripts.production_integration.admin_socket import socket_metadata
 from scripts.production_integration.local_sources import PATHS
 from scripts.production_integration.observations import require
 from scripts.reconciliation import encode
@@ -56,7 +58,11 @@ def storage_contents():
             path = pending.pop()
             info = path.lstat()
             is_dir = stat.S_ISDIR(info.st_mode)
-            protected(path, directory=is_dir)
+            is_socket = str(path) == HOST_SOCKET and stat.S_ISSOCK(info.st_mode)
+            if is_socket:
+                socket_metadata(info)
+            else:
+                protected(path, directory=is_dir)
             require(not info.st_mode & 0o077, 'production-storage-content-mode-invalid')
             record = {'path': str(path), 'uid': info.st_uid, 'gid': info.st_gid,
                       'mode': stat.S_IMODE(info.st_mode), 'device': info.st_dev, 'inode': info.st_ino}
@@ -66,7 +72,7 @@ def storage_contents():
                         for child in children:
                             pending.append(Path(child.path))
                             require(len(entries) + len(pending) <= 4096, 'production-storage-content-limit')
-            elif directory not in ('/srv/portfolio/requests', '/srv/portfolio/locks'):
+            elif not is_socket and directory not in ('/srv/portfolio/requests', '/srv/portfolio/locks'):
                 total += info.st_size
                 require(total <= 32 * 1024 * 1024, 'production-storage-content-limit')
                 import hashlib
@@ -76,6 +82,8 @@ def storage_contents():
                     record['digest'] = hashlib.sha256(stream.read(info.st_size + 1)).hexdigest()
                     require(os.fstat(stream.fileno()) == opened and path.lstat() == info,
                             'production-storage-content-changed')
+            require(directory != HOST_DIRECTORY or is_dir and path == root or is_socket,
+                    'production-admin-directory-foreign-content')
             # The request is published AFTER signing the candidate. Validate its
             # protection, but do not bind its existence/inode back into itself.
             if directory != '/srv/portfolio/requests' or is_dir:

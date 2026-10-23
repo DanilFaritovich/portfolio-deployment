@@ -110,10 +110,31 @@ for the fixed repository, independently of release collection. Missing factory
 wiring blocks this scope; requests cannot select repositories/transports/authority,
 and Caddy remains excluded. Both shipped
 bindings and SealedInstallation.verify retain their gates. ACTIVE Caddy comparison
-checks two bounded reads against pinned official adaptation; the distroless local
-GET channel, exact runtime/storage authority, public-route postconditions and
-bootstrap authorities remain mandatory unconfigured dependencies. No disk fallback,
+checks two bounded reads against pinned official adaptation. Stage B3 supplies
+the opt-in local UDS channel and pinned runtime/storage verifier described below;
+public-route postconditions and bootstrap authorities still require installation. No disk fallback,
 new privileges, production authorization or real deployment is supplied.
+
+
+Stage B3 adds a fixed [trusted ACTIVE admin channel](docs/production-installation.md#stage-b3-trusted-caddy-active-admin-channel).
+`UnixActiveChannel` offers only HTTP/1.1 `GET /config/` over AF_UNIX. A separate
+root:root 0700 `/srv/portfolio/caddy-admin` directory is bound read/write, rprivate,
+without automatic creation, to `/run/portfolio-caddy-admin`. Caddy listens at
+`unix//run/portfolio-caddy-admin/admin.sock|0600`. NOFOLLOW descriptor traversal,
+root ownership/modes, socket type/link count/inode, peer host PID/UID/GID and
+before/after pinned Engine image/container/effective runtime/mount/network checks
+bind each read. Bodies are capped at 1MiB, HTTP headers at 16KiB, GETs at one second;
+two matching ACTIVE reads must equal sealed official adaptation within five seconds.
+Proof reuse expires after five seconds. There is no request-selected address or
+Admin API client. The separate granted reload port uses the sealed host Caddy
+binary at the corresponding host UDS address, exact private candidate bytes,
+existing CAS/LKG/journal and conservative unknown-outcome fencing. The image,
+capabilities and public port set are unchanged; no container helper is added.
+Fixed composition requires independently installed container/network/image pins.
+Both shipped bindings remain closed. Existing storage missing the new directory
+is rejected without migration; bootstrap requires that directory to be empty.
+Offline tests and official pinned-binary feasibility are distinct from the opt-in
+real bind-mount acceptance and from any separately authorized production install.
 
 SQLite schema v2 adds an irreversible nonce/candidate ledger in the same journal,
 with transactional migration preserving v1 events/LKG. Consumption precedes intent;
@@ -692,7 +713,7 @@ manifest and config ID, and binds fresh Engine inspection. Source/protected-main
 exact-SHA CI/publish, provenance and build-origin verification is an injected trusted
 port with no success-producing default. Missing evidence blocks operation. Caddy
 runtime Compose is pinned and separate from applications, exposes TCP 80/443 only,
-keeps admin on container loopback and persists certificate/config storage under
+keeps admin on the private permissioned UDS and persists certificate/config storage under
 explicit operator paths. Exact proxy ownership, network ID and IPAM are required.
 
 The production gateway controller retains unrelated routes, validates full candidates,
@@ -810,11 +831,12 @@ The official Caddy 2.11.7 amd64 index/manifest/config bytes are pinned in separa
 acceptance fixtures. Raw bytes/provenance statements establish content linkage;
 cryptographic build-origin verification remains a production blocker. The harness
 substitutes temporary bind paths/project/network names, removes host publishing,
-uses internal networking and runs an exact HTTP-only fixture with loopback admin.
-Official validation also checks the existing bootstrap and full generated candidate
+uses internal networking and runs an exact HTTP-only fixture. Stage B3 changes
+its admin transport to a permissioned UDS and adds real ACTIVE-versus-adapt,
+reload and rejected-load preservation checks. Official validation also checks the existing bootstrap and full generated candidate
 without activation. Process capabilities, read-only paths, restart/persistence,
-peer reachability/admin denial, negative create-only configurations and cleanup
-after partial failure have offline coverage and passed 17/17 real Docker cases
+negative create-only configurations and cleanup have offline coverage. The
+original loopback-admin harness (before B3 UDS changes) passed 17/17 real Docker cases
 in run 39844325743 (Caddy 2.11.7 / Engine 28.0.4 / Compose 2.38.2), including cleanup.
 No fixture receipt can satisfy production trust, release verification or approval.
 

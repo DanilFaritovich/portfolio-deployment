@@ -432,5 +432,5 @@ def test_caddy_runtime_still_requires_all_hardening():
     service = runtime.render().model['services']['caddy']
     assert service['cap_drop'] == ['ALL'] and service['cap_add'] == ['NET_BIND_SERVICE']
     assert service['read_only'] is True and service['security_opt'] == ['no-new-privileges:true']
-    assert len(service['volumes']) == 3 and service['volumes'][0]['read_only'] is True
+    assert len(service['volumes']) == 4 and service['volumes'][0]['read_only'] is True
     assert service['ports'] == ['80:80/tcp', '443:443/tcp'] and service['networks'] == ['proxy']

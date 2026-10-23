@@ -21,7 +21,7 @@ from scripts.production_integration.locking import require_production_lease
 from scripts.production_integration.storage import validate_storage_directory
 
 PATHS = tuple('/srv/portfolio/' + n for n in ('locks', 'state', 'journal', 'requests', 'caddy-config',
-                                          'caddy-lkg', 'certificates', 'caddy-data', 'temporary'))
+                                          'caddy-lkg', 'certificates', 'caddy-data', 'caddy-admin', 'temporary'))
 JOURNAL_DIRECTORY = '/srv/portfolio/journal'
 COMMANDS = {
     'routes4': ('/usr/sbin/ip', '-j', '-4', 'route', 'show', 'table', 'all'),

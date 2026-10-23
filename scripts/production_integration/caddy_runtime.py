@@ -21,7 +21,7 @@ def verify_caddy_runtime(runtime, artifact, evidence, doc):
             wanted.get('ports') not in ([], baseline['ports']) or
             {(m['target'], m.get('read_only', False)) for m in wanted['volumes']} !=
                 {(m['target'], m.get('read_only', False)) for m in baseline['volumes']} or
-            len(wanted['volumes']) != 3 or
+            len(wanted['volumes']) != len(baseline['volumes']) or
             any(wanted.get('labels', {}).get(k) != v for k, v in baseline['labels'].items())):
             return ('caddy-runtime-expectation-invalid',)
         config, host = doc['Config'], doc['HostConfig']
