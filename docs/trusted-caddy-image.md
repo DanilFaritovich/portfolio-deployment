@@ -74,6 +74,22 @@ checks effective main protection, exact-SHA successful `Offline checks` and its
 workflow/App identity before upload. Missing/pending/denied evidence blocks release.
 Only publication has packages:write, id-token:write and attestations:write.
 
+The guard waits at most 40 observations (15 seconds apart) for the exact main-push
+Offline CI run before performing the complete ProtectedSource verification.
+PR success cannot substitute for push success. Failed/cancelled CI, duplicate runs,
+changed run/attempt, denied/incomplete API evidence or timeout block publication.
+Waiting never relaxes source protection, App-bound checks or signatures.
+
+The reusable publisher requires `source-policy-token`, explicitly passed by the
+caller from `CADDY_SOURCE_POLICY_TOKEN`. The ordinary `GITHUB_TOKEN` cannot read
+the required classic branch-protection evidence: GitHub requires repository
+Administration:read, which is unavailable in workflow `permissions`. The separate
+credential must be reviewed and restricted to this repository with read-only
+Administration, Actions, Checks and Contents access; it is exposed only to the
+guard step, never registry login, build, image, acceptance or signing. No credential
+is created or configured by this implementation. Missing credential is a release
+publication prerequisite, not permission to omit protection evidence.
+
 The checked image transfers through a same-run, attempt-specific immutable Actions
 artifact; publication does not rebuild. Loaded config ID/defaults must match.
 The repository is **`ghcr.io/danilfaritovich/portfolio-caddy`**. The
