@@ -77,3 +77,5 @@ jobs:
       id-token: write
       attestations: write
     uses: ./.github/workflows/caddy-publish.yml
+    secrets:
+      source-policy-token: ${{ secrets.CADDY_SOURCE_POLICY_TOKEN }}

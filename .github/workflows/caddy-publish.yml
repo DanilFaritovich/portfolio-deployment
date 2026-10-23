@@ -2,6 +2,10 @@ name: Trusted Caddy publication
 
 on:
   workflow_call:
+    secrets:
+      source-policy-token:
+        description: Read-only repository credential for protected-source API evidence
+        required: true
 
 permissions:
   contents: read
@@ -13,7 +17,7 @@ jobs:
       github.event_name == 'push' && github.repository == 'DanilFaritovich/portfolio-deployment' &&
       github.ref == 'refs/heads/main' && github.ref_protected
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
@@ -35,7 +39,7 @@ jobs:
         run: python -m scripts.caddy_producer toolchain-check
       - name: Fail closed on unapproved source policy
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.source-policy-token }}
         run: python -m scripts.caddy_producer publish-guard
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:

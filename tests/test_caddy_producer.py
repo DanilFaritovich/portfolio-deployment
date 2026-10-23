@@ -147,6 +147,71 @@ def test_authenticated_caddy_source_oci_crypto_composition():
     assert evidence.reference == runtime.image and collector.crypto.called
 
 
+def offline_push(sha, **changes):
+    return dict(id=101, run_attempt=1, path='.github/workflows/offline.yml', event='push',
+                head_sha=sha, head_branch='main', repository={'full_name': p.REPOSITORY},
+                head_repository={'full_name': p.REPOSITORY}, status='in_progress', conclusion=None) | changes
+
+
+def test_publication_waits_for_exact_push_and_ignores_pr_success():
+    sha = 'a' * 40
+    snapshots = iter([[], [offline_push(sha, event='pull_request', status='completed', conclusion='success')],
+                      [offline_push(sha)], [offline_push(sha, status='completed', conclusion='success')]])
+    sleeps = []
+    def get(repo, path):
+        assert repo == p.REPOSITORY and path == '/actions/runs?head_sha=' + sha + '&per_page=100'
+        runs = next(snapshots)
+        return {'total_count': len(runs), 'workflow_runs': runs}
+    p.wait_for_offline(lambda: SimpleNamespace(get=get), sha, sleep=sleeps.append)
+    assert sleeps == [15, 15, 15]
+
+
+@pytest.mark.parametrize('failure', ['failure', 'cancelled', 'skipped', 'timed_out', 'duplicate',
+    'sha', 'branch', 'repository', 'attempt', 'run', 'denied', 'pagination', 'timeout'])
+def test_publication_wait_fails_closed(failure):
+    sha = 'a' * 40
+    calls = []
+    sleeps = []
+    def get(repo, path):
+        calls.append(path)
+        if failure == 'denied':
+            raise DockerError('production-release-api-denied-or-rate-limited')
+        run = offline_push(sha)
+        if failure in ('failure', 'cancelled', 'skipped', 'timed_out'):
+            run.update(status='completed', conclusion=failure)
+        if failure == 'sha': run['head_sha'] = 'b' * 40
+        if failure == 'branch': run['head_branch'] = 'develop'
+        if failure == 'repository': run['head_repository']['full_name'] = 'attacker/repo'
+        if failure == 'attempt': run['run_attempt'] = len(calls)
+        if failure == 'run': run['id'] += len(calls)
+        runs = [run, deepcopy(run)] if failure == 'duplicate' else [run]
+        return {'total_count': 100 if failure == 'pagination' else len(runs), 'workflow_runs': runs}
+    with pytest.raises(DockerError):
+        p.wait_for_offline(lambda: SimpleNamespace(get=get), sha, sleep=sleeps.append)
+    assert len(calls) <= 40 and len(sleeps) <= 39
+    if failure == 'timeout': assert len(calls) == 40 and sleeps == [15] * 39
+
+
+def test_publication_guard_preserves_full_source_policy(monkeypatch):
+    from scripts.production_integration import release_transport as transport
+    _, _, sha, docs, _, _ = consumer_fixture()
+    monkeypatch.setenv('GITHUB_REPOSITORY', p.REPOSITORY)
+    monkeypatch.setenv('GITHUB_EVENT_NAME', 'push')
+    monkeypatch.setenv('GITHUB_REF', 'refs/heads/main')
+    monkeypatch.setenv('GITHUB_REF_PROTECTED', 'true')
+    monkeypatch.setenv('GITHUB_SHA', sha)
+    monkeypatch.setenv('GH_TOKEN', 'independent_read_only_policy_token')
+    def factory(token, _):
+        assert token == 'independent_read_only_policy_token'
+        return SimpleNamespace(get=lambda repo, path: deepcopy(docs[path]))
+    monkeypatch.setattr(transport, 'GitHubRead', factory)
+    monkeypatch.setattr(transport, 'HTTPSRead', lambda: None)
+    p.publication_guard()
+    docs['/branches/main/protection']['enforce_admins']['enabled'] = False
+    with pytest.raises(DockerError):
+        p.publication_guard()
+
+
 @pytest.mark.parametrize('failure', ['sha', 'tag', 'repository', 'develop', 'rules', 'workflow', 'unsigned',
     'signature', 'builder', 'subject', 'inputs', 'source-substitution', 'missing', 'platform', 'command', 'bytes',
     'publication-run', 'publication-attempt', 'signed-source-sha', 'upstream-sha'])

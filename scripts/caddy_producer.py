@@ -165,6 +165,39 @@ def published_inputs(lock, source_sha, run_id, run_attempt):
             'sourceRef': 'refs/heads/main', 'runId': run_id, 'runAttempt': run_attempt}
 
 
+def wait_for_offline(github_factory, sha, *, sleep=None):
+    """Wait only for the exact push CI; all policy checks still run afterward."""
+    import time
+    from scripts.production_integration.release_transport import bounded_items
+    sleep = time.sleep if sleep is None else sleep
+    identity = None
+    for poll in range(40):
+        runs = bounded_items(github_factory().get(REPOSITORY,
+            '/actions/runs?head_sha=' + sha + '&per_page=100'), 'workflow_runs')
+        matches = [r for r in runs if r.get('path') == '.github/workflows/offline.yml' and
+                   r.get('event') == 'push']
+        require(len(matches) <= 1, 'caddy-offline-run-ambiguous')
+        if matches:
+            run = matches[0]
+            require(run.get('head_sha') == sha and run.get('head_branch') == 'main' and
+                    run.get('repository', {}).get('full_name') == REPOSITORY and
+                    run.get('head_repository', {}).get('full_name') == REPOSITORY and
+                    type(run.get('id')) is int and run['id'] > 0 and
+                    type(run.get('run_attempt')) is int and run['run_attempt'] > 0,
+                    'caddy-offline-run-untrusted')
+            current = (run['id'], run['run_attempt'])
+            require(identity is None or identity == current, 'caddy-offline-run-changed')
+            identity = current
+            if run.get('status') == 'completed':
+                require(run.get('conclusion') == 'success', 'caddy-offline-run-failed')
+                return
+            require(run.get('status') in ('queued', 'in_progress', 'waiting', 'pending', 'requested') and
+                    run.get('conclusion') is None, 'caddy-offline-run-untrusted')
+        if poll < 39:
+            sleep(15)
+    raise DockerError('caddy-offline-run-timeout')
+
+
 def publication_guard():
     from scripts.production_integration.release_source import ProtectedSource, PRODUCTION_REVIEW_POLICY, WorkflowCheck
     from scripts.production_integration.release_transport import GitHubRead, HTTPSRead
@@ -174,11 +207,16 @@ def publication_guard():
             os.environ.get('GITHUB_REF_PROTECTED') == 'true' and
             re.fullmatch(r'[0-9a-f]{40}', os.environ.get('GITHUB_SHA', '')) is not None,
             'caddy-protected-main-required')
-    github = GitHubRead(os.environ.get('GH_TOKEN'), HTTPSRead())
+    github_factory = lambda: GitHubRead(os.environ.get('GH_TOKEN'), HTTPSRead())
+    github = github_factory()
     require(github.get(REPOSITORY, '/branches/main')['commit']['sha'] == os.environ['GITHUB_SHA'],
             'caddy-main-head-changed')
+    wait_for_offline(github_factory, os.environ['GITHUB_SHA'])
+    github = github_factory()
     ProtectedSource(github, review_policy=PRODUCTION_REVIEW_POLICY).collect(REPOSITORY, os.environ['GITHUB_SHA'],
         (WorkflowCheck(REPOSITORY, 'Offline checks', 15368, '.github/workflows/offline.yml'),))
+    require(github.get(REPOSITORY, '/branches/main')['commit']['sha'] == os.environ['GITHUB_SHA'],
+            'caddy-main-head-changed')
 
 
 def check_toolchain():

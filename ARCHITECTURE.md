@@ -62,6 +62,9 @@ acceptance and signed SLSA/input attestations. A separate CaddyReleaseCollector 
 ProtectedSource, OCI mapping and pinned gh/Sigstore, binding source SHA, signer/builder,
 inputs and successful publication attempt. CaddyRuntime additionally accepts only
 the fixed producer GHCR repository by digest; runtime hardening is unchanged.
+Publication waits boundedly for exact main-push Offline CI, then rechecks full
+source policy with a separately supplied repository-scoped read-only credential;
+the workflow token cannot supply Administration:read branch-protection evidence.
 First main publication, signed digest, real exact-image acceptance and installed
 production attestation remain pending; no Caddy acquisition/rollout is authorized.
 
