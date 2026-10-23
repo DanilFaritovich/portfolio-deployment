@@ -17,6 +17,7 @@ class GatewaySnapshot:
     ownership_verified: bool
     certificates_storage_verified: bool
     container_id: str | None = None
+    channel_identity: tuple | None = None
 
 
 class ManagedGatewayReadPort:
@@ -42,6 +43,9 @@ class ManagedGatewayReadPort:
             raise DockerError('production-gateway-foreign-or-unsupported-config')
         self.last_snapshot = sample
         return routes
+
+    def verify_current(self):
+        self.transport.verify_current(self.last_snapshot)
 
     def compare_and_reload(self, old, new):
         raise DockerError('stage-09-4-gateway-write-authorization-unavailable')

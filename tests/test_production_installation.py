@@ -374,3 +374,24 @@ def test_bundle_review_uses_real_source_policy_b_and_independent_pins(bundle_rev
         assert reads.count('/branches/main/protection') == 4
     else:
         with pytest.raises((DockerError, InstallError)): f.verifier.verify(f.raw)
+
+
+def test_installation_socket_directory_is_private_and_not_implicitly_migrated(admin):
+    bootstrap.install(package(), admin)
+    directory = bootstrap.STORAGE / 'caddy-admin'
+    assert directory.stat().st_mode & 0o777 == 0o700
+    assert not tuple(directory.iterdir())
+    directory.rmdir()  # Only this test's empty disposable directory.
+    with pytest.raises(InstallError, match='existing-storage-incomplete'):
+        bootstrap.install(package(), admin)
+    assert not directory.exists()
+
+
+def test_installer_refuses_foreign_content_in_admin_directory(admin):
+    bootstrap.install(package(), admin)
+    path = bootstrap.STORAGE / 'caddy-admin/foreign'
+    path.write_bytes(b'foreign')
+    path.chmod(0o600)
+    with pytest.raises(InstallError, match='admin-socket-unsafe'):
+        bootstrap.install(package(), admin)
+    assert path.read_bytes() == b'foreign'

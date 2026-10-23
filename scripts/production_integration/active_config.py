@@ -1,9 +1,4 @@
-"""Safe ACTIVE-config comparison; the distroless local read channel is unconfigured.
-
-Caddy reload/adapt cannot GET active JSON. The published image has no HTTP client.
-No shell/exec helper, nsenter, public admin endpoint or disk fallback is supplied.
-An independently reviewed local channel and runtime/storage authority are mandatory.
-"""
+"""Double ACTIVE reads compared with sealed official Caddy adaptation."""
 from dataclasses import replace
 from pathlib import Path
 import re
@@ -59,7 +54,7 @@ class ActiveConfigTransport:
     effective runtime, storage and channel identity, returning GatewaySnapshot.
     routes_reader supplies approved possible routes, never proof of active state.
     The channel must GET /config/ via its fixed authenticated local transport.
-    This component does not assert that such a channel exists in the shipped image.
+    UnixActiveChannel reaches the dedicated bind mount without an image helper.
     """
     def __init__(self, engine, channel, runtime, adapter, routes_reader, *, clock=time.monotonic):
         self.engine, self.channel, self.runtime, self.adapter = engine, channel, runtime, adapter
@@ -85,11 +80,17 @@ class ActiveConfigTransport:
         require(first == second and before == after and identity == self.engine.identity() and self.clock() - start <= 5,
                 'production-active-config-changed')
         result = replace(before, routes=matches[0], active_caddyfile=content(matches[0]))
-        self.last = (result, identity)
+        self.last = (result, identity, self.clock())
         return result
 
     def verify(self, transport, image, version, sample):
         require(transport is self and self.last is not None and sample is self.last[0] and
-                self.engine.identity() == self.last[1] and sample.image_config_id == image.image_id and
+                self.engine.identity() == self.last[1] and 0 <= self.clock() - self.last[2] <= 5 and sample.image_config_id == image.image_id and
                 sample.version == version, 'production-active-config-proof-unbound')
         return sample
+
+    def verify_current(self, sample):
+        require(self.last is not None and sample is self.last[0] and
+                0 <= self.clock() - self.last[2] <= 5 and self.engine.identity() == self.last[1] and
+                self.runtime.inspect(self.channel) == replace(sample, routes=(), active_caddyfile=''),
+                'production-active-config-evidence-expired-or-changed')

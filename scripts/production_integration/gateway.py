@@ -1,8 +1,9 @@
 """Managed full Caddy candidate integration through an injected gateway port.
 
-There is no live reload transport. Fake ports exercise validation, LKG retention,
-CAS and unknown outcomes while Stage 06 owns release/journal/recovery decisions.
+GrantedGatewayPort supplies separately authorized fixed-endpoint reload.
+Stage 06 retains release/journal/recovery and unknown-outcome decisions.
 """
+from scripts.production_integration.admin_contract import CONTAINER_ADDRESS
 from scripts.deployment_lifecycle import DeploymentLifecycle
 from scripts.docker_adapter import DockerError
 from scripts.gateway import build_gateway_candidate, render_caddyfile, route_set
@@ -13,11 +14,11 @@ from scripts.reconciliation import build_reconciliation_plan
 def content(routes):
     routes = route_set(routes)
     if not routes:
-        return '{\n    admin 127.0.0.1:2019\n}\n'
+        return '{\n    admin ' + CONTAINER_ADDRESS + '\n}\n'
     rendered = render_caddyfile(routes)
     if rendered is None:
         raise DockerError('production-gateway-no-routes')
-    return '{\n    admin 127.0.0.1:2019\n}\n\n' + rendered
+    return '{\n    admin ' + CONTAINER_ADDRESS + '\n}\n\n' + rendered
 
 
 class ProductionGateway:

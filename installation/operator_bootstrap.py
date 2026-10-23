@@ -24,7 +24,7 @@ OWNER_UID = 0
 LIMIT = 128 * 1024 * 1024
 FILE_LIMIT = 64 * 1024 * 1024
 DIRECTORIES = ('locks', 'state', 'journal', 'requests', 'caddy-config', 'caddy-lkg',
-               'certificates', 'caddy-data', 'temporary')
+               'certificates', 'caddy-data', 'caddy-admin', 'temporary')
 OWNER = b'DanilFaritovich/portfolio-deployment:storage-v1\n'
 
 
@@ -275,7 +275,13 @@ def install(raw, approval):
             for child in p.rglob('*'):
                 count += 1
                 require(count <= 4096, 'storage-inventory-limit')
-                metadata(child, directory=child.is_dir())
+                if name == 'caddy-admin':
+                    info = child.lstat()
+                    require(child == p / 'admin.sock' and stat.S_ISSOCK(info.st_mode) and
+                            info.st_uid == OWNER_UID and info.st_gid == 0 and info.st_nlink == 1 and
+                            stat.S_IMODE(info.st_mode) == 0o600, 'installation-admin-socket-unsafe')
+                else:
+                    metadata(child, directory=child.is_dir())
                 require(not child.lstat().st_mode & 0o077, 'storage-content-mode-invalid')
     lock = STORAGE / 'locks/host.lock'
     if lock.exists() or lock.is_symlink():

@@ -75,8 +75,8 @@ def test_locked_official_bytes_and_existing_contract(tmp_path):
     assert service['ports'] == []
     assert all(Path(m['source']).is_relative_to(tmp_path) for m in service['volumes'])
     assert [(m['target'], m.get('read_only', False)) for m in service['volumes']] == [
-        ('/etc/caddy', True), ('/data', False), ('/config', False)]
-    assert c.test_configuration().count('admin 127.0.0.1:2019') == 1
+        ('/etc/caddy', True), ('/data', False), ('/config', False), ('/run/portfolio-caddy-admin', False)]
+    assert c.test_configuration().count('admin unix//run/portfolio-caddy-admin/admin.sock|0600') == 1
     assert 'auto_https off' in c.test_configuration()
     assert 'https://' not in c.test_configuration()
     # Registry-neutral extraction must NOT extend production/application admission.
