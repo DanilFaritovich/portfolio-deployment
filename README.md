@@ -402,6 +402,6 @@ Shared proxy networks need lateral-access review. Image rollback cannot reverse
 database migrations or replace data backups; persistent data must never be
 automatically deleted.
 
-No project license has been selected. Vendored standards retain their upstream
-[MIT notice](.agents/skills/UPSTREAM-LICENSE.txt); this does not assign a license
-to the rest of this repository. Choose a project license before release.
+Project code is licensed under the [MIT License](LICENSE), copyright 2026
+Danil Miftakhov. Vendored standards retain their upstream
+[MIT notice](.agents/skills/UPSTREAM-LICENSE.txt); third-party notices remain applicable.

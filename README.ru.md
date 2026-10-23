@@ -404,6 +404,6 @@ Stage 07 разрешает только отдельно авторизован
 образа не отменяет миграции базы и не заменяет резервные копии; постоянные данные
 нельзя удалять автоматически.
 
-Лицензия проекта пока не выбрана. Для vendored standards сохранён upstream
-[MIT notice](.agents/skills/UPSTREAM-LICENSE.txt); он не задаёт лицензию остального
-репозитория. Лицензию проекта необходимо определить до release.
+Код проекта распространяется по [лицензии MIT](LICENSE), copyright 2026
+Danil Miftakhov. Для vendored standards сохранён upstream
+[MIT notice](.agents/skills/UPSTREAM-LICENSE.txt); сторонние notices продолжают действовать.
