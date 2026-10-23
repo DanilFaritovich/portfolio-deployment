@@ -176,7 +176,7 @@ Proceed in this order; each permission applies only to its named operation:
 
 - [ ] Recheck latest develop exact SHA and successful Offline CI after this PR merges.
 - [ ] Review `origin/main...origin/develop` and the resulting tree diff, including
-  workflows, installer/bindings, dependency pins, disabled candidate/admission and
+  workflows, installer/bindings, dependency pins, registered manifest/admission and
   all trust changes. Confirm the selected [MIT License](../LICENSE) and retained
   third-party notices are included in the release.
 - [ ] Operator manually opens `develop` → `main` PR; approved source policy and
@@ -185,8 +185,9 @@ Proceed in this order; each permission applies only to its named operation:
   effective rules and exact-SHA successful **push** workflows; do not reuse PR success.
 - [ ] Confirm ProjectRouter protected-main producer release, exact GHCR digest,
   OCI platform/config, immutable signer workflow, SLSA builder and signed build-origin
-  caller run/attempt. Re-review real admitted manifest/policy bytes; disabled candidate
-  remains disabled until an explicitly reviewed registry/admission change.
+  caller run/attempt. Stage C2 registered the enabled ProjectRouter manifest after
+  independent verification; re-review its exact admitted manifest/policy bytes.
+  Desired registration does not authorize installation or rollout.
 - [ ] Independently review install bundle and all dependency/helper/binding pins
   from outside the candidate bundle. Build output/report alone is not approval.
 - [ ] Separately authorize the first read-only VDS inspection as above. This may

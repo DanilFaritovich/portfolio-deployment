@@ -13,8 +13,11 @@ executor; PR #6 is merged into `develop`. Stage 07 adds a disposable Ubuntu VM
 harness and real test-only readers/probes; all 15 real local VM E2E scenarios
 passed on 2026-10-21. This verifies only the disposable test integration.
 Stage 08 offline CI is merged into `develop`. Stage 09.1 adds offline production
-contracts/security and narrow ProjectRouter admission; the real registry remains
-empty pending a verified origin-bound digest. Stage 09.2 adds an offline-tested
+contracts/security and narrow ProjectRouter admission. Stage C2 registers one enabled
+ProjectRouter manifest after independent producer/source/OCI/signature verification;
+registration is desired state only. [Stage C3](docs/protected-main-release.md) prepares
+the protected-main release without authorizing installation or rollout.
+Stage 09.2 adds an offline-tested
 read-only inspection layer; no real VDS connection or inspection is verified.
 Stage 09.3 adds offline-tested production integration ports, runtime security and
 a fake-adapter lifecycle rehearsal. Production write transports and source/operation
@@ -65,8 +68,9 @@ the fixed producer GHCR repository by digest; runtime hardening is unchanged.
 Publication waits boundedly for exact main-push Offline CI, then rechecks full
 source policy with a separately supplied repository-scoped read-only credential;
 the workflow token cannot supply Administration:read branch-protection evidence.
-First main publication, signed digest, real exact-image acceptance and installed
-production attestation remain pending; no Caddy acquisition/rollout is authorized.
+Historical main publication and signed digest are recorded in the release QA
+section below. Each future main push requires new exact-SHA publication/acceptance
+evidence and installed production attestation; no Caddy acquisition/rollout is authorized.
 
 Python CLI, Docker Engine/Compose (stable plugin versions >= 2, with separate CLI/configuration gates),
 GHCR, Git and Caddy are selected technologies.
@@ -154,7 +158,7 @@ discovery cannot establish full Stage 03 registry/gateway evidence. See the
 | Owner / component | Responsibility | Status |
 | --- | --- | --- |
 | [Portfolio Server Infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure) | Ubuntu VPS, SSH/users/access policy, Docker Engine, system baseline, firewall and host security | External ownership; integration Planned; operation not verified here |
-| Service registry | Approved application identities, versioned multi-component contracts, references and storage declarations | Implemented offline; empty real registry |
+| Service registry | Approved application identities, versioned multi-component contracts, references and storage declarations | Implemented offline; one registered ProjectRouter desired manifest |
 | Desired state | Per-application manifests selecting component digests and references | Deeply immutable normalized model implemented offline |
 | Validator | Bounded YAML, closed schemas, semantic/global checks and separate admission policy | Implemented offline |
 | Planner | Pure desired/observed comparison using explicit local snapshots; reviewable plan only | Implemented offline |
@@ -257,8 +261,9 @@ ProjectRouter eligibility binds `DanilFaritovich/project-router`, its exact GHCR
 repository, `linux/amd64`, `danil-miftakhov.dev`, port 8080 and `/en/`. Canonical
 project/service/alias remain `portfolio-project-router` / `web` /
 `project-router-web`, on external `portfolio-proxy`; the producer's bare alias is
-translated at this boundary. The disabled template stays outside the registry
-until reviewed digest substitution. No production executor or trigger is added.
+translated at this boundary. The disabled placeholder template stays outside the
+registry; Stage C2 promoted the separately verified candidate into the registry.
+The Stage 09.1 contract itself adds no executor or trigger.
 Stage 09.3 adds an explicit per-component runtime-security projection; compatibility
 of the exact published producer image with that projection still requires evidence;
 complete observations, protected-source exact-SHA CI, verified OCI/origin evidence
@@ -791,7 +796,7 @@ internal DNS/TCP, PID security, mounts/ports, restart and owned-resource cleanup
 Persistent storage requires explicit disposable test-volume consent and collision-free
 preflight. Unsupported secrets/config and unavailable capabilities fail closed.
 Producer business/UI/PDF/SEO tests remain in application CI. ProjectRouter's exact
-v1.0.0 candidate stays disabled outside the registry with signed origin expectations.
+v1.0.0 declaration is registered with signed origin expectations after Stage C2 verification.
 
 The bounded sanitized report always has `productionAdmission: false` and is not
 accepted by the separate full production source/release verifier or operation gate.
