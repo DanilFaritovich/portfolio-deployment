@@ -16,6 +16,9 @@ concurrency:
 jobs:
   offline:
     name: Offline checks
+    permissions:
+      contents: read
+      actions: read # Read smoke run metadata for release PRs; no App secret.
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -47,5 +50,11 @@ jobs:
         run: make workflow-check
       - name: Check repository offline
         run: make check PYTHON=python
+      - name: Require live source App integration before main
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_DEVELOP_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python -m scripts.caddy_source_smoke require-success
       - name: Verify tracked files unchanged
         run: git diff --exit-code HEAD --

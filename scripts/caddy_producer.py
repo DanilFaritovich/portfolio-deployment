@@ -198,8 +198,23 @@ def wait_for_offline(github_factory, sha, *, sleep=None):
     raise DockerError('caddy-offline-run-timeout')
 
 
-def publication_guard():
+def verify_main_source(github_factory, sha):
+    """Shared full source verification for publication and read-only App smoke."""
     from scripts.production_integration.release_source import ProtectedSource, PRODUCTION_REVIEW_POLICY, WorkflowCheck
+    github = github_factory()
+    require(github.get(REPOSITORY, '/branches/main')['commit']['sha'] == sha,
+            'caddy-main-head-changed')
+    wait_for_offline(github_factory, sha)
+    github = github_factory()
+    checks = (WorkflowCheck(REPOSITORY, 'Offline checks', 15368, '.github/workflows/offline.yml'),)
+    ProtectedSource(github, review_policy=PRODUCTION_REVIEW_POLICY).collect(REPOSITORY, sha, checks)
+    # ProtectedSource rechecks policy/head before returning; retain the final
+    # publication-specific exact-head check too.
+    require(github.get(REPOSITORY, '/branches/main')['commit']['sha'] == sha,
+            'caddy-main-head-changed')
+
+
+def publication_guard():
     from scripts.production_integration.release_transport import GitHubRead, HTTPSRead
     require(os.environ.get('GITHUB_REPOSITORY') == REPOSITORY and
             os.environ.get('GITHUB_EVENT_NAME') == 'push' and
@@ -208,15 +223,37 @@ def publication_guard():
             re.fullmatch(r'[0-9a-f]{40}', os.environ.get('GITHUB_SHA', '')) is not None,
             'caddy-protected-main-required')
     github_factory = lambda: GitHubRead(os.environ.get('GH_TOKEN'), HTTPSRead())
-    github = github_factory()
-    require(github.get(REPOSITORY, '/branches/main')['commit']['sha'] == os.environ['GITHUB_SHA'],
-            'caddy-main-head-changed')
-    wait_for_offline(github_factory, os.environ['GITHUB_SHA'])
-    github = github_factory()
-    ProtectedSource(github, review_policy=PRODUCTION_REVIEW_POLICY).collect(REPOSITORY, os.environ['GITHUB_SHA'],
-        (WorkflowCheck(REPOSITORY, 'Offline checks', 15368, '.github/workflows/offline.yml'),))
-    require(github.get(REPOSITORY, '/branches/main')['commit']['sha'] == os.environ['GITHUB_SHA'],
-            'caddy-main-head-changed')
+    verify_main_source(github_factory, os.environ['GITHUB_SHA'])
+
+
+# Exact allowlist: never print an exception, arbitrary remote text, a URL or
+# credential. Unknown failures get a fixed code even if their message looks safe.
+SOURCE_FAILURE_CODES = frozenset({
+    'caddy-protected-main-required', 'caddy-protected-develop-required', 'caddy-main-head-changed',
+    'caddy-offline-run-ambiguous', 'caddy-offline-run-untrusted', 'caddy-offline-run-changed',
+    'caddy-offline-run-failed', 'caddy-offline-run-timeout',
+    'production-release-token-unavailable', 'production-release-host-rejected',
+    'production-release-api-path-rejected', 'production-release-budget-exhausted',
+    'production-release-api-incomplete', 'production-release-api-timeout',
+    'production-release-response-too-large', 'production-release-api-pagination-unproven',
+    'production-release-api-authentication-failed', 'production-release-api-denied-or-rate-limited',
+    'production-release-api-not-found', 'production-release-api-unavailable',
+    'production-release-api-timeout-or-unavailable', 'production-release-sha-not-on-main',
+    'production-release-source-changed',
+    'production-release-protection-insufficient', 'production-release-protection-unverifiable',
+    'production-release-protection-bypass-unreadable', 'production-release-protection-app-unbound',
+    'production-release-required-check-policy-mismatch', 'production-release-required-check-unavailable',
+    'production-release-required-check-untrusted', 'production-release-check-workflow-mismatch',
+    'production-release-workflow-policy-invalid', 'production-release-review-policy-invalid',
+})
+
+
+def source_failure_code(error):
+    if isinstance(error, DockerError) and str(error) in SOURCE_FAILURE_CODES:
+        return str(error)
+    if isinstance(error, (KeyError, TypeError, ValueError, AttributeError)):
+        return 'caddy-source-response-incomplete'
+    return 'caddy-source-verification-failed'
 
 
 def check_toolchain():
@@ -255,8 +292,10 @@ def main():
             (args.directory / 'publication-inputs.json').write_text(json.dumps(evidence, sort_keys=True) + '\n')
         else:
             load_lock()
-    except (DockerError, OSError, ValueError, KeyError, tarfile.TarError, subprocess.SubprocessError):
-        print('caddy-producer-inputs-failed')
+    except Exception as error:
+        # CLI boundary: unexpected dependency failures must not print secrets in
+        # a traceback either. Interrupts still propagate normally.
+        print(source_failure_code(error) if args.operation == 'publish-guard' else 'caddy-producer-inputs-failed')
         return 1
     return 0
 

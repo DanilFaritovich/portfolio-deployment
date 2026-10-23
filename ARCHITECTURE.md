@@ -796,12 +796,34 @@ remain required. ProductionGateway and ManagedGatewayReadPort write blockers sta
 
 The Caddy reusable publisher authenticates protected-source reads with a GitHub
 App installation token minted immediately before its guard, scoped to the current
-repository and Administration/Actions/Checks/Contents read permissions. Repository
+repository with Administration:write and Actions/Checks/Contents:read permissions.
+GitHub requires Rulesets write access to expose `bypass_actors`; the verifier
+still issues only GET requests. This grant could mutate repository settings if
+misused, so reviewed protected-branch code and step-local credential isolation
+are security boundaries. Repository
 Client ID variable and explicitly passed private-key secret are confined to the
 credential gate and official SHA-pinned token action. Only the guard receives the
 token via step-local `GH_TOKEN`; action post-job revocation remains enabled.
 Policy B, exact-SHA Offline CI and trusted workflow/check App identity are unchanged.
 Build, registry publication, signing and provenance receive no App credential.
+
+GitHub credentials are bounded opaque HTTP-header values, including stateless
+`ghs_APPID_JWT` tokens; no JWT contents are decoded or locally trusted. Guard
+failures expose only exact allowlisted reason codes, with fixed redacted codes
+for incomplete responses and unexpected failures. Unreadable ruleset bypass
+actors remain a blocker even with Administration:write; no policy fallback is added.
+
+`caddy-source-smoke.yml` prepares real read-only App integration only on a push
+to protected `develop`, with the same repository scope, permission grants and
+post-job token revocation as publication. `caddy_source_smoke.py` verifies current
+protected main through the shared full source verifier, including exact-SHA push
+CI, App/check-suite identity and repeated head/protection reads. It neither builds
+nor publishes images and has no Docker step. Release PRs into main add a read-only
+Actions-metadata gate inside required Offline checks: the exact protected develop
+head must already have a successful push smoke. PR code receives no App secret.
+This workflow must first be reviewed and explicitly merged into develop before
+the real App smoke can run; local/offline success does not establish live App API
+compatibility. This task does not authorize that merge or a publication retry.
 
 The [read-only release collector](docs/production-release-source-trust.md) implements
 the existing `ReleaseVerifier` port without installing it in CLI/CI.

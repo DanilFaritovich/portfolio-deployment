@@ -86,14 +86,37 @@ to [verified release commit](https://github.com/actions/create-github-app-token/
 The owner configures repository variable `CADDY_SOURCE_APP_CLIENT_ID` and secret
 `CADDY_SOURCE_APP_PRIVATE_KEY`; the caller explicitly passes only the private key
 as required reusable secret `source-app-private-key`. Install the App only in this
-repository with Administration, Actions, Checks and Contents **read** permissions.
+repository with Administration **read & write** and Actions, Checks and Contents
+**read-only** permissions.
 The action explicitly requests those four permissions and only the current
 repository; missing credentials, unavailable installation or insufficient App
 permissions stop publication. No PAT or custom JWT implementation is used.
 
+GitHub [returns `bypass_actors` only with Rulesets write access](https://docs.github.com/en/rest/repos/rules#get-a-repository-ruleset).
+The post-PR #39 [App smoke failed](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39983619292)
+with `production-release-protection-bypass-unreadable` because the workflow
+requested Administration:read. The owner has since authorized Administration:write
+on the existing App. Both
+`caddy-source-smoke.yml` and `caddy-publish.yml` now request
+`permission-administration: write` immediately before source verification.
+The other three requested permissions remain read-only; no additional grants
+are requested. Metadata is implicit in GitHub installation tokens.
+
+Administration:write can modify Rulesets, branch protection and other repository
+settings if misused. Source verification uses the credential only for GitHub REST
+GET requests, never POST/PATCH/PUT/DELETE or GraphQL mutations. The official token
+action's credential creation and post-job revocation are lifecycle operations,
+separate from repository administration. Only reviewed protected develop/main
+push jobs can mint this single-repository credential; untrusted PR jobs receive
+no App secret. Never broaden the installation or reuse the token in other steps.
+Policy B, exact-SHA CI, App identity checks and the empty bypass requirement stay
+unchanged. Missing, null, malformed or nonempty `bypass_actors`, API denial,
+rate limits, timeouts and incomplete responses stop verification with redacted
+reason codes; there is no fallback to inferred empty bypass or weaker policy.
+
 The ordinary `GITHUB_TOKEN` cannot read the required classic branch-protection
 evidence: Administration:read is unavailable in workflow `permissions`. The App
-read credential does not change the trusted GitHub Actions check App identity
+credential does not change the trusted GitHub Actions check App identity
 (`15368`) or policy B. Its only consumer is the guard's step-local `GH_TOKEN`;
 the private key is an action input, never a build/registry/signing input. Token
 creation failure cannot skip the guard or enable upload. Default action cleanup

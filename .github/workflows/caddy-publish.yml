@@ -45,7 +45,7 @@ jobs:
             echo 'caddy-source-app-credentials-unavailable' >&2
             exit 1
           fi
-      - name: Create read-only source App token
+      - name: Create source verification App token
         id: source-app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -53,7 +53,9 @@ jobs:
           private-key: ${{ secrets.source-app-private-key }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
-          permission-administration: read
+          # GitHub exposes bypass_actors only to callers with Rulesets write access.
+          # Source verification uses this credential exclusively for GET requests.
+          permission-administration: write
           permission-actions: read
           permission-checks: read
           permission-contents: read
@@ -67,6 +69,7 @@ jobs:
           name: caddy-build-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/caddy-build
       - name: Load exactly the checked build
+        id: loaded
         run: |
           docker load --input "$RUNNER_TEMP/caddy-build/image.tar" > /dev/null
           docker image inspect "$IMAGE:sha-$SOURCE_SHA" > "$RUNNER_TEMP/loaded-image.json"
@@ -111,7 +114,7 @@ jobs:
           predicate-path: ${{ runner.temp }}/caddy-build/publication-inputs.json
           push-to-registry: true
       - name: Preserve publication evidence
-        if: always()
+        if: ${{ always() && steps.loaded.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: caddy-publication-${{ github.sha }}-${{ github.run_attempt }}
