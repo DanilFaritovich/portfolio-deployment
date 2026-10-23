@@ -42,6 +42,11 @@ seccomp and read-only root. Production ownership remains subject to operator rev
 
 ## Provenance blocker
 
+Stage 09.4B.7 adds a separate [trusted image producer](trusted-caddy-image.md).
+Its authenticated release/rootfs inputs do not retroactively authenticate this
+Docker Hub image. First main publication and real acceptance of the new exact
+GHCR image remain pending; the historical blocker below is preserved.
+
 The index references amd64 attestation manifest
 `sha256:4910e59aced419e87971a6f43e52ddc436b0d7a90d11cd8dd21b7925ce49e31d`.
 Its available statements include SPDX SBOM and SLSA v0.2 provenance. The retained

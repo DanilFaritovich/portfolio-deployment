@@ -82,7 +82,8 @@ class CaddyRuntime:
 
     def render(self):
         self.paths.validate()
-        require(isinstance(self.image, str) and bool(re.fullmatch(r'(?:docker.io/library/)?caddy@sha256:[0-9a-f]{64}', self.image)),
+        require(isinstance(self.image, str) and bool(re.fullmatch(
+            r'(?:(?:docker.io/library/)?caddy|ghcr.io/danilfaritovich/portfolio-caddy)@sha256:[0-9a-f]{64}', self.image)),
                 'caddy-pinned-image-required')
         require(isinstance(self.version, str) and bool(re.fullmatch(r'2\.[0-9]+\.[0-9]+', self.version)), 'caddy-version-required')
         owner = {LABEL + '.managed': 'true', LABEL + '.role': 'gateway'}

@@ -17,6 +17,7 @@ check:
 	@$(PYTHON) scripts/check_bootstrap.py
 	@$(PYTHON) scripts/validate_registry.py
 	@$(PYTHON) -m scripts.acceptance_contract
+	@$(PYTHON) -m scripts.caddy_producer check
 	@$(PYTHON) -m pytest -q -p no:cacheprovider
 
 # Pinned actionlint is provisioned separately, never downloaded by checks.
