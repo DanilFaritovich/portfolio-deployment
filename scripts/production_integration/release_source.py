@@ -109,29 +109,58 @@ class ProtectedSource:
                 'production-release-sha-not-on-main')
         self.policy(repo, {(c.name, c.app_id) for c in checks})
         runs = bounded_items(api('/actions/runs?head_sha=' + sha + '&per_page=100'), 'workflow_runs')
-        def valid_run(run, workflow, event):
+        def run_identity(run, workflow, event):
             return (type(run.get('id')) is int and run['id'] > 0 and
                     type(run.get('run_attempt')) is int and run['run_attempt'] > 0 and
-                    run.get('head_sha') == sha and run.get('head_branch') == 'main' and
+                    run.get('head_sha') == sha and
+                    isinstance(run.get('head_branch'), str) and bool(run['head_branch']) and
+                    (event == 'pull_request' or run['head_branch'] == 'main') and
                     run.get('path') == workflow and run.get('event') == event and
-                    run.get('status') == 'completed' and run.get('conclusion') == 'success' and
                     run.get('repository', {}).get('id') == metadata['id'] and
                     run.get('repository', {}).get('full_name') == repo and
                     run.get('head_repository', {}).get('id') == metadata['id'] and
                     run.get('head_repository', {}).get('full_name') == repo)
+        def valid_run(run, workflow, event):
+            return (run_identity(run, workflow, event) and run.get('status') == 'completed' and
+                    run.get('conclusion') == 'success')
         observed = bounded_items(api('/commits/' + sha + '/check-runs?filter=latest&per_page=100'), 'check_runs')
         for policy in checks:
+            policy.validate()
+            require(policy.repository == repo, 'production-release-workflow-policy-invalid')
             matches = [c for c in observed if c.get('name') == policy.name]
-            require(len(matches) == 1, 'production-release-required-check-unavailable')
-            check = matches[0]
-            require(check['head_sha'] == sha and check['status'] == 'completed' and
-                    check['conclusion'] == 'success' and type(check['app']['id']) is int and
-                    check['app']['id'] == policy.app_id and
-                    type(check['check_suite']['id']) is int and check['check_suite']['id'] > 0,
+            require(matches, 'production-release-required-check-unavailable')
+            # Select the trusted push identity before its check. Failed or duplicate
+            # same-source push runs cannot be hidden by a successful alternative.
+            pushes = [r for r in runs if run_identity(r, policy.workflow, policy.event)]
+            require(len(pushes) == 1 and valid_run(pushes[0], policy.workflow, policy.event),
+                    'production-release-check-workflow-mismatch')
+            push = pushes[0]
+            require(type(push.get('check_suite_id')) is int and push['check_suite_id'] > 0,
+                    'production-release-check-workflow-mismatch')
+            selected = []
+            seen_suites = set()
+            for check in matches:
+                # Validate every same-name claim, including PR checks: filtering by
+                # App/SHA first would silently discard contradictory evidence.
+                require(check['head_sha'] == sha and type(check['app']['id']) is int and
+                        check['app']['id'] == policy.app_id and
+                        type(check['check_suite']['id']) is int and check['check_suite']['id'] > 0,
+                        'production-release-required-check-untrusted')
+                require(check['check_suite']['id'] not in seen_suites,
+                        'production-release-required-check-unavailable')
+                seen_suites.add(check['check_suite']['id'])
+                linked = [r for r in runs if r.get('check_suite_id') == check['check_suite']['id']]
+                require(len(linked) == 1, 'production-release-check-workflow-mismatch')
+                if check['check_suite']['id'] == push['check_suite_id']:
+                    selected.append(check)
+                else:
+                    # Only independently linked same-repository PR evidence is
+                    # irrelevant to the required push result. Never use it as fallback.
+                    require(run_identity(linked[0], policy.workflow, 'pull_request'),
+                            'production-release-check-workflow-mismatch')
+            require(len(selected) == 1, 'production-release-required-check-unavailable')
+            require(selected[0]['status'] == 'completed' and selected[0]['conclusion'] == 'success',
                     'production-release-required-check-untrusted')
-            linked = [r for r in runs if r.get('check_suite_id') == check['check_suite']['id'] and
-                      valid_run(r, policy.workflow, policy.event)]
-            require(len(linked) == 1, 'production-release-check-workflow-mismatch')
         publication = None
         if publish is not None:
             publish.validate()
