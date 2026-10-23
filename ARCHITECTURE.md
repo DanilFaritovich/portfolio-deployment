@@ -82,6 +82,16 @@ gateway sequencing; base disposable gates remain intact. The shared fixed Compos
 transport performs no build or implicit pull. Fixed manager-only bootstrap actions
 and exact-container Caddy validation/reload ports require installed attestors.
 
+[Operator approval verification](docs/operator-approval.md) implements a closed
+canonical JSON v1 envelope and OpenSSH SSHSIG Ed25519/SHA-512 authentication in
+`scripts/production_integration/operator_approval.py`. The namespace is fixed to
+`portfolio-deployment-operation-v1`. Exact principal/key allowlist and ssh-keygen
+pins come from independently approved external SealedInstallation inventory;
+no operator key or verifier is configured by the shipped bindings. Claims flow
+through existing review_approval and repeated under-lock authentication. The
+separate workstation `scripts.verify_operator_approval` only inspects local
+signatures/time with explicit independent pins; it creates no executor authority.
+
 SQLite schema v2 adds an irreversible nonce/candidate ledger in the same journal,
 with transactional migration preserving v1 events/LKG. Consumption precedes intent;
 unfinished consumption fences new work even if a crash left no engine intent.

@@ -103,8 +103,9 @@ The execution order is fixed:
    route activation and fresh postconditions; promote application LKG atomically
    only after complete release verification. Record the authorization result.
 
-Only an independently authenticated verifier may return ApprovalClaims. No issuer
-or operator key policy is invented here. `approval_verifier=None` fails with
+Only an independently authenticated verifier may return ApprovalClaims. The
+[SSHSIG verifier and envelope v1](operator-approval.md) implement this interface
+with separately pinned installation trust; no operator key is selected or installed. `approval_verifier=None` fails with
 `production-operator-approval-verifier-unavailable`. Unsigned JSON, a fixture, CI,
 merge or boolean cannot install that verifier or become a grant. Production
 envelopes/credentials are never committed or logged.
