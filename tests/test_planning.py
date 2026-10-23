@@ -338,7 +338,9 @@ def test_cli_and_make_product_surface(root, capsys):
         cli.main(["--git-revision", SHA])
     assert error.value.code == 1
     result = subprocess.run(["make", "plan", f"PYTHON={sys.executable}", f"OBSERVED={FIXTURES / 'observed/noop.json'}", f"GIT_REVISION={SHA}", "PLAN_FORMAT=json"], capture_output=True, text=True)
-    assert result.returncode == 0 and json.loads(result.stdout)["status"] == "no-op"
+    # Empty observations differ from the registered first-rollout desired state.
+    assert result.returncode == 0 and json.loads(result.stdout)["status"] == "changes"
+    assert json.loads(result.stdout)["executed"] is False
     assert subprocess.run(["make", "plan", f"PYTHON={sys.executable}", "OBSERVED=", "GIT_REVISION="], capture_output=True).returncode != 0
 
 

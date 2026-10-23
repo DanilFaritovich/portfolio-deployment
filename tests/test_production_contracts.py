@@ -1,4 +1,4 @@
-"""Stage 09.1 offline integration and admission regressions; no real artifacts."""
+"""Offline registration and admission regressions; no live release authorization."""
 
 import copy
 from pathlib import Path
@@ -35,8 +35,42 @@ def write(root, document):
     return path
 
 
-def test_production_registry_has_no_unverified_artifact():
-    assert validate_registry(ROOT).applications == ()
+def test_registered_project_router_contract_is_offline_and_has_no_admin_access(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("manifest projection attempted external I/O")
+    monkeypatch.setattr(socket, "socket", forbidden)
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    registry = validate_registry(ROOT)
+    assert [doc["metadata"]["id"] for doc in registry.applications] == ["project-router"]
+    document = registry.applications[0]
+    assert document["spec"]["enabled"] is True
+    desired = build_desired_state(ROOT, REVISION)
+    app = desired.applications[0]
+    component = app.spec["components"][0]
+    assert component["health"] == {"strategy": "http", "path": "/en/"}
+    assert component["port"] == 8080
+    assert app.spec["storage"]["type"] == "stateless"
+    assert not app.spec["configRefs"] and not app.spec["secretRefs"]
+    assert not component["configRefs"] and not component["secretRefs"]
+    model = render_compose(app).model
+    assert set(model["services"]) == {"web"}
+    web = model["services"]["web"]
+    assert not set(web) & {"ports", "volumes", "environment", "secrets", "configs", "build", "privileged"}
+    assert web["image"] == document["spec"]["components"][0]["image"]
+    assert web["user"] == "101:101" and web["read_only"] is True
+    assert web["cap_drop"] == ["ALL"]
+    assert web["security_opt"] == ["no-new-privileges:true"]
+    assert web["tmpfs"] == ["/tmp:rw,noexec,nosuid,nodev,size=16777216,mode=1777"]
+    assert "healthcheck" not in web  # Preserve the verified image healthcheck.
+    assert model["networks"]["private"]["internal"] is True
+    assert model["networks"]["proxy"] == {"name": "portfolio-proxy", "external": True}
+    assert web["networks"]["proxy"]["aliases"] == ["project-router-web"]
+    from scripts.production_integration.gateway import content
+    text = content(desired_routes(desired))
+    assert "admin unix//run/portfolio-caddy-admin/admin.sock|0600" in text
+    assert "reverse_proxy project-router-web:8080" in text
+    assert "/srv/portfolio/caddy-admin" not in str(model)
+    assert "/run/portfolio-caddy-admin" not in str(model)
 
 
 def test_template_cannot_enter_registry_without_digest(registration):

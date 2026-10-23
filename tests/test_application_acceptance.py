@@ -142,15 +142,20 @@ def project(tmp_path):
 
 def test_project_router_contract(tmp_path):
     app, release, artifact = project(tmp_path)
-    assert app.spec['enabled'] is False and validate_registry(ROOT).applications == ()
-    assert desired_routes(build_desired_state(tmp_path / 'registry', 'a' * 40)) == ()
+    assert app.spec['enabled'] is True
+    assert [d['metadata']['id'] for d in validate_registry(ROOT).applications] == ['project-router']
+    assert len(desired_routes(build_desired_state(tmp_path / 'registry', 'a' * 40))) == 1
     identity = release['components']['web']
     assert identity['sourceSha'] == identity['signerSha'] == '526c765f33932e163392dd1d512de4aa2f2a5260'
     assert artifact.model['services']['web']['image'].endswith('a393d592331cd556650695f57db74075359d9223c9ebbda080f1a372e9d64853')
     assert artifact.model['services']['web']['user'] == '101:101'
     assert artifact.model['services']['web']['read_only'] is True
     assert artifact.model['services']['web']['networks']['proxy']['aliases'] == [SESSION + '-project-router-web']
+    assert identity['sourceRef'] == 'refs/heads/main'
+    assert identity['signerWorkflow'] == '.github/workflows/publish.yml'
     assert len(identity['attestations']) == 2
+    origin = identity['attestations'][1]['expectedPredicate']
+    assert origin['runId'] == '39776962924' and origin['runAttempt'] == '1'
     assert identity['attestations'][1]['expectedPredicate']['buildArguments'] == {'VITE_SITE_ORIGIN': 'https://danil-miftakhov.dev'}
     assert all(n['name'].startswith('pd-smoke-' + SESSION) for n in artifact.model['networks'].values())
 
@@ -160,7 +165,8 @@ def synthetic(tmp_path, *, persistent=False):
     (root / 'docs/candidates').mkdir(parents=True)
     (root / 'registry/applications').mkdir(parents=True)
     (root / 'policy').mkdir()
-    doc = yaml.safe_load((ROOT / 'docs/candidates/project-router.yaml').read_text())
+    doc = yaml.safe_load((ROOT / 'registry/applications/project-router.yaml').read_text())
+    doc['spec']['enabled'] = False
     doc['metadata'] = {'id': 'example-backend', 'sourceRepository': 'Example/backend'}
     doc['spec'].pop('ingress')
     web = doc['spec']['components'][0]
@@ -251,7 +257,8 @@ def test_project_cannot_drop_release_requirements(tmp_path, change):
     (root / 'docs/candidates').mkdir(parents=True)
     (root / 'policy').mkdir()
     (root / 'registry/applications').mkdir(parents=True)
-    doc = yaml.safe_load((ROOT / 'docs/candidates/project-router.yaml').read_text())
+    doc = yaml.safe_load((ROOT / 'registry/applications/project-router.yaml').read_text())
+    doc['spec']['enabled'] = False
     identity = doc['release']['components']['web']
     if change == 'origin': identity['attestations'][1]['expectedPredicate']['buildArguments']['VITE_SITE_ORIGIN'] = 'https://wrong.test'
     if change == 'drop': identity['attestations'].pop()
@@ -1115,3 +1122,23 @@ def test_acceptance_contract_diagnostic_uses_shared_result(tmp_path, monkeypatch
     assert runtime.diagnostics['contract'] == a.runtime_verification(doc, artifact, 'web', evidence['web']).diagnostic()
     assert {'group': 'security', 'field': 'SecurityOpt', 'code': 'runtime-field-mismatch'} in runtime.diagnostics['contract']['mismatches']
     assert 'private-value' not in json.dumps(runtime.diagnostics)
+
+
+def test_offline_candidate_scan_allows_no_candidates_after_promotion(tmp_path, monkeypatch):
+    import scripts.acceptance_contract as contract
+    # A clean checkout no longer contains the empty candidate directory.
+    monkeypatch.setattr(contract, '__file__', str(tmp_path / 'scripts/acceptance_contract.py'))
+    assert contract.main() == 0
+
+
+@pytest.mark.parametrize('kind', ['file', 'dangling-link'])
+def test_offline_candidate_scan_rejects_unsafe_candidate_directory(tmp_path, monkeypatch, kind):
+    import scripts.acceptance_contract as contract
+    (tmp_path / 'docs').mkdir()
+    path = tmp_path / 'docs/candidates'
+    if kind == 'file':
+        path.write_text('not a directory')
+    else:
+        path.symlink_to(tmp_path / 'absent')
+    monkeypatch.setattr(contract, '__file__', str(tmp_path / 'scripts/acceptance_contract.py'))
+    assert contract.main() == 1

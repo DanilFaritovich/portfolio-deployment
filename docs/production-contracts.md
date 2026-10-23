@@ -228,7 +228,8 @@ with their limits in the handoff. Do not promote develop publication evidence or
 ## ProjectRouter v1.0.0 acceptance preparation
 
 A later scoped task prepared an exact-digest disabled
-[candidate](candidates/project-router.yaml) outside the real registry and a
+[candidate, subsequently promoted in Stage C2](../registry/applications/project-router.yaml)
+outside the real registry at that time, and a
 separate manual GitHub-hosted image acceptance workflow. Owner-reported release
 and attestation results update the historical context above; manager-side live
 byte/runtime verification and complete production admission remain pending.

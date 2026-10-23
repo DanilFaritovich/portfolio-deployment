@@ -303,7 +303,8 @@ def test_cli_make_and_exit_codes(root, capsys, monkeypatch):
     capsys.readouterr()
     result = subprocess.run(["make", "gateway-render", f"PYTHON={sys.executable}",
         f"OBSERVED={FIXTURES / 'observed/noop.json'}", f"GIT_REVISION={SHA}", "GATEWAY_FORMAT=json"], capture_output=True, text=True)
-    assert result.returncode == 0 and json.loads(result.stdout)["status"] == "no-op"
+    # The default registry now requests ProjectRouter; absent readiness retains pending intent.
+    assert result.returncode == 0 and json.loads(result.stdout)["status"] == "pending"
     empty_args = ["--observed", str(FIXTURES / 'observed/noop.json'), "--git-revision", SHA, "--format", "caddyfile"]
     assert cli.main(empty_args) == 3 and not capsys.readouterr().out
 

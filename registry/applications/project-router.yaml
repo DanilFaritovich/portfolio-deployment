@@ -1,11 +1,12 @@
-# INACTIVE: outside production registry; acceptance never grants admission.
+# Stage C2: independently verified producer release; desired state only.
+# Installation, protected manager-main release and signed rollout remain separate.
 apiVersion: portfolio.deployment/v1
 kind: Application
 metadata:
   id: project-router
   sourceRepository: DanilFaritovich/project-router
 spec:
-  enabled: false
+  enabled: true
   components:
   - name: web
     image: ghcr.io/danilfaritovich/project-router@sha256:a393d592331cd556650695f57db74075359d9223c9ebbda080f1a372e9d64853
