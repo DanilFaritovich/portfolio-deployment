@@ -24,6 +24,9 @@ jobs:
       id-token: write
       attestations: write
     env:
+      DOCKER_HOST: unix:///var/run/docker.sock
+      BUILDX_BUILDER: default
+      DOCKER_BUILDKIT: '1'
       IMAGE: ghcr.io/danilfaritovich/portfolio-caddy
       SOURCE_SHA: ${{ github.sha }}
       GITHUB_REF_PROTECTED: ${{ github.ref_protected }}
@@ -111,7 +114,7 @@ jobs:
         with:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.image.outputs.digest }}
-          predicate-type: https://github.com/DanilFaritovich/portfolio-deployment/attestations/caddy-inputs/v1
+          predicate-type: https://github.com/DanilFaritovich/portfolio-deployment/attestations/caddy-inputs/v2
           predicate-path: ${{ runner.temp }}/caddy-build/publication-inputs.json
           push-to-registry: true
       - name: Preserve publication evidence

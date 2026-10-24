@@ -12,6 +12,5 @@
   "dockerVersion": "28.0.4",
   "buildxVersion": "0.38.0",
   "composeVersion": "2.38.2",
-  "runnerImageVersion": "20261012.334.1",
   "githubTrustRootSha256": "65ca537f6ed8a47fd0e560c421baa1f6c1efb8b25fc200d8c5c02c0e92eb2b9c"
 }

@@ -1,0 +1,17 @@
+{
+  "version": "2.11.7",
+  "sourceSha": "72dd0fb067f6d7826c7f79907670ba4a713bfe37",
+  "archiveSha256": "727b91701a392de6ebc5027509f548bf39979e5216340d0faed8fa5e69c84f8b",
+  "certificateSha256": "43406c10323f8c71e39e096e19fe2cf490cb46461c2c18c58d7a64eabf4601c0",
+  "signatureSha256": "c91d7fd9cd7e5655f9a94db7d40e82b22b0f4f6b257831b4b7e33a33e1c4c705",
+  "binarySha256": "678ade3bfc088749c81a681adc603333ee0bb023b6a6cfe3c0f58bef8ff854e9",
+  "baseIndex": "sha256:034df5c1737e8241f6ed6423a12e720ee0f6d6f088609ee172f98f6f2166ef5d",
+  "baseManifest": "sha256:5e858517feb24e8b721c7d0ab6d48776ce42140d66ec6ce35618d31cad5a25ff",
+  "cosignVersion": "2.6.1",
+  "cosignSha256": "064954c5d8c7e3b28188eee5b1727b31c411550bc5fefd41aa672d3c761d103a",
+  "dockerVersion": "28.0.4",
+  "buildxVersion": "0.38.0",
+  "composeVersion": "2.38.2",
+  "runnerImageVersion": "20261012.334.1",
+  "githubTrustRootSha256": "65ca537f6ed8a47fd0e560c421baa1f6c1efb8b25fc200d8c5c02c0e92eb2b9c"
+}

@@ -36,7 +36,7 @@ jobs:
           python -m pytest -q -p no:cacheprovider tests/test_caddy_producer.py tests/test_caddy_registry_auth.py tests/test_caddy_app_auth.py
       - name: Authenticate immutable upstream inputs
         run: python -m scripts.caddy_producer prepare --directory "$RUNNER_TEMP/caddy-inputs"
-      - name: Reject drift of the pinned hosted builder
+      - name: Verify hosted builder policy and exact toolchain
         run: python -m scripts.caddy_producer toolchain-check
       - name: Build without network or package installation
         env:
@@ -44,15 +44,15 @@ jobs:
         run: |
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$RUNNER_ARCH" = X64
-          docker build --platform linux/amd64 --network none --pull \
+          /usr/bin/docker build --platform linux/amd64 --network none --pull \
             --label org.opencontainers.image.source=https://github.com/DanilFaritovich/portfolio-deployment \
             --label "org.opencontainers.image.revision=$SOURCE_SHA" \
             --tag "ghcr.io/danilfaritovich/portfolio-caddy:sha-$SOURCE_SHA" "$RUNNER_TEMP/caddy-inputs/context"
-          docker image inspect "ghcr.io/danilfaritovich/portfolio-caddy:sha-$SOURCE_SHA" > "$RUNNER_TEMP/caddy-inputs/built-image.json"
+          /usr/bin/docker image inspect "ghcr.io/danilfaritovich/portfolio-caddy:sha-$SOURCE_SHA" > "$RUNNER_TEMP/caddy-inputs/built-image.json"
           python -m scripts.caddy_producer_build_check "$RUNNER_TEMP/caddy-inputs/built-image.json"
-          docker run --rm --network none --read-only --cap-drop ALL --cap-add NET_BIND_SERVICE \
+          /usr/bin/docker run --rm --network none --read-only --cap-drop ALL --cap-add NET_BIND_SERVICE \
             --security-opt no-new-privileges:true "ghcr.io/danilfaritovich/portfolio-caddy:sha-$SOURCE_SHA" caddy version
-          docker save --output "$RUNNER_TEMP/caddy-inputs/image.tar" "ghcr.io/danilfaritovich/portfolio-caddy:sha-$SOURCE_SHA"
+          /usr/bin/docker save --output "$RUNNER_TEMP/caddy-inputs/image.tar" "ghcr.io/danilfaritovich/portfolio-caddy:sha-$SOURCE_SHA"
       - name: Retain exact build and public input evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
