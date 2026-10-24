@@ -36,10 +36,11 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class HTTPSRead:
-    def __init__(self):
+    def __init__(self, *, context=None):
         self.deadline = time.monotonic() + 120
         self.remaining = 64
-        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect(),
+                                                   urllib.request.HTTPSHandler(context=context))
 
     def get(self, url, headers):
         parsed = urllib.parse.urlsplit(url)

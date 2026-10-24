@@ -208,13 +208,17 @@ def test_missing_lock_with_state_is_not_recreated(admin, with_state):
     assert not with_state or state.read_bytes() == b'preserve'
 
 
-def test_operator_entry_refuses_checkout_and_unconfigured_binding():
+def test_operator_entry_refuses_checkout_and_uses_fixed_admin_intake(monkeypatch):
     result = subprocess.run([os.sys.executable, '-I', '-S', '-B', str(ROOT / 'installation/operator_bootstrap.py')],
                             capture_output=True, timeout=5)
     assert result.returncode == 2 and b'blocked' in result.stdout
-    from installation.admin_bindings import authenticate_initial_installation
-    with pytest.raises(RuntimeError, match='unconfigured'):
-        authenticate_initial_installation('a'*64)
+    from installation import admin_bindings
+    def blocked(pin):
+        assert pin == 'a'*64
+        raise RuntimeError('independent-admin-intake-absent')
+    monkeypatch.setattr(admin_bindings, 'authenticated_file_decision', blocked)
+    with pytest.raises(RuntimeError, match='intake-absent'):
+        admin_bindings.authenticate_initial_installation('a'*64)
 
 
 def test_exact_git_export_is_deterministic_and_untrusted(tmp_path):
@@ -251,6 +255,45 @@ def test_make_bundle_entrypoint_and_missing_inputs(tmp_path):
                               'INSTALL_VENDOR=', 'INSTALL_CADDY=', 'MANAGER_REVISION='],
                               cwd=ROOT, capture_output=True, timeout=5)
     assert failed.returncode != 0
+
+
+def test_exported_caddy_verifier_runs_without_source_checkout(tmp_path):
+    """The actual release verifier needs producer policy and its three data files."""
+    sha = subprocess.check_output(['/usr/bin/git', 'rev-parse', 'HEAD'], cwd=ROOT).decode().strip()
+    assets = {'tools/caddy': b'not executed', 'vendor/lib.py': b'# test only'}
+    raw = install_bundle.build_bundle(ROOT, sha, assets, {n: digest(v) for n, v in assets.items()})
+    _, files = read_bundle(raw)
+    for name, (data, _) in files.items():
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    # Isolated subprocess cannot borrow scripts or images from the checkout.
+    # Test interpreter supplies dev dependencies; synthetic assets grant no trust.
+    program = '''import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from scripts.production_integration.caddy_release import CaddyReleaseCollector, load_lock
+from scripts import caddy_producer
+assert Path(caddy_producer.__file__).is_relative_to(Path(sys.argv[1]))
+lock = load_lock()
+assert lock['version'] == '2.11.7'
+assert caddy_producer.published_inputs(lock, 'a'*40, '1', '1')['inputs'] == lock
+'''
+    result = subprocess.run([os.sys.executable, '-I', '-B', '-c', program, str(tmp_path)],
+                            cwd=tmp_path, capture_output=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    (tmp_path / 'images/caddy/inputs.lock.json').unlink()
+    failed = subprocess.run([os.sys.executable, '-I', '-B', '-c', program, str(tmp_path)],
+                            cwd=tmp_path, capture_output=True, timeout=10)
+    assert failed.returncode != 0
+
+
+@pytest.mark.parametrize('name', ['images/caddy/unreviewed.json', 'images/caddy/.dockerignore',
+                                'images/other/Dockerfile'])
+def test_bundle_does_not_admit_arbitrary_image_assets(name):
+    assert install_bundle.source_target(name) is None
+    with pytest.raises(InstallError):
+        read_bundle(package(**{name: b'foreign'}))
 
 
 @pytest.fixture

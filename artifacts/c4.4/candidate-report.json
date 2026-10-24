@@ -1,0 +1,37 @@
+{
+  "productionTrusted": false,
+  "manager_sha": "02e22f9b3e05043517ba26c0d9637e8ae70de9b8",
+  "tooling_base": "7175b907b4f636805cbd56574982a06b46dd17c9",
+  "bundle_path": "/tmp/c44-installation/bundle.zip",
+  "bundle_sha256": "183aefade767fba4fd85ed4e9e68ad93ed46d35b17a42146b7828d5f63466408",
+  "bundle_bytes": 57217927,
+  "files": 201,
+  "vendor_files": 129,
+  "source_blobs_compared": 71,
+  "deterministic_repeat_identical": true,
+  "local_inventory_verified": true,
+  "isolated_python": "3.12.3",
+  "local_glibc": "2.43",
+  "ubuntu_24_04_execution_performed": false,
+  "runtime_modules_imported": 57,
+  "independent_verifier": {
+    "status": "blocked",
+    "reason": "production-manager-independent-review-unconfigured",
+    "independent_workstation_review_performed": false
+  },
+  "production_bindings": "shipped blocking default",
+  "known_release_path_defect": "/usr/sbin/ip; corrected only in develop",
+  "vds_contact": false,
+  "operator_approvals_issued": false,
+  "validation": {
+    "make_fix": "passed",
+    "targeted_existing_installation_and_local_sources": "87 passed before final 2 rejection tests added",
+    "vendor_tests": "11 passed",
+    "make_check": "2319 passed in 100.68s",
+    "workflow_check": "passed; actionlint 1.7.7",
+    "git_diff_check": "passed",
+    "documentation_bootstrap": "passed",
+    "pip_hash_locked_download_and_repeat_export": "passed; identical export",
+    "prior_c41_comparison_pins": "10/10 passed"
+  }
+}

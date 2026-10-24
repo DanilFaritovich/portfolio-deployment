@@ -5,6 +5,7 @@ with the production artifact contract, but deliberately cannot satisfy policy B,
 operator approvals or any deployment gate. No Docker, publication or App token.
 """
 import hashlib
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -56,6 +57,15 @@ def qa_runtime():
     return CaddyRuntime(IMAGE + '@' + DIGEST, load_lock()['version'], paths)
 
 
+def historical_input_lock():
+    # Exact bytes from SOURCE_SHA, independent of today's producer baseline.
+    # Never used by the production collector or selected from API/env claims.
+    raw = (Path(__file__).resolve().parents[1] / 'tests/fixtures/caddy/published-inputs.lock.json').read_bytes()
+    require(hashlib.sha256(raw).hexdigest() ==
+            'bfa5bdda95483f423b8fa65ffc429f3a0db0e3d2387e13b378887e2760294386', 'caddy-release-inputs-mismatch')
+    return json.loads(raw)
+
+
 def check_release():
     with tempfile.TemporaryDirectory(prefix='pd-caddy-qa-') as temporary:
         directory = Path(temporary)
@@ -69,7 +79,7 @@ def check_release():
         github = HistoricalAttestations(GitHubRead(os.environ.get('GH_TOKEN'), transport))
         registry = GHCRRead(transport, repository=IMAGE)  # Anonymous public pull only.
         return verify_caddy_artifact(qa_runtime(), SOURCE_SHA, PUBLICATION,
-                                     github=github, registry=registry, crypto=crypto)
+                                     github=github, registry=registry, crypto=crypto, input_lock=historical_input_lock())
 
 
 # Exact allowlist: no remote text, URLs, full API responses or credentials.

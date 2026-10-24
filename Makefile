@@ -197,3 +197,9 @@ installation-bundle:
 .PHONY: qa-release-check
 qa-release-check:
 	@$(PYTHON) -m scripts.caddy_release_qa
+
+# Local private transcript assessment only; no SSH, Docker or authority issuance.
+.PHONY: production-host-evidence
+export HOST_EVIDENCE_REPORT
+production-host-evidence:
+	@$(PYTHON) -c 'import os,sys; from scripts.production.host_evidence import main; sys.exit(main(["--report",os.environ.get("HOST_EVIDENCE_REPORT","")]))'
