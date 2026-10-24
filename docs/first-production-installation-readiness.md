@@ -6,6 +6,10 @@ operator approval, key creation, systemd action, image acquisition or rollout wa
 performed. Rebuild on New VPS is the selected recovery strategy, without paid
 Rescue Mode. It does not waive existing fail-closed requirements.
 
+Current follow-up: [C4.5 host evidence and C4.6 binding handoff](production-host-evidence.md)
+reviews the newer private reports. Historical missing-gh/plugin/host-capacity
+statements below are superseded only as observations, never as production pins.
+
 ## Release and evidence provenance
 
 | Input | Exact value / status |

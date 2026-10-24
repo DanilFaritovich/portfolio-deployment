@@ -155,6 +155,11 @@ absence of observed overlap does not allocate one or prove future compatibility.
 
 ## Reports and interpretation
 
+For a private C4.1 administrative transcript, the separate offline
+[`production-host-evidence` check](production-host-evidence.md#narrow-offline-tool-evidence-check)
+extracts only bounded tool observations. It does not rerun inspection, authenticate
+the transcript or convert it into host policy/source trust.
+
 Reports use [v1 JSON schema](../schemas/production-inspection-v1.schema.json),
 closed probe-specific normalized details, UTC start/finish timestamps, target,
 observed identities, trust policy/fingerprints, category/status/reason, conflicts,
