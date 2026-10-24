@@ -26,6 +26,8 @@ FILE_LIMIT = 64 * 1024 * 1024
 DIRECTORIES = ('locks', 'state', 'journal', 'requests', 'caddy-config', 'caddy-lkg',
                'certificates', 'caddy-data', 'caddy-admin', 'temporary')
 OWNER = b'DanilFaritovich/portfolio-deployment:storage-v1\n'
+CADDY_INPUTS = frozenset(('images/caddy/inputs.lock.json', 'images/caddy/Dockerfile',
+                          'images/caddy/github-trusted-root.jsonl'))
 
 
 class InstallError(RuntimeError):
@@ -69,7 +71,7 @@ def safe_name(name):
 
 
 def allowed(name):
-    return (name in ('launcher.py', 'bindings.py', 'tools/caddy') or
+    return (name in CADDY_INPUTS or name in ('launcher.py', 'bindings.py', 'tools/caddy') or
             name.startswith(('scripts/', 'schemas/', 'vendor/', 'manager/registry/applications/')) or
             name == 'manager/policy/admission.yaml')
 

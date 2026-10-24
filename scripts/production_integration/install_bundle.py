@@ -12,7 +12,7 @@ import re
 import stat
 import zipfile
 
-from installation.operator_bootstrap import (FILE_LIMIT, InstallError, canonical, digest,
+from installation.operator_bootstrap import (CADDY_INPUTS, FILE_LIMIT, InstallError, canonical, digest,
                                             exclusive, read_bundle, require, safe_name)
 from scripts.docker_adapter import run_bounded
 
@@ -21,12 +21,14 @@ RUNTIME_ROOT_MODULES = frozenset({
     'acceptance_contract', 'application_acceptance', 'compose', 'compose_version',
     'composite_state', 'deployment', 'deployment_journal', 'deployment_lifecycle',
     'docker_adapter', 'docker_discovery', 'gateway', 'planning_inputs', 'readiness',
-    'reconciliation', 'runtime_contract', 'runtime_security', 'validate_registry',
+    'reconciliation', 'runtime_contract', 'runtime_security', 'validate_registry', 'caddy_producer',
 })
 
 
 def source_target(name):
     """Reviewed runtime source selection, shared with independent source review."""
+    if name in CADDY_INPUTS:
+        return name
     if name.startswith('scripts/'):
         if name.startswith('scripts/production_integration/'):
             return None if name.rsplit('/', 1)[-1] in ('install_bundle.py', 'bundle_review.py', 'cli.py') else name
@@ -48,7 +50,7 @@ def build_bundle(repository, revision, assets, dependency_pins, *, bindings=None
     require(git('rev-parse', '--verify', revision + '^{commit}').decode().strip() == revision,
             'manager-sha-unavailable')
     listing = git('ls-tree', '-rz', revision, '--', 'scripts', 'schemas', 'registry/applications',
-                  'policy/admission.yaml', 'installation')
+                  'policy/admission.yaml', 'installation', *sorted(CADDY_INPUTS))
     files = {}
     for record in listing.split(b'\0'):
         if not record:

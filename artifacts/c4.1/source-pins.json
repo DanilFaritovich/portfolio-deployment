@@ -1,0 +1,471 @@
+{
+  "bundle_sha256": null,
+  "external_host_pins": null,
+  "local_review_inputs": [
+    {
+      "path": "installation/operator_bootstrap.py",
+      "sha256": "c8ce9643aec97a49d37aaee08e714d7cb0c24690d1f205c7fb17b2d08d4318c2"
+    },
+    {
+      "path": "installation/admin_bindings.py",
+      "sha256": "97ee8618b18a5d9d0913e9b191295152e9163d8c864037796787294597bad56b"
+    },
+    {
+      "path": "installation/bindings.py",
+      "sha256": "26cb3defb49f3bcb04208bf4dae21d8870e96f12cf78a5e1358ae434c1f9029f"
+    },
+    {
+      "path": "scripts/production_integration/install_bundle.py",
+      "sha256": "badfcba074cddf50018d67795dc93daf0416ced6d47b1038616d2186b2741d09"
+    },
+    {
+      "path": "scripts/production_integration/bundle_review.py",
+      "sha256": "561524c9ee906ac7212a35f9f202155e7af39914d0269545a632ac435826585b"
+    },
+    {
+      "path": "artifacts/c4.1/read-only-preflight.sh",
+      "sha256": "559dffcb4dac5fec1bcaf584f1ffc3589c1782d6483b9ed2e5fb2ba0208f3f94"
+    },
+    {
+      "path": "docs/first-production-installation-readiness.md",
+      "sha256": "f305d2214fc7d710b05bd13a3ae47fa2140b7f737e28c99775039b311863dd88"
+    }
+  ],
+  "manager_sha": "02e22f9b3e05043517ba26c0d9637e8ae70de9b8",
+  "operator_key_pin": null,
+  "productionTrusted": false,
+  "purpose": "Comparison inventory only; no production approval or bundle verification",
+  "release_admin_helper_sha256": "252ac36cb1cb71c9aa6c0fa7b04896f0c7b8c5abb89d50f72460be0d29463413",
+  "release_source_files": [
+    {
+      "bundle_path": "images/caddy/Dockerfile",
+      "git_blob": "4879ce405d5ecb0e8f07cf696842546c860f6e91",
+      "sha256": "d5bf0f0efecab96afd455a5a0c856ed7d56b99e94dbd3efcd3ff28d03317ab34",
+      "source": "images/caddy/Dockerfile"
+    },
+    {
+      "bundle_path": "images/caddy/github-trusted-root.jsonl",
+      "git_blob": "d80ae4489ae0cdcec4708977d51a9ff7ece7291f",
+      "sha256": "65ca537f6ed8a47fd0e560c421baa1f6c1efb8b25fc200d8c5c02c0e92eb2b9c",
+      "source": "images/caddy/github-trusted-root.jsonl"
+    },
+    {
+      "bundle_path": "images/caddy/inputs.lock.json",
+      "git_blob": "8fba4436d633c53f8fcb6fce586bf59d0a5b0a7a",
+      "sha256": "bfa5bdda95483f423b8fa65ffc429f3a0db0e3d2387e13b378887e2760294386",
+      "source": "images/caddy/inputs.lock.json"
+    },
+    {
+      "bundle_path": "bindings.py",
+      "git_blob": "c8d6756f151b60d56a0e3000e4459ea82edd3a0c",
+      "sha256": "26cb3defb49f3bcb04208bf4dae21d8870e96f12cf78a5e1358ae434c1f9029f",
+      "source": "installation/bindings.py"
+    },
+    {
+      "bundle_path": "launcher.py",
+      "git_blob": "df7d56077720efed98c05beea3dd25a28bc1ff1d",
+      "sha256": "8ddcb18081d12bd8b7a07f2a2d7498ce9bf5dc181cad0683eadeedc3c3e959ff",
+      "source": "installation/launcher.py"
+    },
+    {
+      "bundle_path": "executor.service",
+      "git_blob": "3d3cf922b4281747b7be7a4fcb6ad4b66962c084",
+      "sha256": "25d22e07f8f32896ae9c8baec769de96cb1e984787b685feb55a9ce411e1c161",
+      "source": "installation/portfolio-deployment-executor.service"
+    },
+    {
+      "bundle_path": "manager/policy/admission.yaml",
+      "git_blob": "8cb7ee0bcea9f3c6a64debe74d22fd73ededd3dc",
+      "sha256": "6a977d2133efda7b89f8f005dafa785c0196acdc596191fed06cad9eaea46313",
+      "source": "policy/admission.yaml"
+    },
+    {
+      "bundle_path": "manager/registry/applications/.gitkeep",
+      "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": "registry/applications/.gitkeep"
+    },
+    {
+      "bundle_path": "manager/registry/applications/project-router.yaml",
+      "git_blob": "31f8974d104a1e06d87260d050b4c5db8d202f19",
+      "sha256": "dbbc98f586ecadfa58e4d79dfd08636ae37422c6412f9a2372d32a90bdaeed55",
+      "source": "registry/applications/project-router.yaml"
+    },
+    {
+      "bundle_path": "schemas/admission-v1.schema.json",
+      "git_blob": "ab04ab6d8191bef0ee5ca18ac7372f7f26e65d77",
+      "sha256": "a0d278de0eb95f94ef7dd4d8db360eb65f90bb7c23964397252fa4be132adfb8",
+      "source": "schemas/admission-v1.schema.json"
+    },
+    {
+      "bundle_path": "schemas/application-v1.schema.json",
+      "git_blob": "761015a3a49d3c5d35c93bf6b77084f7369b0038",
+      "sha256": "ace2c7d894773f880565a411f734235176ce28f69f068c570943bb74decf365e",
+      "source": "schemas/application-v1.schema.json"
+    },
+    {
+      "bundle_path": "schemas/observed-v1.schema.json",
+      "git_blob": "e986b41807f46481eaf72e8b6685df576ce13bcc",
+      "sha256": "70690430ddd590c35e67cc1625b14653a3f824916ebc8e36d5e99812af9acb3c",
+      "source": "schemas/observed-v1.schema.json"
+    },
+    {
+      "bundle_path": "schemas/production-inspection-v1.schema.json",
+      "git_blob": "eb3b8f956c588b784c2a6611e58a502aedf386d6",
+      "sha256": "50fcd206c4799a060fdbb345395d36f393fd7723ed30cc286c672961e1a1008c",
+      "source": "schemas/production-inspection-v1.schema.json"
+    },
+    {
+      "bundle_path": "schemas/runtime-security-v1.schema.json",
+      "git_blob": "f513bf5eef543d7c99df1c4894c7648714597398",
+      "sha256": "61de5c8e797cd62badb56aa2d470e65b7725bbbcfd10bafa76eecc8855ba1eab",
+      "source": "schemas/runtime-security-v1.schema.json"
+    },
+    {
+      "bundle_path": "scripts/acceptance_contract.py",
+      "git_blob": "8b4e047d24c6550041db709af38f0b5119bd7652",
+      "sha256": "88be53dc844ce254a94035803d47caa49fd3448b5e82f12d9bcf8971db701a18",
+      "source": "scripts/acceptance_contract.py"
+    },
+    {
+      "bundle_path": "scripts/application_acceptance.py",
+      "git_blob": "b3280d5f32065f9dd440b0fd77439c78e418794a",
+      "sha256": "d25fc2b744d4cc31d162977dd104ee0699d05f1c944e4debde0509838d753b7e",
+      "source": "scripts/application_acceptance.py"
+    },
+    {
+      "bundle_path": "scripts/caddy_producer.py",
+      "git_blob": "9b4078f0b5291b42072fc07e9ca97290fc113f80",
+      "sha256": "ae88fb0b5cfd96791fe322cc8e693c153ce3d858c572ef9f9c5fd2ae7538ecef",
+      "source": "scripts/caddy_producer.py"
+    },
+    {
+      "bundle_path": "scripts/compose.py",
+      "git_blob": "7480d7c8963db83200583953e1f348dcfb0fb131",
+      "sha256": "de470f1846318bb8b8a6698d70acd498ecb24d98ff3b61237de4459752ede520",
+      "source": "scripts/compose.py"
+    },
+    {
+      "bundle_path": "scripts/compose_version.py",
+      "git_blob": "13b26e1b25bf1baa72cfb7c0c7868f8b4db9e35d",
+      "sha256": "96cbc8165d124fa62eddac46973da226681569ca4cd6a36a24c855217fd8bd29",
+      "source": "scripts/compose_version.py"
+    },
+    {
+      "bundle_path": "scripts/composite_state.py",
+      "git_blob": "b0560a0e4d3d634b9590675156d0e594b5ae7419",
+      "sha256": "b3bda62abf25c5792910565e867a6cc51751ca344167b18cda9c9b7c4130a6dd",
+      "source": "scripts/composite_state.py"
+    },
+    {
+      "bundle_path": "scripts/deployment.py",
+      "git_blob": "d6efd6aeced445c7212153fa1dfe1f3218913808",
+      "sha256": "47f10a0a1944d203f9bcf7d6288568d3a86a9a1a5ee7d912d5b44b17045dce15",
+      "source": "scripts/deployment.py"
+    },
+    {
+      "bundle_path": "scripts/deployment_journal.py",
+      "git_blob": "8368fc267f7ec6c7cb599a85286d20f212a7efb1",
+      "sha256": "22c93d8f1e1efc8e82b1b40d4f53c828108335ed637b36540aa34016089e3418",
+      "source": "scripts/deployment_journal.py"
+    },
+    {
+      "bundle_path": "scripts/deployment_lifecycle.py",
+      "git_blob": "440f6ace97b7b9ac0e25537cab4dda2e094456b4",
+      "sha256": "ea1ca281d79fc358e262e380b18daaafcdf1b345426ee8769afafcbc1742f49e",
+      "source": "scripts/deployment_lifecycle.py"
+    },
+    {
+      "bundle_path": "scripts/docker_adapter.py",
+      "git_blob": "5b27a10d86ccac683c0ff5701583321390db52bc",
+      "sha256": "89d52ad94dba56591096e2b04ee8c364b23a0fb01b36acd14ddcc736221dd845",
+      "source": "scripts/docker_adapter.py"
+    },
+    {
+      "bundle_path": "scripts/docker_discovery.py",
+      "git_blob": "dd9efd6f9d890435ec102819cdba9aa6629cb6f9",
+      "sha256": "fd48e529ffc1e22701e6a45fba7c706d6761d3df40ec7a7edf13b2bf9f1a9fc7",
+      "source": "scripts/docker_discovery.py"
+    },
+    {
+      "bundle_path": "scripts/gateway.py",
+      "git_blob": "445db798fe00dda2be9364ab10af438d96570a41",
+      "sha256": "bee9f35b2ee836f0bbddf3fab652c313a1616959a6670ee71eec03e1662d4dd0",
+      "source": "scripts/gateway.py"
+    },
+    {
+      "bundle_path": "scripts/planning_inputs.py",
+      "git_blob": "c7e94c3145377dd510f039d3c6858f240aef847a",
+      "sha256": "b38dff2e2026a07775c5d0fe3076a01c3129837eef1358241408053860922c65",
+      "source": "scripts/planning_inputs.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/__init__.py",
+      "git_blob": "b4c3539bf47636ce21b9644db8fba46373a40cd6",
+      "sha256": "e7053a757c080a68fb72272aea9b553d337f49301a098497c0dd68b7b9d35e4e",
+      "source": "scripts/production_integration/__init__.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/active_config.py",
+      "git_blob": "35ee9ade8d8298a4552376e57855a96feb23c2e4",
+      "sha256": "5de9f42201fe9174852e01a92633ec03364a28163e2b926e6a1bdfd6b2043e4d",
+      "source": "scripts/production_integration/active_config.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/active_runtime.py",
+      "git_blob": "d9513ab1baa3f4db033278cc118f84a70d23f27a",
+      "sha256": "ff0596ee681376265cd8cabee46c40b2ad080cf7b794926877865d448c00a864",
+      "source": "scripts/production_integration/active_runtime.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/admin_contract.py",
+      "git_blob": "ff165c6a58d73f14793de7299175cbee12500d10",
+      "sha256": "299adb34592a07b0aaab91586275f64abc45410a13e17506ba64a4240c5079d4",
+      "source": "scripts/production_integration/admin_contract.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/admin_socket.py",
+      "git_blob": "b4527977f689bd6312d949f63641358a46df84f7",
+      "sha256": "f812185d008672d7e3dcde1ca5750f639d43ad10cebac11fc3fd3b139b94ff68",
+      "source": "scripts/production_integration/admin_socket.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/artifacts.py",
+      "git_blob": "ec2d43888030c87e3895e2e60d954e97f208d6ed",
+      "sha256": "cc1d5f3ccb31dce4d472932a6b37dae19370e6d5040c884f6bfb4744f69e0ef9",
+      "source": "scripts/production_integration/artifacts.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/authorization.py",
+      "git_blob": "3ddf281cb65f2e1af3852b8fd2986766d6b78482",
+      "sha256": "4464aca61aa8a32ab3816f9475cd20828b3832ea92711cfdb2a35b054303fc58",
+      "source": "scripts/production_integration/authorization.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/bootstrap.py",
+      "git_blob": "47b31f0fbd9df7ea80ee2c347c425f201f6b907d",
+      "sha256": "138f506b0b2beab3e895c6f12e61c5d86ef7cd63d609c8217af9f76ec4b8fc9a",
+      "source": "scripts/production_integration/bootstrap.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/bootstrap_bindings.py",
+      "git_blob": "5a161ddb911952a589d8018be45eec0ee2a00eb8",
+      "sha256": "08bc110308965132a125ba392673d34d89f411956cfe42a116da2944d28c6570",
+      "source": "scripts/production_integration/bootstrap_bindings.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/caddy_image.py",
+      "git_blob": "f4ceb28bb54047a02c91350dc371e5fcd820f14c",
+      "sha256": "2e028a9f908f318de2728445b8041775e6148075eae25290d3846fd47b69bc99",
+      "source": "scripts/production_integration/caddy_image.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/caddy_release.py",
+      "git_blob": "97e1d9ad1978c5571d099fd71ca284f4e40ea5da",
+      "sha256": "563bdcdd04085debd12817507c8f12da8c3e00b78a74839b06aff8a099cb3acf",
+      "source": "scripts/production_integration/caddy_release.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/caddy_runtime.py",
+      "git_blob": "c16ef59ecc6f88ae5c9186350f0dd5581ec2eca9",
+      "sha256": "502e1c4d35e22809edc4e72a1b5711c1efbaa188a30a5d1a0771d5f0907912c2",
+      "source": "scripts/production_integration/caddy_runtime.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/candidate.py",
+      "git_blob": "b394efca7fadb79f7d37d61b590bc59fff79656a",
+      "sha256": "3e0689dc817123301c41ac68e6eaf416a4cba0a091f483b6709c97c7458b370e",
+      "source": "scripts/production_integration/candidate.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/composition.py",
+      "git_blob": "2262674d35dce697971024d33e3a941f5c0de114",
+      "sha256": "91ca36d13023a376cca2f430a3c954e0dec099325852e6e4fa0d3cf70e632831",
+      "source": "scripts/production_integration/composition.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/docker.py",
+      "git_blob": "c81cde66fa4e9cacc05e460fca324e57cf9ad1b7",
+      "sha256": "c4009b5988ea0a82deaf214cd2e0fdf5e004222b528899759e0e4baea27d8a81",
+      "source": "scripts/production_integration/docker.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/execution.py",
+      "git_blob": "6a18ab270d730b6886177d615e22106f1440e49a",
+      "sha256": "3bbf1fa83d7fd924ad264e05637de6dd2ceda010e6c80d055a7ce7bd2c0e35b3",
+      "source": "scripts/production_integration/execution.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/gateway.py",
+      "git_blob": "f3a157a6a53567ab1f0d2094c9f91d693f9b81f2",
+      "sha256": "109eb279a979533cdc99ae92f6e5c5b035fe2210f569a04568cda781461249be",
+      "source": "scripts/production_integration/gateway.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/gateway_read.py",
+      "git_blob": "3120f15f79172861296d82a682c9add685a47115",
+      "sha256": "9464cf9ddb9247d9a11f3c9ff07c11f9072f683b940587fa9fbe5141b802d33b",
+      "source": "scripts/production_integration/gateway_read.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/gateway_write.py",
+      "git_blob": "05c2bcc7881c1adb208a391e081cda129e8c7e58",
+      "sha256": "8de517ceef72ea9dff0e7d5d9014d8082fa8833989a8df804f18947f9119609b",
+      "source": "scripts/production_integration/gateway_write.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/host_policy.py",
+      "git_blob": "57863b11de4631006684626ee788540518f5fb11",
+      "sha256": "72dffe3a681c9748b2993b865134e884e45f7041a95edebb70cc6604a8ad7004",
+      "source": "scripts/production_integration/host_policy.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/http_read.py",
+      "git_blob": "bcf82317f754c58cae11d3e54de47a4ba05e31a9",
+      "sha256": "82fdb77a862041984da2407c427c52d062132a9e693127f0619a2ab42704d94d",
+      "source": "scripts/production_integration/http_read.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/image_preparation.py",
+      "git_blob": "223cf02d2268bc31e09bd5869a6876b31659fa42",
+      "sha256": "bcfeee016189a2a7ecce74d794c6fb0b88c6b381ba9b991158065ee15c3f371a",
+      "source": "scripts/production_integration/image_preparation.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/installation.py",
+      "git_blob": "05cf4f9542a0c06d369bc96e3d8ded91f202e8d4",
+      "sha256": "77b9b2701a33dc3bf49b758c0922e84dc2924987901cfa8826cbaff32bef622c",
+      "source": "scripts/production_integration/installation.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/local_sources.py",
+      "git_blob": "da269abdccf365a30aa09d0121ee979584ae930a",
+      "sha256": "e1246482c07017fa09d75dc4b3cbf0d3da46fbd77801dbe41bbeb18f1dc338d8",
+      "source": "scripts/production_integration/local_sources.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/locking.py",
+      "git_blob": "abb82215538f148d2868ec1f746f745bde9b5aae",
+      "sha256": "2358086487ffb1e28881ee59df03286addf05b93c9ff120a8d2c0e220058b2bb",
+      "source": "scripts/production_integration/locking.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/mutations.py",
+      "git_blob": "aa388cb7981d944af6e6e80209202f8e66f0f0f4",
+      "sha256": "f94b4e9bb9d46f37649987bd7feb4ad57b7386d2eef89545b7d6af2d7c5cb4cf",
+      "source": "scripts/production_integration/mutations.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/observations.py",
+      "git_blob": "2a58d448d2e49e43922f0b4cd8ba6f1a867c19ea",
+      "sha256": "7fea2854491aa4c001bc448b7bc6eb7911b199a70718372098e48ccbb4381b84",
+      "source": "scripts/production_integration/observations.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/operator_approval.py",
+      "git_blob": "5d0b5cfbf03f36dd8d19126f19eed2a80beaed41",
+      "sha256": "a771a9a2e8667475d4ac748a8f62f0f4fed588b0535870c73c4348743f5d200e",
+      "source": "scripts/production_integration/operator_approval.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/readiness.py",
+      "git_blob": "427b2d719a0d12cc680565ad531fb745c7d78f3f",
+      "sha256": "0a80980cf1ed62f34269fa1a7b40b08ba8779873ce936422fabfb27724306977",
+      "source": "scripts/production_integration/readiness.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/release.py",
+      "git_blob": "24a8c785d5df21de55752c7aba9abe70f1fa8412",
+      "sha256": "8fd56d76bdb3193bf8a8df6b5b6d782ceae54e9bd96e5a645ccdda66f8b43e21",
+      "source": "scripts/production_integration/release.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/release_collector.py",
+      "git_blob": "51ea6f99ddf448d0bb648664af2a7b83c89b6de1",
+      "sha256": "9a24bb964a3330970049c8956fe921a83d04c15dd779cb6d2e68450646cb7118",
+      "source": "scripts/production_integration/release_collector.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/release_crypto.py",
+      "git_blob": "792509217a6f0061ddc17b31a397e325462b1914",
+      "sha256": "a56257897167c24f7fe8a95bd10c92b928524375a3cd6bf47047986e2bea30f0",
+      "source": "scripts/production_integration/release_crypto.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/release_readiness.py",
+      "git_blob": "fde553bc9aa1e8b45562de7e0832fbdf70850feb",
+      "sha256": "c88617ec1df843509480735ad7caf53752aa213b7a613a205b0b77ab4aa2db1a",
+      "source": "scripts/production_integration/release_readiness.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/release_source.py",
+      "git_blob": "5c16cf98d1d58ae502709b8b9b8618ff5f26878a",
+      "sha256": "7ce17f42ed2c52e768e07f308366d2074958eee69e7420c3a61baf5b57b34d06",
+      "source": "scripts/production_integration/release_source.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/release_transport.py",
+      "git_blob": "f27b7b909b7087df2989db5866db461721a60bb6",
+      "sha256": "bcf922e5e08d7aaa048b28e0db4962ab770cb23db4c70628b6c4d1ac823bbee6",
+      "source": "scripts/production_integration/release_transport.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/runtime.py",
+      "git_blob": "7cffde6b2b48610910c8629a60babda7e97f20e6",
+      "sha256": "a614228fd78db614b851e674c14b7a67e6525f732c4c72dabd5462ea1d5853e5",
+      "source": "scripts/production_integration/runtime.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/runtime_sources.py",
+      "git_blob": "e2c51b01d1d1984545b29165e3cecc45efe3e040",
+      "sha256": "6dcce9bcf5c402d8f3dd748107c1cfbadd4299c67b0431a78ca84f6c9032ad54",
+      "source": "scripts/production_integration/runtime_sources.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/storage.py",
+      "git_blob": "bd3c869733a99b1d0a7d81a5f911c0642446ad7c",
+      "sha256": "aba38b036ff3557587f17cab7aaa340a5ab704981f8fa10704b54a1e35699378",
+      "source": "scripts/production_integration/storage.py"
+    },
+    {
+      "bundle_path": "scripts/production_integration/trust.py",
+      "git_blob": "0246d4f10011cf8dbe9fe271f23a43ca7c8fb087",
+      "sha256": "709fd0061108d5e195bd4847e09a1991671bc08b010e3adb2f7344a5cd2bf96e",
+      "source": "scripts/production_integration/trust.py"
+    },
+    {
+      "bundle_path": "scripts/readiness.py",
+      "git_blob": "30bd6135479c1e5f31c0f18b92ceb01f59f3bbcc",
+      "sha256": "99f87fcdb4e0de5c8687e04017b6ccfe8e15a7b5f6ed70e9db5d219d16b9c7ee",
+      "source": "scripts/readiness.py"
+    },
+    {
+      "bundle_path": "scripts/reconciliation.py",
+      "git_blob": "84beb2d1f876f5eb14970c76b4534e3124d117a4",
+      "sha256": "9153e1add094dca54774e295e4273d5c201353b626799708ada22192633a6764",
+      "source": "scripts/reconciliation.py"
+    },
+    {
+      "bundle_path": "scripts/runtime_contract.py",
+      "git_blob": "e2459b4da01f372b7ab7373894d9b6d8f5e481b7",
+      "sha256": "e044b70fc362586a049e44f4ae6e8080c1fb4eccc240a707e2f12f97813f064d",
+      "source": "scripts/runtime_contract.py"
+    },
+    {
+      "bundle_path": "scripts/runtime_security.py",
+      "git_blob": "afbd52ebfab9f1913528e59ff5c484855da458c0",
+      "sha256": "7f24a7bcb7aef5f8b4a87ab70bd80d162c31147012c600df9b78e53c5c7fd900",
+      "source": "scripts/runtime_security.py"
+    },
+    {
+      "bundle_path": "scripts/validate_registry.py",
+      "git_blob": "b56f9eba6c5676dcf8f0251f3d324e3632d01b63",
+      "sha256": "58bd5d0e9c4284b35332ac28d759bbc868ca80b813b1c552ec677edece1450ca",
+      "source": "scripts/validate_registry.py"
+    }
+  ],
+  "source_selection": "Corrected C4.1 source_target over exact release Git objects",
+  "validation_caddy_sha256": "678ade3bfc088749c81a681adc603333ee0bb023b6a6cfe3c0f58bef8ff854e9",
+  "vendor_pins": null,
+  "version": 1
+}
