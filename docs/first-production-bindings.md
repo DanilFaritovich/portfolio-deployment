@@ -2,6 +2,9 @@
 
 **Installation BLOCKED; no production operation authorized or performed.**
 This is an offline-tested integration, not host attestation or an issued decision.
+The [C4.7 installation runbook](first-production-installation-runbook.md) now supplies
+concrete opt-in administrative consumers and a finite sealed phase transition;
+the owner inputs and production bindings below remain unapproved/closed.
 Private C4.1/C4.5 reports remain private historical observations; do not import them
 as policy, SourceTrust or administrative approval. Infrastructure v1.1.0 and tool
 versions remain owner-reported/observed at the scopes in the

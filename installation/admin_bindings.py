@@ -66,3 +66,61 @@ def authenticate_decision(bundle_sha256, decision, *, authority, now=None):
             0 <= d.not_before <= now < d.expires and 0 < d.expires - d.not_before <= 3600)
     require(authority.consume(d) is d)
     return InitialInstallationApproval(d.bundle_sha256, d.manager_sha, d.machine_id, d.external_files)
+
+
+def authenticated_file_decision(bundle_sha256):
+    """Opt-in fixed administrative intake; never called by the shipped binding.
+
+    The administrator separately installs a reviewed 0600 decision file through
+    the authenticated portfolio_admin channel, OUTSIDE the bundle. Root file
+    publication is the approval act. There is no document generator or issuer.
+    Lost/failed consumption requires a new administrative review, never replay.
+    """
+    from dataclasses import fields
+    import os
+    from pathlib import Path
+    from operator_bootstrap import (INPUT, admin_context, canonical, digest,
+                                    exclusive, json_bytes, metadata, require, sync_directory)
+    admin_context()
+    directory = INPUT.parent
+    path = directory / 'installation-decision.json'
+    metadata(directory, directory=True, private=True)
+    metadata(path, private=True)
+    with path.open('rb') as stream:
+        info = os.fstat(stream.fileno())
+        raw = stream.read(2 * 1024 * 1024 + 1)
+        require(0 < len(raw) <= 2 * 1024 * 1024 and
+                os.fstat(stream.fileno()) == info and path.lstat() == info,
+                'administrative-decision-changed')
+    document = json_bytes(raw)
+    require(type(document) is dict and set(document) == {f.name for f in fields(InitialInstallationDecision)} and
+            canonical(document) == raw, 'administrative-decision-fields-invalid')
+    require(type(document['external_files']) is list and
+            all(type(p) is list and len(p) == 2 for p in document['external_files']),
+            'administrative-decision-inventory-invalid')
+    document['external_files'] = tuple(tuple(p) for p in document['external_files'])
+    decision = InitialInstallationDecision(**document)
+
+    class ChannelAuthority:
+        def consume(self, presented):
+            require(presented is decision and Path('/etc/machine-id').read_text().strip() == decision.machine_id,
+                    'administrative-decision-host-mismatch')
+            metadata(INPUT, private=True)
+            with INPUT.open('rb') as stream:
+                require(digest(stream.read(128 * 1024 * 1024 + 1)) == decision.bundle_sha256,
+                        'administrative-decision-intake-mismatch')
+            for filename, pin in decision.external_files:
+                target = Path(filename)
+                metadata(target)
+                with target.open('rb') as stream:
+                    require(hashlib.file_digest(stream, 'sha256').hexdigest() == pin,
+                            'administrative-decision-external-content-changed')
+            require(path.lstat() == info and decision.not_before <= time.time() < decision.expires,
+                    'administrative-decision-revoked-or-expired')
+            # Retained exclusive marker is intent BEFORE installer mutation.
+            # Concurrent invocations cannot both consume; fsync failure fences.
+            exclusive(directory / ('spent-' + decision.decision_id), raw)
+            sync_directory(directory)
+            return decision
+
+    return authenticate_decision(bundle_sha256, decision, authority=ChannelAuthority())
