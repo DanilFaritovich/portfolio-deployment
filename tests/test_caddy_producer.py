@@ -434,3 +434,74 @@ def test_caddy_runtime_still_requires_all_hardening():
     assert service['read_only'] is True and service['security_opt'] == ['no-new-privileges:true']
     assert len(service['volumes']) == 4 and service['volumes'][0]['read_only'] is True
     assert service['ports'] == ['80:80/tcp', '443:443/tcp'] and service['networks'] == ['proxy']
+
+
+@pytest.fixture
+def toolchain(monkeypatch):
+    lock = p.load_lock()
+    for key, value in dict(GITHUB_ACTIONS='true', RUNNER_ENVIRONMENT='github-hosted', RUNNER_ARCH='X64',
+                           RUNNER_OS='Linux', ImageVersion=lock['runnerImageVersion']).items():
+        monkeypatch.setenv(key, value)
+    responses = {
+        'version': json.dumps({'Client': {'Version': lock['dockerVersion']},
+                               'Server': {'Version': lock['dockerVersion']}}).encode(),
+        'buildx': ('github.com/docker/buildx v' + lock['buildxVersion'] + ' public-commit').encode(),
+        'compose': ('v' + lock['composeVersion'] + '\n').encode(),
+    }
+    calls = []
+    def command(args):
+        calls.append(args[1])
+        value = responses[args[1]]
+        if isinstance(value, Exception): raise value
+        return value
+    monkeypatch.setattr(p, 'run', command)
+    return responses, calls
+
+
+def test_toolchain_success_reports_each_check(toolchain, capsys):
+    p.check_toolchain()
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert len(records) == 8 and all(row['status'] == 'ok' for row in records)
+    assert records[-3]['actual'] == dict(client=p.load_lock()['dockerVersion'], server=p.load_lock()['dockerVersion'])
+
+
+@pytest.mark.parametrize('component', ['version', 'buildx', 'compose'])
+@pytest.mark.parametrize('response', [b'', b'credential-secret\n::error::injected',
+                                     DockerError('credential-secret'), TimeoutError('credential-secret')])
+def test_toolchain_unavailable_is_redacted_and_collects_remaining_checks(toolchain, monkeypatch, capsys, component, response):
+    responses, calls = toolchain
+    responses[component] = response
+    monkeypatch.setattr('sys.argv', ['caddy_producer', 'toolchain-check'])
+    assert p.main() == 1
+    output = capsys.readouterr().out
+    assert 'credential-secret' not in output and '::error::' not in output
+    assert calls == ['version', 'buildx', 'compose']
+    assert 'caddy-builder-' + ('docker' if component == 'version' else component) in output
+
+
+@pytest.mark.parametrize('field', ['GITHUB_ACTIONS', 'RUNNER_ENVIRONMENT', 'RUNNER_ARCH', 'RUNNER_OS', 'ImageVersion'])
+def test_runner_failure_prevents_commands_and_redacts_env(toolchain, monkeypatch, capsys, field):
+    monkeypatch.setenv(field, 'credential-secret\n::error::injected')
+    with pytest.raises(DockerError, match='^caddy-builder-runner-drift$'): p.check_toolchain()
+    assert toolchain[1] == []
+    assert 'credential-secret' not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('side', ['Client', 'Server'])
+def test_docker_sides_are_checked_independently(toolchain, capsys, side):
+    responses, _ = toolchain
+    versions = json.loads(responses['version'])
+    versions[side]['Version'] = '0.0.0'
+    responses['version'] = json.dumps(versions).encode()
+    with pytest.raises(DockerError, match='^caddy-builder-docker-drift$'): p.check_toolchain()
+    output = capsys.readouterr().out
+    assert '"' + side.lower() + '": "0.0.0"' in output
+    assert '"check": "compose"' in output
+
+
+def test_toolchain_cli_redacts_unexpected_exception(toolchain, monkeypatch, capsys):
+    def fail(): raise ValueError('credential-secret')
+    monkeypatch.setattr(p, 'check_toolchain', fail)
+    monkeypatch.setattr('sys.argv', ['caddy_producer', 'toolchain-check'])
+    assert p.main() == 1
+    assert capsys.readouterr().out == 'caddy-producer-inputs-failed\n'
