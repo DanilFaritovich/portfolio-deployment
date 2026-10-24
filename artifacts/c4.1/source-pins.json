@@ -24,17 +24,25 @@
     },
     {
       "path": "artifacts/c4.1/read-only-preflight.sh",
-      "sha256": "559dffcb4dac5fec1bcaf584f1ffc3589c1782d6483b9ed2e5fb2ba0208f3f94"
+      "sha256": "0115e2d188211ae4e7a3a4107a794292c8b4472c3e8ada93081d8b6c1993c135"
     },
     {
       "path": "docs/first-production-installation-readiness.md",
-      "sha256": "f305d2214fc7d710b05bd13a3ae47fa2140b7f737e28c99775039b311863dd88"
+      "sha256": "1a009a24e0daf6ba975a9e680b16772ce0d7947886fc3bd5be2159d7aa4046ba"
+    },
+    {
+      "path": "scripts/production_integration/local_sources.py",
+      "sha256": "0657123675d749083d3508d765ef9b0916356173d617090e8b57833f5666a138"
+    },
+    {
+      "path": "docs/production-installation.md",
+      "sha256": "9d30ee901d2207102a0a384662507ae1c80d5a677a9d06afbf266dc107624b63"
     }
   ],
   "manager_sha": "02e22f9b3e05043517ba26c0d9637e8ae70de9b8",
   "operator_key_pin": null,
   "productionTrusted": false,
-  "purpose": "Comparison inventory only; no production approval or bundle verification",
+  "purpose": "Comparison inventory only; C4.3 local inputs refreshed, historical C4.1 release selection unchanged; no production approval or bundle verification",
   "release_admin_helper_sha256": "252ac36cb1cb71c9aa6c0fa7b04896f0c7b8c5abb89d50f72460be0d29463413",
   "release_source_files": [
     {

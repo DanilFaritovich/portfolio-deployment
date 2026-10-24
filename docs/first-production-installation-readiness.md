@@ -119,12 +119,38 @@ External `InitialInstallationApproval.external_files` / `SealedInstallation.file
 must pin the resolved system interpreter, complete reviewed stdlib/system/native
 library closure, `/usr/bin/docker`, exactly one actual regular Compose plugin,
 real gh binary and trust-root files, `/usr/bin/ssh-keygen`, operator trust file,
-`/usr/sbin/ip`, `/usr/bin/ss`, both administrative helper files and all code/tools
+`/usr/bin/ip`, `/usr/bin/ss`, both administrative helper files and all code/tools
 used by fixed authorities. Independently confirm provenance and protected ancestry,
 regular-file/one-link requirements, OS package origins and any shared-library/search
 paths. Do not pin a symlink spelling or silently bypass protection. OS/package
 updates invalidate pins and require reviewed maintenance. No current VDS file
 hash, host ID, SSH fingerprint, operator public key or bundle hash is known here.
+
+## C4.3 — Fixed host IP path and C4.2 evidence limits
+
+The C4.2 read-only inspection, as supplied for this task, confirmed Ubuntu 24.04.5,
+Python 3.12.3, Docker 29.9.0 and Compose 5.6.0, and found `/usr/sbin/ip` to be a
+symlink to `/usr/bin/ip`. C4.3 changes the four fixed runtime route/rule commands
+and the read-only diagnostic runbook to `/usr/bin/ip`. No new VDS inspection was
+performed. The target's regular-file identity, ownership, one-link metadata,
+protected ancestry, hash and package/dependency provenance still require
+independent verification before production approval. Pinning the symlink spelling
+is invalid; `SealedInstallation.protected()` remains strict.
+
+The supplied C4.2 evidence establishes no further symlink incompatibility for
+the other fixed runtime tools: `/usr/bin/docker`, `/usr/bin/ss`,
+`/usr/bin/ssh-keygen` and installed `/opt/portfolio-deployment/tools/caddy`.
+Their protected metadata/provenance and the one actual regular Compose plugin
+remain unverified here; versions alone cannot establish these properties.
+The interpreter already requires its resolved executable pin; C4.1's candidate
+`/usr/bin/python3` is not evidence of a valid regular-file inventory entry.
+No fallback search, configurable tool path or protection exception is added.
+
+Missing gh exactly 2.102.0, a reviewed Python 3.12 target-ABI vendor tree,
+an independently verified bundle, trusted administrative/source/bootstrap/public
+postcondition authorities and recovery prerequisites remain explicit blockers.
+This path correction grants no installation, binding, operator approval, image
+acquisition, systemd action or production operation authority.
 
 ## Real packaging defect and narrow fix
 
@@ -218,6 +244,11 @@ observed Python ABI, prepare outside the checkout:
 `artifacts/c4.1/source-pins.sha256` contains reproducible **local comparison pins**
 for selected release inputs and the corrected helper/tooling. `source-pins.json`
 records provenance/categories. Neither file is external production approval.
+The C4.3 refresh covers changed local source/runbook/documentation bytes only;
+the historical `manager_sha` and `release_source_files` still describe the C4.1
+selected release, which predates the path fix. Build and independently review a
+new exact protected-main selection before production; these comparison hashes
+cannot approve that selection or the host's `/usr/bin/ip`.
 Known blocking-binding hashes are included to detect accidental substitution,
 not to endorse them as functional wiring. Complete vendor/external/bundle hashes
 remain explicitly unavailable until real reviewed inputs exist.
