@@ -7,7 +7,8 @@ performed. Rebuild on New VPS is the selected recovery strategy, without paid
 Rescue Mode. It does not waive existing fail-closed requirements.
 
 Current follow-up: [C4.5 host evidence and C4.6 binding handoff](production-host-evidence.md)
-reviews the newer private reports. Historical missing-gh/plugin/host-capacity
+reviews the newer private reports. [C4.6 bindings and owner decisions](first-production-bindings.md)
+prepare the fixed empty-host composition with authorities still unconfigured. Historical missing-gh/plugin/host-capacity
 statements below are superseded only as observations, never as production pins.
 
 ## Release and evidence provenance
