@@ -18,6 +18,11 @@ uses the existing anonymous GHCR bearer-token transport and OCI/provenance gates
 its image preparation factory remains `project_router_image_registry`.
 The fixed CA PEM also supplies GitHub/GHCR HTTPS trust, without ambient CA directories.
 Existing transport request/deadline bounds remain enforced.
+`FixedPolicy.producer_checks` is the complete independently reviewed tuple of
+ProjectRouter required workflow checks. Both phase recipes preserve every entry
+and append the manager Offline check. Empty, duplicate or foreign-repository
+entries fail before installation I/O; ProtectedSource still requires equality
+with the effective mandatory check set rather than a selected subset.
 
 The empty phase needs no invented runtime IDs. Rollout obtains IDs and complete
 infrastructure membership only through `build_reviewed_phase` and the successful
@@ -88,6 +93,17 @@ multiple stable observation rounds only within that short window and exact subje
 The owner must arrange timely off-VDS execution/delivery during the rollout window;
 no observer host, key or delivery channel is configured here. Missing evidence
 blocks promotion. No monitoring service or remote command runner is introduced.
+
+For the first route, arm the separately authorized observer before starting the
+rollout. It probes until the real route succeeds, then signs and atomically
+delivers the receipt. The consumer waits for absent or stale/unbound evidence
+only within the remainder of the existing 15-second public verification budget;
+invalid signatures or unsafe metadata fail immediately. Keep observation, signing
+and delivery within the 30-second evidence lifetime, and delivery within that
+remaining local budget. Continue fresh observations through all stable rounds.
+Offline integration exercises activation followed by real SSHSIG signing,
+delayed atomic file delivery and two verifications using real clocks. It does
+not establish production DNS/TLS, ACME timing or channel latency.
 
 ## External closure and protected-main release
 

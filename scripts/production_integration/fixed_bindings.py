@@ -52,12 +52,16 @@ class FixedPolicy:
     image: str
     signer_sha: str
     slsa_builder: str
-    producer_check: WorkflowCheck
+    producer_checks: tuple[WorkflowCheck, ...]
     publication_check: WorkflowCheck
 
 
 def build_fixed(installation, policy):
     require(type(policy) is FixedPolicy, 'production-installed-bindings-unavailable-owner-policy-required')
+    require(type(policy.producer_checks) is tuple and bool(policy.producer_checks) and
+            all(type(c) is WorkflowCheck and c.repository == PRODUCER for c in policy.producer_checks) and
+            len(set(policy.producer_checks)) == len(policy.producer_checks),
+            'production-fixed-producer-checks-invalid')
     policy.public.validate()
     installation.verify()
     review = AdministrativePhaseReview(installation)
@@ -104,7 +108,7 @@ def build_fixed(installation, policy):
                                    collector, policy.caddy_source_sha, runtime_acceptance=review)
     common = dict(engine_contract=engine_contract, private_subnet=policy.private_subnet, caddy=caddy,
         producer_sha=policy.producer_sha, image=policy.image, github=github, registry=registry, crypto=crypto,
-        checks=(policy.producer_check, offline), publication_check=policy.publication_check,
+        checks=(*policy.producer_checks, offline), publication_check=policy.publication_check,
         signer_sha=policy.signer_sha, builder='https://github.com/' + PRODUCER +
         '/.github/workflows/publish.yml@' + policy.signer_sha, slsa_builder=policy.slsa_builder)
     empty = dict(common, proxy=proxy, caddy_source_sha=policy.caddy_source_sha, caddy_github=github,
