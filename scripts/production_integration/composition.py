@@ -31,13 +31,14 @@ from scripts.production_integration.runtime_sources import (RuntimeInventory, Ru
 from scripts.production_integration.trust import SourceBinding, SourceTrust
 
 
-def project_router_image_registry():
+def project_router_image_registry(*, context=None):
     """Opt-in installed factory: fresh bounded anonymous reads, fixed repository.
 
     Only independently reviewed bindings may select this dependency. Operation
     requests cannot select its repository, transport or credentials.
     """
-    return GHCRRead(HTTPSRead(), repository=IMAGE_REPOSITORY)
+    transport = HTTPSRead() if context is None else HTTPSRead(context=context)
+    return GHCRRead(transport, repository=IMAGE_REPOSITORY)
 
 
 def installed_active_channel(installation, engine, caddy, image, *, container_id, network_id):

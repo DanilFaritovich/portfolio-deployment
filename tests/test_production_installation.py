@@ -208,13 +208,17 @@ def test_missing_lock_with_state_is_not_recreated(admin, with_state):
     assert not with_state or state.read_bytes() == b'preserve'
 
 
-def test_operator_entry_refuses_checkout_and_unconfigured_binding():
+def test_operator_entry_refuses_checkout_and_uses_fixed_admin_intake(monkeypatch):
     result = subprocess.run([os.sys.executable, '-I', '-S', '-B', str(ROOT / 'installation/operator_bootstrap.py')],
                             capture_output=True, timeout=5)
     assert result.returncode == 2 and b'blocked' in result.stdout
-    from installation.admin_bindings import authenticate_initial_installation
-    with pytest.raises(RuntimeError, match='unconfigured'):
-        authenticate_initial_installation('a'*64)
+    from installation import admin_bindings
+    def blocked(pin):
+        assert pin == 'a'*64
+        raise RuntimeError('independent-admin-intake-absent')
+    monkeypatch.setattr(admin_bindings, 'authenticated_file_decision', blocked)
+    with pytest.raises(RuntimeError, match='intake-absent'):
+        admin_bindings.authenticate_initial_installation('a'*64)
 
 
 def test_exact_git_export_is_deterministic_and_untrusted(tmp_path):

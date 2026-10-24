@@ -83,7 +83,7 @@ def trust_keys(raw):
     return keys
 
 
-def signature_bytes(armor):
+def signature_bytes(armor, *, expected_namespace=NAMESPACE):
     """Constrain wire algorithms before delegating cryptography to OpenSSH."""
     require(type(armor) is str and len(armor) <= SIGNATURE_LIMIT)
     require(re.fullmatch(r'-----BEGIN SSH SIGNATURE-----\n[A-Za-z0-9+/=\n]+-----END SSH SIGNATURE-----\n', armor))
@@ -102,7 +102,7 @@ def signature_bytes(armor):
         key, namespace, reserved, algorithm, signature = (string() for _ in range(5))
         require(position == len(wire))
         ed25519_key(key)
-        require(namespace == NAMESPACE.encode() and reserved == b'' and algorithm == b'sha512')
+        require(namespace == expected_namespace.encode() and reserved == b'' and algorithm == b'sha512')
         require(len(signature) == 83 and signature[:19] == b'\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x40')
     except (ValueError, struct.error):
         raise DockerError('production-operator-approval-invalid') from None

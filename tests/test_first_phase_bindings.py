@@ -158,7 +158,7 @@ def test_admin_exact_tuple_one_use_authority_and_closed_default(admin):
     approval = binding.authenticate_decision('a'*64, decision, authority=authority, now=150)
     assert approval.host_id == decision.machine_id and approval.external_files == decision.external_files
     with pytest.raises(RuntimeError): binding.authenticate_decision('a'*64, decision, authority=authority, now=150)
-    with pytest.raises(RuntimeError, match='unconfigured'): binding.authenticate_initial_installation('a'*64)
+    with pytest.raises(RuntimeError): binding.authenticate_initial_installation('a'*64)
 
 
 @pytest.mark.parametrize('change', [dict(machine_id='host'), dict(manager_sha='main'), dict(helper_sha256='e'*64),

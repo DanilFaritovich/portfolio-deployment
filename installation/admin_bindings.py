@@ -1,7 +1,8 @@
 """Independently authenticated administrative channel: NOT an executor approval.
 
 Install this reviewed binding alongside the independently pinned standalone helper,
-never from the install bundle. No authentication policy is selected in this repo.
+never from the install bundle. The fixed intake consumes separately published
+administrator authority; no installation decision is supplied by this repo.
 """
 
 from dataclasses import dataclass
@@ -11,7 +12,12 @@ import time
 
 
 def authenticate_initial_installation(bundle_sha256):
-    raise RuntimeError('independent-administrative-installation-channel-unconfigured')
+    try:
+        return authenticated_file_decision(bundle_sha256)
+    except ModuleNotFoundError as error:
+        if error.name != 'operator_bootstrap':
+            raise
+        raise RuntimeError('independent-administrative-helper-unavailable') from None
 
 
 # This typed contract is consumed only by independently installed administrative
@@ -69,7 +75,7 @@ def authenticate_decision(bundle_sha256, decision, *, authority, now=None):
 
 
 def authenticated_file_decision(bundle_sha256):
-    """Opt-in fixed administrative intake; never called by the shipped binding.
+    """Opt-in fixed administrative intake; selected by the fixed administrative binding.
 
     The administrator separately installs a reviewed 0600 decision file through
     the authenticated portfolio_admin channel, OUTSIDE the bundle. Root file

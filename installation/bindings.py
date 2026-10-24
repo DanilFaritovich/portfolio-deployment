@@ -5,8 +5,12 @@ default is intentionally unusable. The reviewed first-phase recipe lives in
 scripts.production_integration.first_phase; its external authorities remain
 unconfigured. No dynamic modules or request-selected ports.
 """
-from scripts.docker_adapter import DockerError
+from scripts.production_integration.fixed_bindings import build_fixed
+
+# Independently reviewed sealed Python input. No owner policy has been approved.
+# Required fields and real wiring are defined in fixed_bindings.FixedPolicy.
+POLICY = None
 
 
 def build(installation):
-    raise DockerError('production-installed-bindings-unavailable')
+    return build_fixed(installation, POLICY)
