@@ -57,6 +57,14 @@ This scope does not create application/gateway LKG or authorize first-bootstrap 
 first-project-router-rollout. Caddy acquisition remains outside this scope.
 No production binding, administrative channel, VDS operation or CD is enabled.
 
+The C4.1 bundle closure includes the existing inert Caddy producer policy module
+and exactly its lock, Dockerfile and GitHub trust-root source assets. The independent
+reviewer verifies these against the selected Git tree; the administrative parser
+allows only those three additional image paths. This enables the existing Caddy
+release verifier inside the exported bundle without executing producer tooling.
+See [first-install readiness](docs/first-production-installation-readiness.md) for
+the unconfigured authorities, target-ABI vendor inputs and read-only operator handoff.
+
 Stage 09.4B.7 adds a separate [trusted Caddy image producer](docs/trusted-caddy-image.md):
 the Sigstore-authenticated Caddy 2.11.7 static release is packaged over an authenticated
 digest-pinned Distroless rootfs, without compilation or package installation.
