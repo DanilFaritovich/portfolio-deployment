@@ -44,7 +44,8 @@ def setup(tmp_path):
             calls.append(('https', address))
             return state.raw
     class Witness:
-        def verify(self, subject):
+        def verify(self, subject, *, timeout):
+            assert 0 < timeout <= public.TOTAL_TIMEOUT
             calls.append(('external', subject))
             return subject if state.proof else None
     port = public.PublicPostconditions(policy, external=Witness(), network=Network(), clock=lambda: state.now)
@@ -227,3 +228,120 @@ def test_existing_registry_factory_accepts_only_trusted_code_tls_context():
     handler = next(h for h in registry.transport.opener.handlers if isinstance(h, urllib.request.HTTPSHandler))
     assert handler._context is context
     assert context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED
+
+
+def test_first_route_waits_for_real_signed_delivery(tmp_path, monkeypatch, setup):
+    """Observer can sign only AFTER the first route exists; clocks are real."""
+    import subprocess
+    import threading
+    import time
+    from scripts.production_integration import public_witness as witness
+    from scripts.reconciliation import encode
+    port, routes, _, _ = setup
+    key = tmp_path / 'disposable-observer'
+    subprocess.run(['/usr/bin/ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(key)], check=True)
+    receipt = tmp_path / 'observation.json'
+    monkeypatch.setattr(witness, 'RECEIPT', receipt)
+    # Only production filesystem/installation ownership is simulated. Signature,
+    # file publication, wall/monotonic time and subject verification are real.
+    def metadata(path):
+        if not path.exists():
+            raise DockerError('production-installation-not-provisioned')
+    monkeypatch.setattr(witness, 'protected', metadata)
+    installation = SimpleNamespace(verify=lambda: None, files=((witness.BINARY, 'test-only'),))
+    reader = witness.SignedPublicWitness(installation, ' '.join(key.with_suffix('.pub').read_text().split()[:2]))
+    port.external, port.clock = reader, time.monotonic
+    active, delivered = threading.Event(), threading.Event()
+    events = {}
+    network = port.network
+    class FirstRoute:
+        def resolve(self, *args): return network.resolve(*args)
+        def https(self, *args):
+            events.setdefault('activation', time.monotonic())
+            active.set()
+            return network.https(*args)
+    port.network = FirstRoute()
+    def observe():
+        assert active.wait(2)
+        # Separate off-host probe uses the network fixture, never a success
+        # witness callback. Delay represents authenticated channel delivery.
+        observer = public.PublicPostconditions(port.policy, external=None, network=network)
+        subject = observer.probe(routes, port.policy.identity)
+        observed = int(time.time())
+        payload = dict(subject=subject, observed_at=observed, expires=observed + 30)
+        signature = subprocess.run(['/usr/bin/ssh-keygen', '-Y', 'sign', '-O', 'hashalg=sha512',
+            '-f', str(key), '-n', witness.NAMESPACE], input=encode(payload).encode(),
+            capture_output=True, check=True).stdout.decode()
+        events['signed'] = time.monotonic()
+        time.sleep(0.25)
+        pending = tmp_path / 'pending'
+        pending.write_text(encode(dict(payload=payload, signature=signature)))
+        pending.replace(receipt)
+        events['delivered'] = time.monotonic()
+        delivered.set()
+    thread = threading.Thread(target=observe)
+    thread.start()
+    try:
+        # Two sequential observations use the real verifier and fresh receipt.
+        assert port.verify(routes, port.policy.identity) == routes
+        assert port.verify(routes, port.policy.identity) == routes
+        assert delivered.is_set()
+        assert events['activation'] <= events['signed'] <= events['delivered'] < time.monotonic()
+        assert time.monotonic() - events['activation'] < 30
+    finally:
+        active.set()
+        thread.join(3)
+
+
+def test_missing_witness_wait_is_bounded(tmp_path, monkeypatch):
+    import time
+    from scripts.production_integration import public_witness as witness
+    import base64
+    key = 'ssh-ed25519 ' + base64.b64encode(b'\0\0\0\x0bssh-ed25519\0\0\0\x20' + bytes(32)).decode()
+    monkeypatch.setattr(witness, 'RECEIPT', tmp_path / 'absent')
+    def absent(path): raise DockerError('production-installation-not-provisioned')
+    monkeypatch.setattr(witness, 'protected', absent)
+    installation = SimpleNamespace(verify=lambda: None, files=((witness.BINARY, 'test-only'),))
+    reader = witness.SignedPublicWitness(installation, key)
+    start = time.monotonic()
+    with pytest.raises(DockerError, match='public-witness-delivery-timeout|production-installation-not-provisioned'):
+        reader.verify({}, timeout=0.15)
+    assert 0.1 <= time.monotonic() - start < 1
+
+
+@pytest.mark.parametrize('failure', ['public-witness-stale-or-unbound', 'public-witness-signature-invalid',
+                                   'production-installation-metadata-unsafe'])
+def test_delivery_wait_never_accepts_failed_evidence(monkeypatch, failure):
+    import base64
+    import time
+    from scripts.production_integration import public_witness as witness
+    key = 'ssh-ed25519 ' + base64.b64encode(b'\0\0\0\x0bssh-ed25519\0\0\0\x20' + bytes(32)).decode()
+    reader = witness.SignedPublicWitness(None, key)
+    calls = []
+    def failed(*args):
+        calls.append(time.monotonic())
+        raise DockerError(failure)
+    monkeypatch.setattr(reader, '_verify', failed)
+    start = time.monotonic()
+    with pytest.raises(DockerError):
+        reader.verify({}, timeout=0.15)
+    assert time.monotonic() - start < 1
+    assert len(calls) > 1 if failure == 'public-witness-stale-or-unbound' else len(calls) == 1
+
+
+def test_public_probe_passes_only_remaining_delivery_budget(setup):
+    port, routes, state, _ = setup
+    budgets = []
+    class Reject:
+        def verify(self, subject, *, timeout):
+            budgets.append(timeout)
+            raise DockerError('public-witness-signature-invalid')
+    port.external = Reject()
+    original = port.network.https
+    def slow(*args):
+        state.now += 6
+        return original(*args)
+    port.network.https = slow
+    with pytest.raises(DockerError, match='public-witness-signature-invalid'):
+        port.verify(routes, port.policy.identity)
+    assert budgets == [9]

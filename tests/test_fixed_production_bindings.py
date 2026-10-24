@@ -28,7 +28,9 @@ def test_both_recipes_use_real_adapters_with_only_controlled_evidence(tmp_path, 
     policy = fixed.FixedPolicy(public, 'key', '172.30.240.0/24', '172.30.240.1', '172.30.241.0/24',
         1024**3, 'c'*40, 'ghcr.io/danilfaritovich/portfolio-caddy@sha256:'+'d'*64, '2.11.7', 'e'*64, 'f'*64,
         'user', '1'*40, 'ghcr.io/danilfaritovich/project-router@sha256:'+'2'*64, '1'*40,
-        'https://github.com/actions/runner', WorkflowCheck(fixed.PRODUCER, 'CI', 15368, '.github/workflows/ci.yml'),
+        'https://github.com/actions/runner', (
+            WorkflowCheck(fixed.PRODUCER, 'Quality and static build', 15368, '.github/workflows/ci.yml'),
+            WorkflowCheck(fixed.PRODUCER, 'Docker build and container smoke', 15368, '.github/workflows/ci.yml')),
         WorkflowCheck(fixed.PRODUCER, 'Publish', 15368, '.github/workflows/ci.yml'))
     installation = SimpleNamespace(verify=lambda: None, files=((fixed.GH, 'e'*64), (fixed.ROOT, 'f'*64),
                                                              (str(ca), public.ca_sha256)))
@@ -54,8 +56,11 @@ def test_both_recipes_use_real_adapters_with_only_controlled_evidence(tmp_path, 
     assert empty['caddy_crypto'].repository == fixed.MANAGER
     assert empty['crypto'].repository == fixed.PRODUCER
     assert empty['caddy_registry'].authenticated is True
+    assert empty['checks'] == (*policy.producer_checks,
+        WorkflowCheck(fixed.MANAGER, 'Offline checks', 15368, '.github/workflows/offline.yml'))
     if phase == 'rollout':
         rollout = result['rollout']
+        assert rollout['checks'] == empty['checks']
         assert isinstance(rollout['bootstrap_reader'], EmptyHostReader)
         assert rollout['bootstrap_attestor'] is rollout['bootstrap_reader']
         assert isinstance(rollout['bootstrap_resources'], BootstrapResources)
@@ -71,3 +76,13 @@ def test_missing_owner_policy_stays_closed_before_any_io(monkeypatch):
     def forbidden(*args): pytest.fail('missing policy reached installation')
     with pytest.raises(DockerError, match='owner-policy-required'):
         fixed.build_fixed(SimpleNamespace(verify=forbidden), None)
+
+
+@pytest.mark.parametrize('checks', [(), [], (None,),
+    (WorkflowCheck(fixed.MANAGER, 'Offline checks', 15368, '.github/workflows/offline.yml'),),
+    (WorkflowCheck(fixed.PRODUCER, 'CI', 15368, '.github/workflows/ci.yml'),)*2])
+def test_incomplete_or_ambiguous_producer_check_policy_fails_before_io(checks):
+    policy = object.__new__(fixed.FixedPolicy)
+    object.__setattr__(policy, 'producer_checks', checks)
+    with pytest.raises(DockerError, match='production-fixed-producer-checks-invalid'):
+        fixed.build_fixed(None, policy)

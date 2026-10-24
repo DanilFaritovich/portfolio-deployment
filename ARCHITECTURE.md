@@ -100,7 +100,9 @@ PublicPostconditions adds bounded fixed-origin DNS/TLS/HTTPS checks with explici
 IPv4/IPv6 sets, CA/content pins and routes/runtime identity correlation. Full
 verification additionally requires a <=30-second off-VDS SSHSIG probe receipt,
 using a separate namespace and independently approved public key. The external
-observer/delivery policy, final owner inputs, host closure and protected-main
+receipt may arrive after first-route activation; a bounded wait shares the
+existing 15-second public-probe deadline and never replaces signature verification.
+The external observer/delivery policy, final owner inputs, host closure and protected-main
 bundle review remain gates; no production operation is authorized by this code.
 
 Stage 09.4B.7 adds a separate [trusted Caddy image producer](docs/trusted-caddy-image.md):

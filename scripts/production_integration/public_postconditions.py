@@ -199,6 +199,9 @@ class PublicPostconditions:
         start = self.clock()
         subject = self.probe(routes, identity)
         require(self.external is not None, 'public-independent-external-observer-unconfigured')
-        require(self.external.verify(subject) == subject, 'public-independent-external-proof-invalid')
+        budget = TOTAL_TIMEOUT - (self.clock() - start)
+        require(budget > 0, 'public-probe-timeout')
+        require(self.external.verify(subject, timeout=budget) == subject,
+                'public-independent-external-proof-invalid')
         require(self.clock() - start < TOTAL_TIMEOUT, 'public-probe-timeout')
         return routes
