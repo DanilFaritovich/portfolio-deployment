@@ -933,10 +933,17 @@ The transport accepts only the exact GitHub API-version deprecation Link notice;
 pagination, mixed or unknown Link headers still fail closed.
 
 Full `make check` runs once in Offline CI. Trusted Caddy image runs targeted
-producer/auth regressions, authenticates upstream inputs, checks toolchain drift,
+producer/auth regressions, authenticates upstream inputs, checks exact toolchain versions and hosted-builder policy,
 builds without network and validates the built image. Its unchanged publisher
 guard waits for successful exact-SHA main push Offline CI and full policy B
 before any registry write. Other isolated Docker/Caddy workflows stay separate.
+The v2 input predicate signs the exact builder policy and locked components. A complete
+VM image pin is no longer required: bounded environment/on-disk ImageVersion observations
+must agree, with GitHub-hosted Ubuntu 24.04, Linux/x86_64 and the protected local Docker
+backend still mandatory. This trusts GitHub's ongoing VM updates; it does not authenticate
+host integrity. Frozen v1 inputs remain valid only for the historical digest/source/run
+identity above; there is no general legacy fallback. Signatures/source/publication gates
+remain unchanged. See the producer guide's security review for the lost guarantee.
 Real release QA is networked and never a dependency of offline `make check`.
 A manager SHA outside protected main remains blocked; develop/PR success cannot
 replace a separate reviewed main merge and exact-SHA checks.

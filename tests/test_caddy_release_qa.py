@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 from scripts import caddy_release_qa as qa
-from scripts.caddy_producer import BUILDER, REPOSITORY
+from scripts.caddy_producer import BUILDER, REPOSITORY, LEGACY_PREDICATE
 from scripts.docker_adapter import DockerError
 from scripts.production_integration.caddy_release import verify_caddy_artifact
 from test_caddy_producer import consumer_fixture
@@ -131,10 +131,11 @@ def test_historical_builder_lock_does_not_relax_current_production_contract():
     assert historical['runnerImageVersion'] == '20261012.334.1'
     current = load_lock()
     assert historical != current
-    assert {k for k in historical if historical[k] != current[k]} == {'runnerImageVersion'}
+    assert {k: v for k, v in historical.items() if k != 'runnerImageVersion'} == current
     statements[1]['predicate'] = published_inputs(historical, sha, '100', '1')
+    statements[1]['predicateType'] = LEGACY_PREDICATE
     # The production collector still expects the current lock and rejects old inputs.
-    with pytest.raises(DockerError, match='caddy-release-inputs-mismatch'):
+    with pytest.raises(DockerError, match='caddy-release-signed-subject-mismatch'):
         collector.collect(runtime, sha)
     def verify(subject, image, identity, expectations, bundles):
         assert expectations[1]['expectedPredicate'] == statements[1]['predicate']
@@ -154,3 +155,29 @@ def test_historical_builder_lock_does_not_relax_current_production_contract():
 def test_historical_qa_lock_bytes_are_pinned(monkeypatch):
     monkeypatch.setattr(Path, 'read_bytes', lambda path: b'{"runnerImageVersion":"unreviewed"}')
     with pytest.raises(DockerError, match='caddy-release-inputs-mismatch'): qa.historical_input_lock()
+
+
+def test_legacy_release_policy_requires_exact_immutable_identity(monkeypatch):
+    from scripts.production_integration import caddy_release as release
+    from scripts.caddy_producer import load_lock
+    source, image, publication = release.HISTORICAL_RELEASE
+    runtime = SimpleNamespace(image=image)
+    assert release.artifact_input_policy(runtime, source, publication) == qa.historical_input_lock()
+    current = load_lock()
+    monkeypatch.setattr(release, 'load_lock', lambda: {**current, 'dockerVersion': '99.0.0'})
+    assert release.artifact_input_policy(runtime, source, publication) == qa.historical_input_lock()
+    for sha, reference, run in ((source + '0', image, publication),
+                                (source, image + '0', publication),
+                                (source, image, (publication[0], '2'))):
+        assert 'runnerImageVersion' not in release.artifact_input_policy(SimpleNamespace(image=reference), sha, run)
+
+
+@pytest.mark.parametrize('field', ['schema', 'imageVersion', 'backend', 'environmentRedirects', 'extra', 'legacy'])
+def test_v2_policy_signed_substitutions_fail(field):
+    collector, runtime, sha, _, _, statements = consumer_fixture()
+    predicate = statements[1]['predicate']
+    if field == 'schema': predicate['schema'] = 'portfolio.caddy-inputs/v1'
+    elif field == 'legacy': predicate['inputs']['runnerImageVersion'] = '20261012.334.1'
+    elif field == 'extra': predicate['builderPolicy']['extra'] = True
+    else: predicate['builderPolicy'][field] = 'attacker-policy'
+    with pytest.raises(DockerError, match='caddy-release-inputs-mismatch'): collector.collect(runtime, sha)

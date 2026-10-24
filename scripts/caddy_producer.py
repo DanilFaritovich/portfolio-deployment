@@ -27,12 +27,17 @@ IMAGE = 'ghcr.io/danilfaritovich/portfolio-caddy'
 BASE = 'gcr.io/distroless/static-debian13'
 UPSTREAM = 'https://github.com/caddyserver/caddy'
 WORKFLOW = '.github/workflows/caddy-publish.yml'
-PREDICATE = 'https://github.com/' + REPOSITORY + '/attestations/caddy-inputs/v1'
+LEGACY_PREDICATE = 'https://github.com/' + REPOSITORY + '/attestations/caddy-inputs/v1'
+PREDICATE = 'https://github.com/' + REPOSITORY + '/attestations/caddy-inputs/v2'
+BUILDER_POLICY = {'runnerEnvironment': 'github-hosted', 'imageOS': 'ubuntu24',
+                  'system': 'Linux', 'machine': 'x86_64',
+                  'imageVersion': 'bounded-numeric-environment-equals-on-disk',
+                  'backend': 'default/docker/local/running', 'environmentRedirects': 'forbidden'}
 SLSA = 'https://slsa.dev/provenance/v1'
 BUILDER = 'https://github.com/' + REPOSITORY + '/' + WORKFLOW + '@refs/heads/main'
 KEYS = frozenset(('version', 'sourceSha', 'archiveSha256', 'certificateSha256', 'signatureSha256',
                   'binarySha256', 'baseIndex', 'baseManifest', 'cosignVersion', 'cosignSha256',
-                  'githubTrustRootSha256', 'dockerVersion', 'buildxVersion', 'composeVersion', 'runnerImageVersion'))
+                  'githubTrustRootSha256', 'dockerVersion', 'buildxVersion', 'composeVersion'))
 
 
 def load_lock():
@@ -151,7 +156,9 @@ def prepare(directory):
 
 
 def input_predicate(lock):
-    return {'schema': 'portfolio.caddy-inputs/v1', 'platform': 'linux/amd64',
+    legacy = 'runnerImageVersion' in lock
+    return {'schema': 'portfolio.caddy-inputs/v1' if legacy else 'portfolio.caddy-inputs/v2',
+            **({} if legacy else {'builderPolicy': dict(BUILDER_POLICY)}), 'platform': 'linux/amd64',
             'upstreamRepository': 'caddyserver/caddy', 'inputs': lock,
             'recipeSha256': hashlib.sha256((INPUTS / 'Dockerfile').read_bytes()).hexdigest(),
             'upstreamVerification': 'cosign-fulcio-rekor-sct',
@@ -298,22 +305,23 @@ BUILDER_REDIRECTS = ('DOCKER_CONTEXT', 'DOCKER_CONFIG', 'DOCKER_TLS', 'DOCKER_TL
 def check_toolchain():
     lock = load_lock()
     failures = []
-    runner = dict(GITHUB_ACTIONS='true', RUNNER_ENVIRONMENT='github-hosted', RUNNER_ARCH='X64', RUNNER_OS='Linux',
-                  ImageVersion=lock['runnerImageVersion'])
+    runner = dict(GITHUB_ACTIONS='true', RUNNER_ENVIRONMENT='github-hosted', RUNNER_ARCH='X64', RUNNER_OS='Linux')
     for key, expected in runner.items():
         actual = os.environ.get(key)
         record = dict(check='runner.' + key, status='ok' if actual == expected else 'drift')
-        if key == 'ImageVersion':
-            record.update(expected=expected, actual=toolchain_value(actual, runner=True))
         print(json.dumps(record, sort_keys=True))
     if not all(os.environ.get(key) == value for key, value in runner.items()):
         failures.append('caddy-builder-runner-drift')
+    environment_version = toolchain_value(os.environ.get('ImageVersion'), runner=True)
+    print(json.dumps(dict(check='runner.ImageVersion', actual=environment_version,
+                          status='ok' if environment_version != 'unavailable' else 'drift'), sort_keys=True))
+    if environment_version == 'unavailable': failures.append('caddy-builder-runner-drift')
     try:
         image = hosted_image()
         actual = toolchain_value(image['ImageVersion'], runner=True)
-        matches = (image == dict(ImageVersion=lock['runnerImageVersion'], ImageOS='ubuntu24') and
+        matches = (actual != 'unavailable' and actual == environment_version and image['ImageOS'] == 'ubuntu24' and
                    platform.system() == 'Linux' and platform.machine() == 'x86_64')
-        print(json.dumps(dict(check='runner.host-image', actual=actual, expected=lock['runnerImageVersion'],
+        print(json.dumps(dict(check='runner.host-image', actual=actual, expected=environment_version,
                               status='ok' if matches else 'drift'), sort_keys=True))
         if not matches: failures.append('caddy-builder-runner-drift')
     except Exception:

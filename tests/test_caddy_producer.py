@@ -422,11 +422,11 @@ def test_caddy_runtime_still_requires_all_hardening():
 def toolchain(monkeypatch):
     lock = p.load_lock()
     for key, value in dict(GITHUB_ACTIONS='true', RUNNER_ENVIRONMENT='github-hosted', RUNNER_ARCH='X64',
-                           RUNNER_OS='Linux', ImageVersion=lock['runnerImageVersion']).items():
+                           RUNNER_OS='Linux', ImageVersion='20261023.334.3').items():
         monkeypatch.setenv(key, value)
     for key, value in p.BUILDER_ENV.items(): monkeypatch.setenv(key, value)
     for key in p.BUILDER_REDIRECTS: monkeypatch.delenv(key, raising=False)
-    monkeypatch.setattr(p, 'hosted_image', lambda: dict(ImageVersion=lock['runnerImageVersion'], ImageOS='ubuntu24'))
+    monkeypatch.setattr(p, 'hosted_image', lambda: dict(ImageVersion='20261023.334.3', ImageOS='ubuntu24'))
     monkeypatch.setattr(p.platform, 'system', lambda: 'Linux')
     monkeypatch.setattr(p.platform, 'machine', lambda: 'x86_64')
     responses = {
@@ -506,8 +506,8 @@ def test_plugin_version_drift_is_blocked(toolchain, component):
 
 
 @pytest.mark.parametrize('version', ['20000101.1.1', '', None, 'secret\n::error::bad'])
-def test_environment_cannot_hide_unapproved_host_image(toolchain, monkeypatch, version, capsys):
-    # Env contains all approved values, but on-disk image is unknown/missing.
+def test_environment_cannot_hide_inconsistent_host_image(toolchain, monkeypatch, version, capsys):
+    # Environment and independently read on-disk evidence must agree.
     monkeypatch.setattr(p, 'hosted_image', lambda: dict(ImageVersion=version, ImageOS='ubuntu24'))
     with pytest.raises(DockerError, match='caddy-builder-runner-drift'): p.check_toolchain()
     output = capsys.readouterr().out
@@ -573,3 +573,26 @@ def test_missing_host_image_still_collects_all_tool_versions(toolchain, monkeypa
     monkeypatch.setattr(p, 'hosted_image', missing)
     with pytest.raises(DockerError, match='caddy-builder-runner-unavailable'): p.check_toolchain()
     assert toolchain[1] == ['version', 'buildx', 'compose', 'backend']
+
+
+@pytest.mark.parametrize('version', ['20261012.334.1', '20261023.334.3', '20270101.999.8'])
+def test_consistent_hosted_image_versions_are_observations(toolchain, monkeypatch, capsys, version):
+    monkeypatch.setenv('ImageVersion', version)
+    monkeypatch.setattr(p, 'hosted_image', lambda: dict(ImageVersion=version, ImageOS='ubuntu24'))
+    p.check_toolchain()
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert all(row['status'] == 'ok' for row in records)
+    assert [row['actual'] for row in records if row['check'] in ('runner.ImageVersion', 'runner.host-image')] == [version, version]
+
+
+@pytest.mark.parametrize('version', ['', 'secret\n::error::bad', '1.' + '2' * 13 + '.3', '1.2.3.4'])
+def test_consistent_but_invalid_image_versions_are_blocked(toolchain, monkeypatch, version):
+    monkeypatch.setenv('ImageVersion', version)
+    monkeypatch.setattr(p, 'hosted_image', lambda: dict(ImageVersion=version, ImageOS='ubuntu24'))
+    with pytest.raises(DockerError, match='caddy-builder-runner-drift'): p.check_toolchain()
+
+
+@pytest.mark.parametrize('os_name', ['ubuntu22', '', 'secret'])
+def test_host_image_os_stays_mandatory(toolchain, monkeypatch, os_name):
+    monkeypatch.setattr(p, 'hosted_image', lambda: dict(ImageVersion='20261023.334.3', ImageOS=os_name))
+    with pytest.raises(DockerError, match='caddy-builder-runner-drift'): p.check_toolchain()

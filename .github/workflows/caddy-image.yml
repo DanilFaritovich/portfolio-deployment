@@ -36,7 +36,7 @@ jobs:
           python -m pytest -q -p no:cacheprovider tests/test_caddy_producer.py tests/test_caddy_registry_auth.py tests/test_caddy_app_auth.py
       - name: Authenticate immutable upstream inputs
         run: python -m scripts.caddy_producer prepare --directory "$RUNNER_TEMP/caddy-inputs"
-      - name: Reject drift of the pinned hosted builder
+      - name: Verify hosted builder policy and exact toolchain
         run: python -m scripts.caddy_producer toolchain-check
       - name: Build without network or package installation
         env:
