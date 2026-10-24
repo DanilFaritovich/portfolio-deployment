@@ -54,12 +54,48 @@ The downstream gh verifier uses the committed public
 `gh 2.102.0 attestation trusted-root`, and hash-pinned in the input lock. Missing or
 unverifiable trust material fails closed; updates require review.
 
-The hosted runner is part of the builder trust boundary. Its Ubuntu image version,
-Docker client/server, Buildx and Compose versions are also locked and checked;
-drift blocks release. `ubuntu-24.04` alone is not treated as immutable. The default
-Docker driver uses the pinned host Engine; no BuildKit frontend/builder container
-is downloaded. This is workflow-authenticated provenance, without a claim of
-hermetic or independently reproducible builds.
+The hosted runner remains part of the builder trust boundary. The v2 policy requires
+GitHub Actions, `github-hosted`, Ubuntu 24.04 (`ImageOS=ubuntu24` read independently
+from `/etc/environment`), Linux/x86_64 and X64/Linux runner metadata. Docker client
+and server **28.0.4**, Buildx **0.38.0**, Compose **2.38.2** and all other locked
+components remain exact requirements. The default running Docker driver uses the
+local Engine over `unix:///var/run/docker.sock`; the fixed builder environment and
+redirect rejection remain mandatory. Probes use `/usr/bin/docker` with a minimal
+explicit environment. No BuildKit frontend/builder container is downloaded.
+
+`ImageVersion` is observation evidence, not an approved-version allowlist. Both the
+process environment and the fixed on-disk `/etc/environment` are read independently.
+Each must contain a numeric three-part version with 1–12 digits per part; missing,
+malformed, oversized or inconsistent evidence blocks the build. Bounded JSON logs
+record each actual value (unrelated environment fields and command output are never
+logged). `20261012.334.1`, `20261023.334.3` and previously unknown valid versions are
+accepted only when both sources agree and every other gate passes. The signed v2
+input predicate records this builder policy and exact component inputs; it does not
+claim that a specific VM image version was approved or include the observed version.
+
+### Security review: VM image drift
+
+Removing the exact VM pin loses the requirement to review every complete GitHub VM
+image revision before use, including kernel, system packages and unused tools. We
+now trust GitHub's ongoing hosted Ubuntu 24.04 image maintenance within this policy.
+Exact tool version strings do not authenticate tool executable bytes. A compromised
+host could falsify both environment and disk evidence; their agreement detects
+inconsistency, not host integrity. This is workflow-authenticated provenance without
+a claim of hermetic or independently reproducible builds. Input hashes, upstream
+Sigstore signatures, pinned verifier/root, recipe identity, local-backend and redirect
+gates, signer/source identity and protected-main publication conditions remain intact.
+
+New publications use `caddy-inputs/v2` and `portfolio.caddy-inputs/v2`, with exact
+`builderPolicy` equality. No signed field is ignored. Legacy v1 is accepted in
+production only for the known immutable historical digest/source/publication tuple
+listed below, using a frozen copy of its complete original inputs. This compatibility
+policy is selected before crypto verification from installed constants, never from
+unsigned bundle claims; other source/digest/run/attempt combinations require v2.
+Historical QA uses its separately hash-pinned original v1 lock. Both paths still
+require pinned-root signatures and exact subject, certificate identity, source SHA,
+SLSA workflow/builder, invocation and complete input predicate. QA grants no
+protected-source or production authority. Additional historical releases require
+explicit reviewed compatibility entries; there is no general v1 fallback.
 
 ## Workflows, naming and evidence
 
@@ -143,8 +179,8 @@ scoped token endpoint. Test container processes receive no registry/GitHub token
 After acceptance, official SHA-pinned Actions create two digest-bound keyless
 Sigstore DSSE attestations, stored in GitHub and GHCR:
 
-1. SLSA provenance v1; builder `https://github.com/actions/runner/github-hosted`.
-2. `https://github.com/DanilFaritovich/portfolio-deployment/attestations/caddy-inputs/v1`;
+1. SLSA provenance v1; builder `https://github.com/DanilFaritovich/portfolio-deployment/.github/workflows/caddy-publish.yml@refs/heads/main`.
+2. `https://github.com/DanilFaritovich/portfolio-deployment/attestations/caddy-inputs/v2`;
    exact input/recipe identities, source SHA/main and successful run ID/attempt.
 
 Build artifacts retain upstream certificate/signature and base verification for
