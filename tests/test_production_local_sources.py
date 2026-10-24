@@ -3,6 +3,7 @@ from dataclasses import replace
 import os
 from pathlib import Path
 import socket
+import stat
 import subprocess
 from types import SimpleNamespace
 
@@ -12,6 +13,7 @@ from scripts.deployment import host_lock, owns_host_lock
 from scripts.deployment_journal import Journal
 from scripts.docker_adapter import DockerError
 from scripts.production_integration import local_sources, bootstrap_bindings
+from scripts.production_integration import installation as sealed
 from scripts.production_integration.gateway import content
 from scripts.production_integration.local_sources import LocalHostSources, ReadOnlyJournalSource
 from test_production_integration import paths
@@ -52,6 +54,63 @@ def test_bounded_host_reads_emit_facts_without_source_authority(sources):
     assert not hasattr(facts, 'verified')
     assert not hasattr(facts, 'bootstrap_verified')
     assert len(sources.calls) == 5
+
+
+def test_host_reads_use_exact_pinned_ip_path(sources, monkeypatch):
+    # Literal expectations avoid deriving the regression oracle from COMMANDS.
+    sources.installation.files = (('/usr/bin/ip', 'a'*64), ('/usr/bin/ss', 'b'*64))
+    monkeypatch.setenv('PATH', '/untrusted')
+    sources.reader.collect()
+    assert sources.calls == [
+        ('/usr/bin/ip', '-j', '-4', 'route', 'show', 'table', 'all'),
+        ('/usr/bin/ip', '-j', '-6', 'route', 'show', 'table', 'all'),
+        ('/usr/bin/ip', '-j', '-4', 'rule', 'show'),
+        ('/usr/bin/ip', '-j', '-6', 'rule', 'show'),
+        ('/usr/bin/ss', '-H', '-lntu'),
+    ]
+
+
+@pytest.mark.parametrize('ip_pin', ['/usr/sbin/ip', None])
+def test_old_path_or_missing_ip_pin_blocks_before_commands(sources, ip_pin):
+    sources.installation.files = (('/usr/bin/ss', 'a'*64),)
+    if ip_pin is not None:
+        sources.installation.files += ((ip_pin, 'b'*64),)
+    with pytest.raises(DockerError, match='^production-host-source-tool-unpinned$'):
+        sources.reader.collect()
+    assert not sources.calls
+
+
+def test_missing_listener_pin_blocks_listener_execution(sources):
+    sources.installation.files = (('/usr/bin/ip', 'a'*64),)
+    with pytest.raises(DockerError, match='^production-host-source-tool-unpinned$'):
+        sources.reader.collect()
+    assert len(sources.calls) == 4
+    assert all(argv[0] == '/usr/bin/ip' for argv in sources.calls)
+
+
+@pytest.mark.parametrize('path,change', [
+    ('/usr/bin/ip', {'st_mode': stat.S_IFLNK | 0o777}),
+    ('/usr/bin', {'st_mode': stat.S_IFLNK | 0o777}),
+    ('/usr/bin/ip', {'st_nlink': 2}),
+    ('/usr/bin/ip', {'st_uid': 1000}),
+    ('/usr/bin/ip', {'st_mode': stat.S_IFREG | 0o775}),
+])
+def test_unsafe_pinned_ip_is_rejected_by_sealed_verification(sources, monkeypatch, path, change):
+    def metadata(candidate):
+        values = dict(st_uid=0, st_nlink=1, st_mode=(stat.S_IFREG | 0o755)
+                      if str(candidate) == '/usr/bin/ip' else (stat.S_IFDIR | 0o755))
+        if str(candidate) == path:
+            values.update(change)
+        return SimpleNamespace(**values)
+    monkeypatch.setattr(Path, 'lstat', metadata)
+    monkeypatch.setattr(sealed.os, 'geteuid', lambda: 0)
+    monkeypatch.setattr(sealed, 'sys', SimpleNamespace(
+        flags=SimpleNamespace(isolated=True, ignore_environment=True, no_user_site=True, no_site=True),
+        dont_write_bytecode=True))
+    sources.reader.installation = sealed.SealedInstallation('a'*40, (('/usr/bin/ip', 'b'*64),))
+    with pytest.raises(DockerError, match='^production-installation-metadata-unsafe$'):
+        sources.reader.collect()
+    assert not sources.calls
 
 
 @pytest.mark.parametrize('case', ['unpinned', 'malformed-routes', 'malformed-listeners', 'oversized', 'identity', 'expired', 'permission'])

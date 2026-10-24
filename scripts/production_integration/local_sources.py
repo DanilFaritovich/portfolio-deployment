@@ -24,10 +24,10 @@ PATHS = tuple('/srv/portfolio/' + n for n in ('locks', 'state', 'journal', 'requ
                                           'caddy-lkg', 'certificates', 'caddy-data', 'caddy-admin', 'temporary'))
 JOURNAL_DIRECTORY = '/srv/portfolio/journal'
 COMMANDS = {
-    'routes4': ('/usr/sbin/ip', '-j', '-4', 'route', 'show', 'table', 'all'),
-    'routes6': ('/usr/sbin/ip', '-j', '-6', 'route', 'show', 'table', 'all'),
-    'rules4': ('/usr/sbin/ip', '-j', '-4', 'rule', 'show'),
-    'rules6': ('/usr/sbin/ip', '-j', '-6', 'rule', 'show'),
+    'routes4': ('/usr/bin/ip', '-j', '-4', 'route', 'show', 'table', 'all'),
+    'routes6': ('/usr/bin/ip', '-j', '-6', 'route', 'show', 'table', 'all'),
+    'rules4': ('/usr/bin/ip', '-j', '-4', 'rule', 'show'),
+    'rules6': ('/usr/bin/ip', '-j', '-6', 'rule', 'show'),
     'listeners': ('/usr/bin/ss', '-H', '-lntu'),
 }
 

@@ -127,6 +127,18 @@ requires the interpreter, Docker, Compose, gh and both helper pins; the independ
 reviewer remains responsible for the complete stdlib/trust-root/dependency closure.
 SealedInstallation repeats its existing protections before execution.
 
+`LocalHostSources` invokes only fixed `/usr/bin/ip` (IPv4/IPv6 routes and rules)
+and `/usr/bin/ss` (listeners), requiring each exact path in the sealed inventory.
+The reviewed Ubuntu 24.04 inspection found `/usr/sbin/ip` to be a symlink to
+`/usr/bin/ip`; C4.3 corrects the command spelling without relaxing protection.
+Independently verify the target's regular-file identity, root ownership, one hard
+link, protected ancestry, exact bytes and package/dependency provenance before
+approval. A resolved name alone proves none of these. Symlinks, environment
+overrides, request-selected paths and fallback discovery remain unsupported.
+The two-second per-command / five-second collection deadlines, 1MiB combined
+command output cap and 512-row inventory bounds are unchanged; incomplete or
+expired reads fail closed. See the [C4.3 evidence limits and remaining blockers](first-production-installation-readiness.md#c43--fixed-host-ip-path-and-c42-evidence-limits).
+
 No authenticated administrative channel or verifier is installed in this task.
 This is a concrete installer with a deliberately missing authority binding, not
 permission to run it on a VDS.

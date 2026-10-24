@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Operator-reviewed diagnostics only. NOT RUN during C4.1 preparation.
+# C4.3: fixed /usr/bin/ip matches the supplied C4.2 path finding. This revision
+# has not been run; target metadata/provenance still need independent review.
 # No host-key discovery/TOFU. Supply independently authenticated known_hosts/key.
 # Usage (workstation, output outside repository):
 # C41_KNOWN_HOSTS=/absolute/verified/known_hosts C41_SSH_KEY=/absolute/login-key \
@@ -44,11 +46,11 @@ networks=$(sudo -n /usr/bin/timeout 10 /usr/bin/docker --host unix:///run/docker
 for network in $networks; do
   sudo -n /usr/bin/timeout 10 /usr/bin/docker --host unix:///run/docker.sock network inspect "$network"
 done
-sudo -n /usr/sbin/ip -j address show
-sudo -n /usr/sbin/ip -j -4 route show table all
-sudo -n /usr/sbin/ip -j -6 route show table all
-sudo -n /usr/sbin/ip -j -4 rule show
-sudo -n /usr/sbin/ip -j -6 rule show
+sudo -n /usr/bin/ip -j address show
+sudo -n /usr/bin/ip -j -4 route show table all
+sudo -n /usr/bin/ip -j -6 route show table all
+sudo -n /usr/bin/ip -j -4 rule show
+sudo -n /usr/bin/ip -j -6 rule show
 sudo -n /usr/bin/ss -H -lntu
 /usr/bin/findmnt --json --output TARGET,SOURCE,FSTYPE,OPTIONS
 /usr/bin/df -B1 / /opt /srv /var/lib/docker
@@ -77,7 +79,7 @@ for name in paths:
   if stat.S_ISLNK(s.st_mode): raise SystemExit("STOP: destination ancestry contains a symlink")
 '
 # Candidate tool paths: missing/multiple/symlink files require review, never repair.
-for tool in /usr/bin/python3 /usr/bin/docker /usr/bin/gh /usr/bin/ssh-keygen /usr/sbin/ip /usr/bin/ss \
+for tool in /usr/bin/python3 /usr/bin/docker /usr/bin/gh /usr/bin/ssh-keygen /usr/bin/ip /usr/bin/ss \
  /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose \
  /usr/lib/docker/cli-plugins/docker-compose /usr/libexec/docker/cli-plugins/docker-compose; do
  if [[ -e "$tool" || -L "$tool" ]]; then
