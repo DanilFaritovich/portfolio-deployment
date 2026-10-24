@@ -204,6 +204,10 @@ before adopting asset pins. A successful source/bundle review still grants no pr
 
 ## System tools and Infrastructure handoff
 
+The table below records the C4.4 assessment. [C4.5](production-host-evidence.md)
+now observes installed gh 2.102.0 and the exact Compose plugin path from private
+reports. Independent live pins and dependency/ancestor review remain outstanding.
+
 | Tool | Known version / bytes / origin | Minimal remaining action |
 | --- | --- | --- |
 | Python | C4.2 reports 3.12.3; `/usr/bin/python3` may be a symlink; resolved file hash unknown | Fresh resolved interpreter/ABI/stdlib/native closure, Ubuntu package provenance and protected metadata; pin resolved executable, not symlink spelling |

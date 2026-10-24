@@ -65,6 +65,11 @@ release verifier inside the exported bundle without executing producer tooling.
 See [first-install readiness](docs/first-production-installation-readiness.md) for
 the unconfigured authorities, target-ABI vendor inputs and read-only operator handoff.
 
+C4.5 adds a workstation-only [host tool evidence check](docs/production-host-evidence.md)
+for the existing private C4.1 transcript: bounded/redacted historical observations,
+no host commands or authority objects. Fixed production/admin bindings remain closed;
+complete external inventory, phase policy and independent authorities are still required.
+
 Stage 09.4B.7 adds a separate [trusted Caddy image producer](docs/trusted-caddy-image.md):
 the Sigstore-authenticated Caddy 2.11.7 static release is packaged over an authenticated
 digest-pinned Distroless rootfs, without compilation or package installation.
