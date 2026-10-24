@@ -256,18 +256,62 @@ def source_failure_code(error):
     return 'caddy-source-verification-failed'
 
 
+TOOLCHAIN_FAILURE_CODES = frozenset(
+    'caddy-builder-' + component + '-' + reason
+    for component in ('runner', 'docker', 'buildx', 'compose')
+    for reason in ('drift', 'unavailable')
+)
+
+
+def toolchain_value(value, *, runner=False):
+    # Only bounded numeric versions can enter logs; never echo process output,
+    # environment contents, Docker metadata, exception text or stderr.
+    pattern = r'[0-9]{1,12}\.[0-9]{1,12}\.[0-9]{1,12}' if runner else r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'
+    return value if isinstance(value, str) and re.fullmatch(pattern, value) else 'unavailable'
+
+
 def check_toolchain():
     lock = load_lock()
-    require(os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted' and
-            os.environ.get('RUNNER_ARCH') == 'X64' and os.environ.get('RUNNER_OS') == 'Linux' and
-            os.environ.get('ImageVersion') == lock['runnerImageVersion'], 'caddy-builder-runner-drift')
-    versions = json.loads(run(['docker', 'version', '--format', '{{json .}}']))
-    require(versions['Client']['Version'] == versions['Server']['Version'] == lock['dockerVersion'],
-            'caddy-builder-docker-drift')
-    buildx = run(['docker', 'buildx', 'version']).decode().split()
-    require(len(buildx) >= 2 and buildx[1] == 'v' + lock['buildxVersion'], 'caddy-builder-buildx-drift')
-    compose = run(['docker', 'compose', 'version', '--short']).decode().strip().removeprefix('v')
-    require(compose == lock['composeVersion'], 'caddy-builder-compose-drift')
+    runner = dict(GITHUB_ACTIONS='true', RUNNER_ENVIRONMENT='github-hosted', RUNNER_ARCH='X64', RUNNER_OS='Linux',
+                  ImageVersion=lock['runnerImageVersion'])
+    for key, expected in runner.items():
+        actual = os.environ.get(key)
+        # For non-version fields report only the match, not untrusted env values.
+        record = dict(check='runner.' + key, status='ok' if actual == expected else 'drift')
+        if key == 'ImageVersion':
+            record.update(expected=expected, actual=toolchain_value(actual, runner=True))
+        print(json.dumps(record, sort_keys=True))
+    require(all(os.environ.get(key) == value for key, value in runner.items()), 'caddy-builder-runner-drift')
+    failures = []
+    for component, command in (
+        ('docker', ['docker', 'version', '--format', '{{json .}}']),
+        ('buildx', ['docker', 'buildx', 'version']),
+        ('compose', ['docker', 'compose', 'version', '--short']),
+    ):
+        try:
+            raw = run(command)
+            if component == 'docker':
+                versions = json.loads(raw)
+                actual = {side.lower(): versions[side]['Version'] for side in ('Client', 'Server')}
+            elif component == 'buildx':
+                parts = raw.decode().split()
+                actual = {'version': parts[1].removeprefix('v')}
+                require(parts[1].startswith('v'), 'caddy-builder-buildx-unavailable')
+            else:
+                actual = {'version': raw.decode().strip().removeprefix('v')}
+            expected = lock[component + 'Version']
+            matches = all(value == expected for value in actual.values())
+            safe = {key: toolchain_value(value) for key, value in actual.items()}
+            print(json.dumps(dict(check=component, expected=expected, actual=safe,
+                                  status='ok' if matches else 'drift'), sort_keys=True))
+            if not matches:
+                failures.append('caddy-builder-' + component + '-drift')
+        except Exception:
+            # A missing command, timeout or malformed response remains a failure.
+            print(json.dumps(dict(check=component, status='unavailable'), sort_keys=True))
+            failures.append('caddy-builder-' + component + '-unavailable')
+    if failures:
+        raise DockerError(failures[0])
 
 
 def main():
@@ -295,7 +339,10 @@ def main():
     except Exception as error:
         # CLI boundary: unexpected dependency failures must not print secrets in
         # a traceback either. Interrupts still propagate normally.
-        print(source_failure_code(error) if args.operation == 'publish-guard' else 'caddy-producer-inputs-failed')
+        code = source_failure_code(error) if args.operation == 'publish-guard' else 'caddy-producer-inputs-failed'
+        if args.operation == 'toolchain-check' and isinstance(error, DockerError) and str(error) in TOOLCHAIN_FAILURE_CODES:
+            code = str(error)
+        print(code)
         return 1
     return 0
 
