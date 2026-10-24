@@ -75,9 +75,9 @@ defeats both this boundary and SealedInstallation; this does not claim otherwise
   that inventory: it is administrative authority data. This avoids embedding the
   admin binding's own hash in its source. Max 2 MiB, root-owned 0600, protected
   ancestry, private 0700 intake directory, <=1 hour lifetime (recommend 15 minutes).
-  Independently installed/reviewed `admin_bindings.py` may opt in by changing its
-  fixed `authenticate_initial_installation` body to call
-  `authenticated_file_decision(bundle_sha256)`. The shipped function still raises.
+  Independently installed/reviewed `admin_bindings.py` now selects
+  `authenticated_file_decision(bundle_sha256)` through its fixed entry point.
+  Missing helper or separately published decision still blocks.
   No argument/env/request can select this implementation.
 * `/etc/portfolio-deployment/phase-review.json`: bounded canonical JSON, root:root
   0600 with protected ancestry; <=1 hour lifetime, recommend 15 minutes. This is
@@ -120,7 +120,9 @@ These documents grant **no SSHSIG operation authorization**.
 
 ## Fixed bindings and the phase transition
 
-Keep `installation/bindings.py` closed until the inputs below are approved.
+Keep `installation/bindings.py` owner policy unset until the inputs below are approved.
+The [concrete fixed recipe and public adapter](production-final-bindings.md) are now
+implemented; their independently selected policy/observer inputs remain required.
 Prepare one independently reviewed replacement containing **both** fixed recipes
 before bundle build. Its `build(installation)` calls
 `phase_bindings.build_reviewed_phase(installation, empty_host=..., rollout=...)`.
@@ -167,11 +169,10 @@ always-success functions. No ready-to-run private binding is asserted by this PR
    before collecting rollout. A bootstrap signature never authorizes rollout.
 
 Full rollout also needs an independently reviewed **real public postcondition port**
-for the admitted domain/TLS/path, as required by existing composition. The current
-repository does not supply that concrete production authority. It is an engineering
-binding prerequisite, not an owner choice to waive it. A protected report or internal
-health result must not replace a live public check. This remains an explicit blocker
-to a working rollout, alongside private inputs and live verification.
+for the admitted domain/TLS/path, as required by existing composition. The repository now supplies the concrete adapter and signed external-witness
+consumer described in [final bindings](production-final-bindings.md). Independently
+approved address/CA/content/observer policy and fresh live off-VDS evidence remain
+mandatory. An internal health result or unsigned protected report cannot replace them.
 
 ## Commands and authorization stops
 
