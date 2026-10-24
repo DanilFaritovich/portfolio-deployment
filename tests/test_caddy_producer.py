@@ -379,24 +379,6 @@ def test_input_authentication_failure_never_populates_build_context(tmp_path, mo
     assert len(calls) == failed_verifier and not (directory / 'context/caddy').exists()
 
 
-@pytest.mark.parametrize('failure', ['runner', 'engine', 'buildx', 'compose'])
-def test_builder_toolchain_drift_fails_closed(monkeypatch, failure):
-    lock = p.load_lock()
-    for key, value in dict(GITHUB_ACTIONS='true', RUNNER_ENVIRONMENT='github-hosted', RUNNER_ARCH='X64',
-                           RUNNER_OS='Linux', ImageVersion=lock['runnerImageVersion']).items():
-        monkeypatch.setenv(key, value)
-    def command(args):
-        if args[1] == 'version':
-            return json.dumps({'Client': {'Version': lock['dockerVersion']},
-                'Server': {'Version': '0.0.0' if failure == 'engine' else lock['dockerVersion']}}).encode()
-        version = lock['buildxVersion'] if args[1] == 'buildx' else lock['composeVersion']
-        if args[1] == failure: version = '0.0.0'
-        return ('github.com/docker/buildx v' + version if args[1] == 'buildx' else version).encode()
-    monkeypatch.setattr(p, 'run', command)
-    if failure == 'runner': monkeypatch.setenv('ImageVersion', 'different')
-    with pytest.raises(DockerError): p.check_toolchain()
-
-
 @pytest.mark.parametrize('url', ['https://127.0.0.1:80/', 'http://169.254.169.254/',
     'http://127.0.0.1:2375/', 'http://user:secret@127.0.0.1:80/', 'http://127.0.0.1:80/private'])
 def test_namespace_probe_rejects_unexpected_targets(url):
@@ -442,16 +424,25 @@ def toolchain(monkeypatch):
     for key, value in dict(GITHUB_ACTIONS='true', RUNNER_ENVIRONMENT='github-hosted', RUNNER_ARCH='X64',
                            RUNNER_OS='Linux', ImageVersion=lock['runnerImageVersion']).items():
         monkeypatch.setenv(key, value)
+    for key, value in p.BUILDER_ENV.items(): monkeypatch.setenv(key, value)
+    for key in p.BUILDER_REDIRECTS: monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(p, 'hosted_image', lambda: dict(ImageVersion=lock['runnerImageVersion'], ImageOS='ubuntu24'))
+    monkeypatch.setattr(p.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(p.platform, 'machine', lambda: 'x86_64')
     responses = {
         'version': json.dumps({'Client': {'Version': lock['dockerVersion']},
                                'Server': {'Version': lock['dockerVersion']}}).encode(),
         'buildx': ('github.com/docker/buildx v' + lock['buildxVersion'] + ' public-commit').encode(),
         'compose': ('v' + lock['composeVersion'] + '\n').encode(),
+        'backend': b'Name: default\nDriver: docker\n\nNodes:\nName: default\nEndpoint: default\nStatus: running\n',
     }
     calls = []
-    def command(args):
-        calls.append(args[1])
-        value = responses[args[1]]
+    def command(args, *, env):
+        assert args[0] == '/usr/bin/docker'
+        assert env == {**p.BUILDER_ENV, 'PATH': '/usr/bin:/bin'}
+        component = 'backend' if args[1:3] == ['buildx', 'inspect'] else args[1]
+        calls.append(component)
+        value = responses[component]
         if isinstance(value, Exception): raise value
         return value
     monkeypatch.setattr(p, 'run', command)
@@ -461,11 +452,11 @@ def toolchain(monkeypatch):
 def test_toolchain_success_reports_each_check(toolchain, capsys):
     p.check_toolchain()
     records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-    assert len(records) == 8 and all(row['status'] == 'ok' for row in records)
-    assert records[-3]['actual'] == dict(client=p.load_lock()['dockerVersion'], server=p.load_lock()['dockerVersion'])
+    assert len(records) == 11 and all(row['status'] == 'ok' for row in records)
+    assert records[-4]['actual'] == dict(client=p.load_lock()['dockerVersion'], server=p.load_lock()['dockerVersion'])
 
 
-@pytest.mark.parametrize('component', ['version', 'buildx', 'compose'])
+@pytest.mark.parametrize('component', ['version', 'buildx', 'compose', 'backend'])
 @pytest.mark.parametrize('response', [b'', b'credential-secret\n::error::injected',
                                      DockerError('credential-secret'), TimeoutError('credential-secret')])
 def test_toolchain_unavailable_is_redacted_and_collects_remaining_checks(toolchain, monkeypatch, capsys, component, response):
@@ -475,15 +466,15 @@ def test_toolchain_unavailable_is_redacted_and_collects_remaining_checks(toolcha
     assert p.main() == 1
     output = capsys.readouterr().out
     assert 'credential-secret' not in output and '::error::' not in output
-    assert calls == ['version', 'buildx', 'compose']
+    assert calls == ['version', 'buildx', 'compose', 'backend']
     assert 'caddy-builder-' + ('docker' if component == 'version' else component) in output
 
 
 @pytest.mark.parametrize('field', ['GITHUB_ACTIONS', 'RUNNER_ENVIRONMENT', 'RUNNER_ARCH', 'RUNNER_OS', 'ImageVersion'])
-def test_runner_failure_prevents_commands_and_redacts_env(toolchain, monkeypatch, capsys, field):
+def test_runner_failure_collects_read_only_diagnostics_and_redacts_env(toolchain, monkeypatch, capsys, field):
     monkeypatch.setenv(field, 'credential-secret\n::error::injected')
     with pytest.raises(DockerError, match='^caddy-builder-runner-drift$'): p.check_toolchain()
-    assert toolchain[1] == []
+    assert toolchain[1] == ['version', 'buildx', 'compose', 'backend']
     assert 'credential-secret' not in capsys.readouterr().out
 
 
@@ -505,3 +496,80 @@ def test_toolchain_cli_redacts_unexpected_exception(toolchain, monkeypatch, caps
     monkeypatch.setattr('sys.argv', ['caddy_producer', 'toolchain-check'])
     assert p.main() == 1
     assert capsys.readouterr().out == 'caddy-producer-inputs-failed\n'
+
+
+@pytest.mark.parametrize('component', ['buildx', 'compose'])
+def test_plugin_version_drift_is_blocked(toolchain, component):
+    toolchain[0][component] = b'github.com/docker/buildx v0.0.0' if component == 'buildx' else b'0.0.0'
+    with pytest.raises(DockerError, match='caddy-builder-' + component + '-drift'):
+        p.check_toolchain()
+
+
+@pytest.mark.parametrize('version', ['20000101.1.1', '', None, 'secret\n::error::bad'])
+def test_environment_cannot_hide_unapproved_host_image(toolchain, monkeypatch, version, capsys):
+    # Env contains all approved values, but on-disk image is unknown/missing.
+    monkeypatch.setattr(p, 'hosted_image', lambda: dict(ImageVersion=version, ImageOS='ubuntu24'))
+    with pytest.raises(DockerError, match='caddy-builder-runner-drift'): p.check_toolchain()
+    output = capsys.readouterr().out
+    assert 'secret' not in output and '::error::' not in output
+
+
+@pytest.mark.parametrize('field', list(p.BUILDER_ENV) + list(p.BUILDER_REDIRECTS))
+def test_builder_environment_redirects_blocked(toolchain, monkeypatch, field, capsys):
+    monkeypatch.setenv(field, 'secret-attacker-endpoint')
+    with pytest.raises(DockerError, match='caddy-builder-docker-drift'): p.check_toolchain()
+    assert 'secret-attacker' not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('machine', ['aarch64', '', 'secret'])
+def test_real_architecture_cannot_be_spoofed_with_runner_env(toolchain, monkeypatch, machine):
+    monkeypatch.setattr(p.platform, 'machine', lambda: machine)
+    with pytest.raises(DockerError, match='caddy-builder-runner-drift'): p.check_toolchain()
+
+
+@pytest.mark.parametrize('raw', [b'', b'ImageVersion=1.2.3\n', b'x' * 65537,
+    b'ImageVersion=1.2.3\nImageVersion=1.2.3\nImageOS=ubuntu24', b'\xff'])
+def test_host_image_missing_malformed_or_oversized_is_blocked(monkeypatch, raw):
+    monkeypatch.setattr(Path, 'open', lambda *args, **kwargs: io.BytesIO(raw))
+    with pytest.raises((DockerError, UnicodeError)): p.hosted_image()
+
+
+def test_host_image_reads_fixed_path_and_only_selected_fields(monkeypatch):
+    def read(path, mode):
+        assert str(path) == '/etc/environment' and mode == 'rb'
+        return io.BytesIO(b'PRIVATE=secret\nImageOS=ubuntu24\nImageVersion="20261023.334.3"\n')
+    monkeypatch.setattr(Path, 'open', read)
+    assert p.hosted_image() == dict(ImageOS='ubuntu24', ImageVersion='20261023.334.3')
+
+
+@pytest.mark.parametrize('raw', [b'', b'Name: secret\nDriver: docker-container',
+    b'Name: default\nDriver: docker\nName: default\nEndpoint: tcp://secret\nStatus: running',
+    b'Name: default\nDriver: docker\nName: default\nEndpoint: default\nStatus: running\nError: secret'])
+def test_unknown_or_remote_backend_is_blocked(toolchain, capsys, raw):
+    toolchain[0]['backend'] = raw
+    with pytest.raises(DockerError, match='caddy-builder-backend-drift'): p.check_toolchain()
+    assert 'secret' not in capsys.readouterr().out
+
+
+def test_toolchain_diagnostics_have_bounded_allowlisted_fields(toolchain, capsys):
+    toolchain[0]['version'] = json.dumps({'Client': {'Version': '0.0.0', 'private': 'secret'},
+                                         'Server': {'Version': 'secret\n::error::bad'}}).encode()
+    with pytest.raises(DockerError): p.check_toolchain()
+    output = capsys.readouterr().out
+    assert len(output) < 2200 and len(output.splitlines()) == 11
+    assert 'secret' not in output and 'private' not in output and '::error::' not in output
+    for line in output.splitlines():
+        assert set(json.loads(line)) <= {'check', 'status', 'actual', 'expected'}
+
+
+@pytest.mark.parametrize('field', ['GITHUB_ACTIONS', 'RUNNER_ENVIRONMENT', 'RUNNER_ARCH', 'RUNNER_OS', 'ImageVersion'])
+def test_missing_runner_information_blocks(toolchain, monkeypatch, field):
+    monkeypatch.delenv(field)
+    with pytest.raises(DockerError, match='caddy-builder-runner-drift'): p.check_toolchain()
+
+
+def test_missing_host_image_still_collects_all_tool_versions(toolchain, monkeypatch):
+    def missing(): raise FileNotFoundError('private-path')
+    monkeypatch.setattr(p, 'hosted_image', missing)
+    with pytest.raises(DockerError, match='caddy-builder-runner-unavailable'): p.check_toolchain()
+    assert toolchain[1] == ['version', 'buildx', 'compose', 'backend']

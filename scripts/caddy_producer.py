@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import os
+import platform
 from pathlib import Path
 import re
 import shutil
@@ -258,7 +259,7 @@ def source_failure_code(error):
 
 TOOLCHAIN_FAILURE_CODES = frozenset(
     'caddy-builder-' + component + '-' + reason
-    for component in ('runner', 'docker', 'buildx', 'compose')
+    for component in ('runner', 'docker', 'buildx', 'compose', 'backend')
     for reason in ('drift', 'unavailable')
 )
 
@@ -270,33 +271,91 @@ def toolchain_value(value, *, runner=False):
     return value if isinstance(value, str) and re.fullmatch(pattern, value) else 'unavailable'
 
 
+def hosted_image():
+    # Read the image's on-disk baseline, never source shell or accept an env path.
+    # Unrelated /etc/environment fields may contain private data: never log them.
+    with Path('/etc/environment').open('rb') as stream:
+        raw = stream.read(65537)
+    require(len(raw) <= 65536, 'caddy-builder-runner-unavailable')
+    fields = {}
+    for line in raw.decode().splitlines():
+        key, sep, value = line.partition('=')
+        if key in ('ImageVersion', 'ImageOS') and sep:
+            require(key not in fields, 'caddy-builder-runner-unavailable')
+            fields[key] = value.strip().strip('"')
+    require(set(fields) == {'ImageVersion', 'ImageOS'}, 'caddy-builder-runner-unavailable')
+    return fields
+
+
+# Reject environment redirects rather than allowing a version probe on one
+# endpoint/tool and a subsequent build on another. The workflow uses /usr/bin/docker.
+BUILDER_ENV = dict(HOME='/home/runner', DOCKER_HOST='unix:///var/run/docker.sock', BUILDX_BUILDER='default', DOCKER_BUILDKIT='1')
+BUILDER_REDIRECTS = ('DOCKER_CONTEXT', 'DOCKER_CONFIG', 'DOCKER_TLS', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH',
+                     'DOCKER_API_VERSION', 'DOCKER_DEFAULT_PLATFORM', 'BUILDX_CONFIG', 'BUILDX_HOST',
+                     'DOCKER_CLI_PLUGIN_EXTRA_DIRS')
+
+
 def check_toolchain():
     lock = load_lock()
+    failures = []
     runner = dict(GITHUB_ACTIONS='true', RUNNER_ENVIRONMENT='github-hosted', RUNNER_ARCH='X64', RUNNER_OS='Linux',
                   ImageVersion=lock['runnerImageVersion'])
     for key, expected in runner.items():
         actual = os.environ.get(key)
-        # For non-version fields report only the match, not untrusted env values.
         record = dict(check='runner.' + key, status='ok' if actual == expected else 'drift')
         if key == 'ImageVersion':
             record.update(expected=expected, actual=toolchain_value(actual, runner=True))
         print(json.dumps(record, sort_keys=True))
-    require(all(os.environ.get(key) == value for key, value in runner.items()), 'caddy-builder-runner-drift')
-    failures = []
+    if not all(os.environ.get(key) == value for key, value in runner.items()):
+        failures.append('caddy-builder-runner-drift')
+    try:
+        image = hosted_image()
+        actual = toolchain_value(image['ImageVersion'], runner=True)
+        matches = (image == dict(ImageVersion=lock['runnerImageVersion'], ImageOS='ubuntu24') and
+                   platform.system() == 'Linux' and platform.machine() == 'x86_64')
+        print(json.dumps(dict(check='runner.host-image', actual=actual, expected=lock['runnerImageVersion'],
+                              status='ok' if matches else 'drift'), sort_keys=True))
+        if not matches: failures.append('caddy-builder-runner-drift')
+    except Exception:
+        print(json.dumps(dict(check='runner.host-image', status='unavailable'), sort_keys=True))
+        failures.append('caddy-builder-runner-unavailable')
+    # Publication also uses this gate, with these same explicit environment pins.
+    environment_ok = (all(os.environ.get(k) == v for k, v in BUILDER_ENV.items()) and
+                      all(k not in os.environ for k in BUILDER_REDIRECTS))
+    print(json.dumps(dict(check='docker.environment', status='ok' if environment_ok else 'drift'), sort_keys=True))
+    if not environment_ok:
+        failures.append('caddy-builder-docker-drift')
+    # Collect all bounded read-only probes even on runner drift; no build/pull,
+    # bootstrap, raw command output, Docker metadata or arbitrary env is printed.
     for component, command in (
-        ('docker', ['docker', 'version', '--format', '{{json .}}']),
-        ('buildx', ['docker', 'buildx', 'version']),
-        ('compose', ['docker', 'compose', 'version', '--short']),
+        ('docker', ['/usr/bin/docker', 'version', '--format', '{{json .}}']),
+        ('buildx', ['/usr/bin/docker', 'buildx', 'version']),
+        ('compose', ['/usr/bin/docker', 'compose', 'version', '--short']),
+        ('backend', ['/usr/bin/docker', 'buildx', 'inspect', 'default']),
     ):
         try:
-            raw = run(command)
+            raw = run(command, env={**BUILDER_ENV, 'PATH': '/usr/bin:/bin'})
+            require(len(raw) <= 65536, 'caddy-builder-docker-unavailable')
             if component == 'docker':
                 versions = json.loads(raw)
                 actual = {side.lower(): versions[side]['Version'] for side in ('Client', 'Server')}
             elif component == 'buildx':
                 parts = raw.decode().split()
+                require(parts[0] == 'github.com/docker/buildx' and parts[1].startswith('v'),
+                        'caddy-builder-buildx-unavailable')
                 actual = {'version': parts[1].removeprefix('v')}
-                require(parts[1].startswith('v'), 'caddy-builder-buildx-unavailable')
+            elif component == 'backend':
+                fields = {}
+                for line in raw.decode().splitlines():
+                    key, sep, value = line.partition(':')
+                    if sep and key in ('Name', 'Driver', 'Endpoint', 'Status', 'Error'):
+                        fields.setdefault(key, []).append(value.strip())
+                matches = (fields == {'Name': ['default', 'default'], 'Driver': ['docker'],
+                                      'Endpoint': ['default'], 'Status': ['running']})
+                print(json.dumps(dict(check='backend', status='ok' if matches else 'drift',
+                                      expected='default/docker/local/running'), sort_keys=True))
+                if not matches: failures.append('caddy-builder-backend-drift')
+                continue
             else:
                 actual = {'version': raw.decode().strip().removeprefix('v')}
             expected = lock[component + 'Version']
@@ -307,7 +366,6 @@ def check_toolchain():
             if not matches:
                 failures.append('caddy-builder-' + component + '-drift')
         except Exception:
-            # A missing command, timeout or malformed response remains a failure.
             print(json.dumps(dict(check=component, status='unavailable'), sort_keys=True))
             failures.append('caddy-builder-' + component + '-unavailable')
     if failures:

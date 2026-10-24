@@ -45,16 +45,17 @@ class CaddyReleaseCollector:
                                      registry=self.registry, crypto=self.crypto)
 
 
-def verify_caddy_artifact(runtime, source_sha, publication, *, github, registry, crypto):
+def verify_caddy_artifact(runtime, source_sha, publication, *, github, registry, crypto, input_lock=None):
     """Immutable artifact/signature contract only; grants no protected-source trust.
 
     Production calls this only after full ProtectedSource verification. PR QA
-    calls it with a fixed historical release and never constructs release facts.
+    calls it with a fixed historical release/lock and never constructs release facts.
+    The production collector never supplies an alternate input_lock.
     """
     require(isinstance(source_sha, str) and re.fullmatch(r'[0-9a-f]{40}', source_sha) is not None and
             re.fullmatch(re.escape(IMAGE) + r'@sha256:[0-9a-f]{64}', runtime.image) is not None,
             'caddy-release-subject-invalid')
-    lock = load_lock()
+    lock = load_lock() if input_lock is None else input_lock
     require(runtime.version == lock['version'], 'caddy-release-version-mismatch')
     blobs = registry.collect(runtime.image)
     evidence = verify_oci_bytes(runtime.image, IMAGE, blobs)

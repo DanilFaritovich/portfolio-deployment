@@ -122,3 +122,35 @@ def test_api_deprecation_link_never_hides_pagination(mode):
     if mode == 'deprecation': assert transport.get(url, {}) == b''
     else:
         with pytest.raises(DockerError, match='pagination-unproven'): transport.get(url, {})
+
+
+def test_historical_builder_lock_does_not_relax_current_production_contract():
+    from scripts.caddy_producer import load_lock, published_inputs
+    collector, runtime, sha, _, _, statements = consumer_fixture()
+    historical = qa.historical_input_lock()
+    assert historical['runnerImageVersion'] == '20261012.334.1'
+    current = load_lock()
+    assert historical != current
+    assert {k for k in historical if historical[k] != current[k]} == {'runnerImageVersion'}
+    statements[1]['predicate'] = published_inputs(historical, sha, '100', '1')
+    # The production collector still expects the current lock and rejects old inputs.
+    with pytest.raises(DockerError, match='caddy-release-inputs-mismatch'):
+        collector.collect(runtime, sha)
+    def verify(subject, image, identity, expectations, bundles):
+        assert expectations[1]['expectedPredicate'] == statements[1]['predicate']
+        return statements
+    evidence = verify_caddy_artifact(runtime, sha, ('100', '1'), github=collector.github,
+        registry=collector.registry, crypto=SimpleNamespace(verify=verify), input_lock=historical)
+    assert evidence.reference == runtime.image
+    # Even historical QA requires exact signed lock equality.
+    changed = deepcopy(historical)
+    changed['runnerImageVersion'] = '20000101.1.1'
+    def signatures(subject, image, identity, expectations, bundles): return statements
+    with pytest.raises(DockerError, match='caddy-release-inputs-mismatch'):
+        verify_caddy_artifact(runtime, sha, ('100', '1'), github=collector.github,
+            registry=collector.registry, crypto=SimpleNamespace(verify=signatures), input_lock=changed)
+
+
+def test_historical_qa_lock_bytes_are_pinned(monkeypatch):
+    monkeypatch.setattr(Path, 'read_bytes', lambda path: b'{"runnerImageVersion":"unreviewed"}')
+    with pytest.raises(DockerError, match='caddy-release-inputs-mismatch'): qa.historical_input_lock()
