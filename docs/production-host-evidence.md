@@ -73,6 +73,9 @@ Coverage includes unsafe ownership/modes/links, unresolved Python, wrong/ambiguo
 gh version, duplicate/conflicting plugin records, incomplete hash/path sequences,
 input bounds, redacted output and the Make wrapper. No real E2E was run.
 
+C4.6 now provides the [offline-tested first-phase recipe and owner decision sheet](first-production-bindings.md).
+It does not configure the missing authorities or authorize installation.
+
 ## Fixed binding handoff for C4.6
 
 No approved host policy or authority code was supplied, so no production authority

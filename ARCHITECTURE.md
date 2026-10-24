@@ -70,6 +70,19 @@ for the existing private C4.1 transcript: bounded/redacted historical observatio
 no host commands or authority objects. Fixed production/admin bindings remain closed;
 complete external inventory, phase policy and independent authorities are still required.
 
+C4.6 adds an offline-tested [fixed empty-host composition](docs/first-production-bindings.md)
+in `production_integration/first_phase.py`, reusing the same executor, Engine,
+HostPolicy, journal, release and SSHSIG ports without requiring preexisting runtime
+IDs or wiring rollout ports. EmptyHostReader binds fresh local samples to independent
+phase policy; BootstrapResources requires the existing Caddy provenance v2 collector
+and external exact-image runtime acceptance. Postconditions observe created IDs,
+verify IPAM/membership/storage and reuse pinned runtime/UDS/ACTIVE checks in two
+stable rounds before existing journal promotion. They do not approve rollout pins.
+The standalone admin binding gains a typed exact-installation decision adapter
+requiring an external authenticated one-use authority. Neither authority is supplied;
+both shipped entry points remain closed. Phase policy/inode handoff and the sealed
+post-bootstrap transition require independent review; no update API is introduced.
+
 Stage 09.4B.7 adds a separate [trusted Caddy image producer](docs/trusted-caddy-image.md):
 the Sigstore-authenticated Caddy 2.11.7 static release is packaged over an authenticated
 digest-pinned Distroless rootfs, without compilation or package installation.
