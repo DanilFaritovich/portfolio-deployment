@@ -96,7 +96,7 @@ def main():
     targets.update({Path('/etc/portfolio-deployment/cd-policy.json'):(files['policy.json'],0o600),
                     Path('/usr/local/bin/portfolio-cd-forced-command.py'):(files['forced_command.py'],0o755),
                     Path('/etc/sudoers.d/portfolio-cd'):(files['sudoers'],0o440),
-                    Path('/var/lib/portfolio-cd/.ssh/authorized_keys'):(files['authorized_keys'],0o600)})
+                    Path('/var/lib/portfolio-cd/.ssh/authorized_keys'):(files['authorized_keys'],0o644)})
     state=Path('/var/lib/portfolio-deployment-cd')
     marker=state/'.cd-state-v1'
     if state.exists() or state.is_symlink():
