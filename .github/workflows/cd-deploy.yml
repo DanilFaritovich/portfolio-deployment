@@ -19,9 +19,11 @@ on:
         required: true
     secrets:
       CD_AUTOMATION_KEY_B64:
-        required: true
+        # The protected job Environment supplies these; callers need not keep
+        # duplicate repository-level secrets just to satisfy workflow_call.
+        required: false
       CD_OBSERVER_KEY_B64:
-        required: true
+        required: false
 
 permissions:
   contents: read
