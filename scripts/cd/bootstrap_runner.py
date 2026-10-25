@@ -13,7 +13,7 @@ import sys
 import tempfile
 import threading
 
-from scripts.cd.runner import Client
+from scripts.cd.runner import Client, require_policy_id, report_failure
 from scripts.production_integration.observations import require
 from scripts.production_integration.operator_approval import closed_json
 
@@ -59,6 +59,8 @@ def main():
     wait_for_offline(lambda: GitHubRead(os.environ['GH_TOKEN'], HTTPSRead()), revision)
     action, scope = os.environ['BOOTSTRAP_ACTION'], os.environ['BOOTSTRAP_SCOPE']
     observe = action == 'execute' and scope == 'first-project-router-rollout'
+    if observe:
+        require_policy_id()
     with tempfile.TemporaryDirectory(prefix='pd-bootstrap-') as temporary:
         client = Client(temporary, roles=('automation', 'observer') if observe else ('automation',))
         stop = threading.Event()
@@ -78,9 +80,14 @@ def main():
         print(json.dumps(result))
 
 
-if __name__ == '__main__':
+def entrypoint():
     try:
         main()
-    except Exception:
-        print('production-bootstrap-failed; inspect retained host receipts; do not replay unknown outcomes')
-        sys.exit(1)
+        return 0
+    except Exception as error:
+        report_failure(error, operation='production-bootstrap')
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(entrypoint())
