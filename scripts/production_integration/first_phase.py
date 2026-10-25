@@ -51,13 +51,26 @@ class EmptyHostReader:
     def collect(self):
         self.last = None
         self.installation.verify()
-        start, identity = self.clock(), self.engine.identity()
+        identity = self.engine.identity()
         p = self.policy
         require(type(p) is HostPolicy and identity == (p.host, p.daemon),
                 'production-bootstrap-policy-identity-mismatch')
-        require(self.prerequisites is not None and self.prerequisites.verify(p, identity) == p,
+        require(self.prerequisites is not None,
                 'production-bootstrap-prerequisites-unverified')
-        host, docker, contents = self.local.collect(), discover(self.engine, ()), self.contents()
+        # Authority and immutable seal checks precede the mutable observation
+        # window. LocalHostSources still verifies its seal on every collection.
+        start = None
+        def begin_observation():
+            nonlocal start
+            require(start is None, 'production-bootstrap-observation-window-unbound')
+            # Read authority after the source's seal check, so revocation and
+            # expiry are checked immediately before mutable observation begins.
+            require(self.prerequisites.verify(p, identity) == p,
+                    'production-bootstrap-prerequisites-unverified')
+            start = self.clock()
+        host = self.local.collect(before_observation=begin_observation)
+        require(start is not None, 'production-bootstrap-observation-window-unbound')
+        docker, contents = discover(self.engine, ()), self.contents()
         require(docker.complete and host.identity == identity, 'production-bootstrap-inventory-incomplete')
         validate_network_inventory(docker)
         require(not any(r.kind in ('container', 'volume') for r in docker.resources),

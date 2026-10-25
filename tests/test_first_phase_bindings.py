@@ -38,7 +38,11 @@ def reader(tmp_path, monkeypatch):
     host = LocalHostFacts(identity, 1, {'listeners': [], 'routes4': []}, ())
     docker = DockerObservation((), (), True)
     state = SimpleNamespace(host=host, docker=docker, contents=(), time=1)
-    local = SimpleNamespace(collect=lambda: state.host)
+    def collect(*, before_observation=None):
+        if before_observation is not None:
+            before_observation()
+        return state.host
+    local = SimpleNamespace(collect=collect)
     monkeypatch.setattr(phase, 'discover', lambda *a: state.docker)
     policy = HostPolicy(*identity, hashed(network_facts(host, docker)), hashed(asdict(docker)), hashed(()),
                         1024**3, 100, 'backup', 'console', 'ipam', 'budget', 'containment')
@@ -108,6 +112,114 @@ def test_sample_expires_and_policy_cannot_be_changed_after_collection(reader):
     state.time = 1
     port.policy = replace(port.policy, containment='different')
     with pytest.raises(DockerError): port.verify(sample, (sample.host, sample.daemon))
+
+
+@pytest.mark.parametrize('notification', ['missing', 'repeated'])
+def test_composite_window_must_start_exactly_once(reader, notification):
+    port, state, _ = reader
+    def collect(*, before_observation):
+        if notification == 'repeated':
+            before_observation()
+            before_observation()
+        return state.host
+    port.local.collect = collect
+    with pytest.raises(DockerError, match='observation-window-unbound'):
+        port.collect()
+    assert port.last is None
+
+
+@pytest.fixture
+def clocked_reader(reader, monkeypatch):
+    from scripts.production_integration import local_sources
+    port, state, _ = reader
+    state.verifications, state.reads = [], []
+    state.verify_seconds, state.command_seconds, state.discovery_seconds = 8, 0.125, 0.5
+    state.fail_verification = None
+    def verify():
+        state.verifications.append(state.time)
+        if len(state.verifications) == state.fail_verification:
+            raise DockerError('synthetic-seal-content-changed')
+        state.time += state.verify_seconds
+    port.installation.verify = verify
+    port.installation.files = (('/usr/bin/ip', 'a'*64), ('/usr/bin/ss', 'b'*64))
+    def approve(policy, identity):
+        assert policy == port.policy and identity == state.host.identity
+        verify()
+        return policy
+    port.prerequisites.verify = approve
+    def run(argv, **kwargs):
+        assert tuple(argv) in local_sources.COMMANDS.values()
+        state.reads.append(state.time)
+        state.time += state.command_seconds
+        return b'' if argv[0] == '/usr/bin/ss' else b'[]'
+    monkeypatch.setattr(local_sources, 'run_bounded', run)
+    monkeypatch.setattr(local_sources, 'PATHS', ())
+    port.local = local_sources.LocalHostSources(port.installation, port.engine, clock=lambda: state.time)
+    network = {name: [] for name in ('routes4', 'routes6', 'rules4', 'rules6', 'listeners')}
+    state.host = replace(state.host, network=network)
+    port.policy = replace(port.policy, network_hash=hashed(network_facts(state.host, state.docker)))
+    def discovery(*args):
+        state.time += state.discovery_seconds
+        return state.docker
+    monkeypatch.setattr(phase, 'discover', discovery)
+    return port, state
+
+
+def test_slow_immutable_checks_precede_real_composite_observation_window(clocked_reader):
+    port, state = clocked_reader
+    sample = port.collect()
+    assert len(state.verifications) == 3
+    assert state.reads[0] == 25  # Every eight-second integrity check still ran.
+    assert sample.captured_at == 26.625
+    assert port.verify(sample, (sample.host, sample.daemon)) is sample
+
+
+@pytest.mark.parametrize('failed_check', [1, 2, 3])
+def test_each_integrity_failure_stops_before_mutable_reads(clocked_reader, failed_check):
+    port, state = clocked_reader
+    state.fail_verification = failed_check
+    with pytest.raises(DockerError, match='synthetic-seal-content-changed'):
+        port.collect()
+    assert not state.reads and port.last is None
+
+
+def test_authority_revocation_during_source_seal_check_blocks_observation(clocked_reader):
+    port, state = clocked_reader
+    state.revoked = False
+    original_verify = port.installation.verify
+    def verify():
+        original_verify()
+        if len(state.verifications) == 2:
+            state.revoked = True
+    def approve(policy, identity):
+        if state.revoked:
+            raise DockerError('synthetic-review-revoked')
+        return policy
+    port.installation.verify = verify
+    port.prerequisites.verify = approve
+    with pytest.raises(DockerError, match='synthetic-review-revoked'):
+        port.collect()
+    assert len(state.verifications) == 2 and not state.reads and port.last is None
+
+
+@pytest.mark.parametrize('discovery_seconds, accepted', [(2.1875, True), (2.25, False)])
+def test_composite_mutable_reads_keep_exact_five_second_limit(clocked_reader, discovery_seconds, accepted):
+    port, state = clocked_reader
+    state.discovery_seconds = discovery_seconds
+    if accepted:
+        assert port.collect().captured_at == 30
+    else:
+        with pytest.raises(DockerError, match='facts-changed-or-expired'):
+            port.collect()
+        assert port.last is None
+
+
+def test_inner_kernel_observation_still_has_its_own_deadline(clocked_reader):
+    port, state = clocked_reader
+    state.command_seconds = 1.1
+    with pytest.raises(DockerError, match='production-host-source-changed-or-expired'):
+        port.collect()
+    assert port.last is None
 
 
 def test_resource_preflight_requires_real_caddy_collector(reader):

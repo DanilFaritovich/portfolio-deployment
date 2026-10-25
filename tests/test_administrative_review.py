@@ -5,6 +5,7 @@ from pathlib import Path
 import socket
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -106,7 +107,8 @@ def test_rollout_requires_real_journal_success_and_exact_host_source(review, mon
     with pytest.raises(DockerError): port.rollout_pins(ReadOnlyJournalSource(), lease)
 
 
-def test_protected_read_is_bounded_canonical_and_private(tmp_path, monkeypatch):
+@pytest.fixture
+def review_file(tmp_path, monkeypatch):
     path = tmp_path / 'review'
     path.write_bytes(encode({'v': 1}).encode())
     path.chmod(0o600)
@@ -117,17 +119,79 @@ def test_protected_read_is_bounded_canonical_and_private(tmp_path, monkeypatch):
     # SealedInstallation suites. No root-owned production file is created here.
     original_fstat, original_lstat = ar.os.fstat, Path.lstat
     def root_info(info):
-        values = list(info)
-        values[4] = values[5] = 0
-        return ar.os.stat_result(values)
+        names = ('st_dev', 'st_ino', 'st_mode', 'st_nlink', 'st_size',
+                 'st_atime_ns', 'st_mtime_ns', 'st_ctime_ns')
+        return SimpleNamespace(**{name: getattr(info, name) for name in names}, st_uid=0, st_gid=0)
     monkeypatch.setattr(ar.os, 'fstat', lambda fd: root_info(original_fstat(fd)))
     monkeypatch.setattr(Path, 'lstat', lambda self: root_info(original_lstat(self)))
+    return path
+
+
+def test_protected_read_is_bounded_canonical_and_private(review_file):
+    path = review_file
     assert ar.read_review() == {'v': 1}
     for data, mode in [(b'{"v": 1}', 0o600), (b'{}', 0o644), (b'x'*(ar.LIMIT+1), 0o600),
                        (b'{"v":1,"v":1}', 0o600)]:
         path.write_bytes(data)
         path.chmod(mode)
         with pytest.raises((DockerError, ValueError)): ar.read_review()
+
+
+def test_normal_access_time_update_does_not_revoke_review(review_file, monkeypatch):
+    real_fstat = ar.os.fstat
+    calls = []
+    def accessed(fd):
+        info = real_fstat(fd)
+        calls.append(1)
+        info.st_atime_ns = 100 if len(calls) == 1 else 200
+        return info
+    monkeypatch.setattr(ar.os, 'fstat', accessed)
+    assert ar.read_review() == {'v': 1}
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize('field', ['st_dev', 'st_ino', 'st_mode', 'st_nlink', 'st_uid',
+                                 'st_gid', 'st_size', 'st_mtime_ns', 'st_ctime_ns'])
+def test_security_and_nanosecond_metadata_changes_still_revoke_review(review_file, monkeypatch, field):
+    real_fstat = ar.os.fstat
+    calls = []
+    def changed(fd):
+        info = real_fstat(fd)
+        calls.append(1)
+        if len(calls) == 2:
+            setattr(info, field, getattr(info, field) + 1)
+        return info
+    monkeypatch.setattr(ar.os, 'fstat', changed)
+    with pytest.raises(DockerError, match='production-review-changed'):
+        ar.read_review()
+
+
+@pytest.mark.parametrize('replacement', ['regular', 'symlink', 'same-size-rewrite'])
+def test_actual_path_replacement_or_rewrite_during_read_is_rejected(review_file, monkeypatch, replacement):
+    path = review_file
+    original_open = open
+    class ChangingStream:
+        def __init__(self, *args): self.stream = original_open(*args)
+        def __enter__(self): return self
+        def __exit__(self, *args): self.stream.close()
+        def fileno(self): return self.stream.fileno()
+        def read(self, limit):
+            raw = self.stream.read(limit)
+            if replacement == 'same-size-rewrite':
+                path.write_bytes(encode({'v': 2}).encode())
+            else:
+                other = path.with_name('replacement')
+                other.write_bytes(raw)
+                other.chmod(0o600)
+                if replacement == 'regular':
+                    other.replace(path)
+                else:
+                    path.unlink()
+                    path.symlink_to(other)
+            return raw
+    monkeypatch.setattr(ar, 'open', ChangingStream, raising=False)
+    with pytest.raises(DockerError, match='production-review-changed'):
+        ar.read_review()
 
 
 def test_shipped_bindings_still_raise():
