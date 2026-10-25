@@ -131,7 +131,7 @@ class CandidatePreflight:
             runtime = self.caddy.render().model
             gateway = {'runtime': runtime, 'routes': []}
             observed, plan = None, None
-        elif scope == 'first-project-router-rollout':
+        elif scope in ('first-project-router-rollout', 'update-project-router'):
             if self.provider is None or contracts.bootstrap_verified is not True:
                 raise DockerError('production-verified-bootstrap-required')
             fresh, observed, docker = self.provider.refresh()
@@ -140,11 +140,25 @@ class CandidatePreflight:
             app = desired.applications[0]
             if len(app.spec['components']) != 1 or app.spec['components'][0]['image'] != self.image:
                 raise DockerError('production-release-image-mismatch')
-            if any(a['id'] == app.id for a in observed.document['applications']):
+            present = [a for a in observed.document['applications'] if a['id'] == app.id]
+            if scope == 'first-project-router-rollout' and present:
                 raise DockerError('production-first-rollout-already-present')
             plan = build_reconciliation_plan(desired, observed)
             operations = deployment_preview(desired, observed, plan, app.id)
-            if (any(o.eligibility == 'blocked' or o.action != 'create' for o in operations) or
+            allowed = ('create',) if scope == 'first-project-router-rollout' else ('update-component', 'no-op')
+            if scope == 'update-project-router':
+                if len(present) != 1 or present[0]['storage'] != app.spec['storage'] or app.spec['storage']['type'] != 'stateless':
+                    raise DockerError('production-image-update-baseline-required')
+                old = present[0]
+                if (old['route']['existence'] != 'present' or old['route']['configuration'] != app.spec['ingress'] or
+                    old['configRefs'] != app.spec['configRefs'] or old['secretRefs'] != app.spec['secretRefs'] or
+                    len(old['components']) != len(app.spec['components'])):
+                    raise DockerError('production-image-only-contract-required')
+                for component in app.spec['components']:
+                    matches = [c for c in old['components'] if c['name'] == component['name']]
+                    if len(matches) != 1 or matches[0]['runtime'] != {k: v for k, v in component.items() if k not in ('name', 'image')}:
+                        raise DockerError('production-image-only-contract-required')
+            if (not operations or any(o.eligibility == 'blocked' or o.action not in allowed for o in operations) or
                 preflight_resources(app, render_compose(app), docker)):
                 raise DockerError('production-plan-preflight-blocked')
             runtime = {'compose': render_compose(app).model, 'docker': asdict(docker), 'observed': observed.document}

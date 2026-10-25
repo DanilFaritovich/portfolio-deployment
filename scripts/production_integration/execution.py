@@ -1,6 +1,6 @@
 """One-shot transaction coordinator over the Stage 05/06 engine, never a daemon."""
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import time
 import re
 
@@ -31,9 +31,48 @@ class ExecutionGrant:
 
 class ProductionLifecycle(RehearsalLifecycle):
     """Same step/rollback/readiness/gateway/LKG logic; distinct authenticated open."""
-    def __init__(self, journal, grant, probes, *, gateway, **kwargs):
+    def __init__(self, journal, grant, probes, *, gateway, public_acceptance=None, **kwargs):
         super().__init__(journal.directory, probes, gateway=gateway, run_id=grant.claims.nonce, **kwargs)
         self.production_journal, self.grant = journal, grant
+        self.public_acceptance, self.pending_success = public_acceptance, {}
+
+    def _transition(self, name, state, reason, evidence=None):
+        # Delay successful attempt publication until the public release gate.
+        # This keeps the existing verifying -> failed -> rollback transitions;
+        # no journal schema migration or success -> failed rewrite is needed.
+        if self.public_acceptance is not None and state == 'succeeded':
+            self.pending_success[name] = (reason, evidence)
+            return
+        self.pending_success.pop(name, None)
+        return super()._transition(name, state, reason, evidence)
+
+    def complete(self, results):
+        if self.public_acceptance is not None and all(r.status == 'succeeded' for r in results):
+            try:
+                self.public_acceptance.verify(self.app)
+            except Exception:
+                changed = []
+                for result in results:
+                    name = result.operation.component
+                    self._transition(name, 'failed', 'gateway-unverified')
+                    changed.append(self._rollback(result.operation) if result.operation.action != 'no-op'
+                                   else replace(result, status='recovery-required', reasons=('gateway-unverified',)))
+                results = changed
+            else:
+                for name, (reason, evidence) in tuple(self.pending_success.items()):
+                    super()._transition(name, 'succeeded', reason, evidence)
+                self.pending_success.clear()
+        if self.public_acceptance is not None and any(r.status == 'rolled-back-verified' for r in results):
+            try:
+                spec = self.app.spec
+                for c in spec['components']:
+                    c['image'] = self.previous[c['name']]
+                from scripts.reconciliation import encode
+                self.public_acceptance.verify(replace(self.app, spec_json=encode(spec)))
+            except Exception:
+                self.journal.fail_run(self.run_id, 'gateway-unverified')
+                return [replace(r, status='recovery-required', reasons=('gateway-unverified',)) for r in results]
+        return super().complete(results)
 
     @contextmanager
     def open(self, lease, adapter, provider):
@@ -65,12 +104,13 @@ class ProductionExecutor:
     """
     def __init__(self, *, installation, preflight, journal_directory, approval_verifier=None,
                  release_factory=None, adapter_factory=None, probes=None, gateway=None,
-                 bootstrap=None, image_preparation=None, lifecycle_options=None, clock=time.time):
+                 bootstrap=None, image_preparation=None, lifecycle_options=None, clock=time.time, completion=None):
         self.installation, self.preflight, self.directory = installation, preflight, journal_directory
         self.verifier, self.release_factory, self.adapter_factory = approval_verifier, release_factory, adapter_factory
         self.probes, self.gateway, self.bootstrap = probes, gateway, bootstrap
         self.image_preparation = image_preparation
         self.lifecycle_options, self.clock = lifecycle_options or {}, clock
+        self.completion = completion
 
     def run(self, candidate, envelope):
         grant = None
@@ -106,7 +146,7 @@ class ProductionExecutor:
                 # Re-authenticate after potentially slow release/lock/observations.
                 claims = review_approval(candidate, envelope, verifier=self.verifier, now=self.clock())
                 with Journal(self.directory, lease) as journal:
-                    if candidate.scope == 'first-project-router-rollout' and not journal.production_bootstrap(candidate.host, candidate.daemon):
+                    if candidate.scope in ('first-project-router-rollout', 'update-project-router') and not journal.production_bootstrap(candidate.host, candidate.daemon):
                         raise DockerError('production-bootstrap-journal-baseline-required')
                     if candidate.scope == 'first-bootstrap' and journal.last_good('manager-bootstrap', 'gateway') is not None:
                         raise DockerError('production-first-bootstrap-already-recorded')
@@ -135,6 +175,8 @@ class ProductionExecutor:
                                               self.preflight.provider, lifecycle=lifecycle, lease=lease)
                             success = bool(results) and all(r.release_success for r in results)
                         state = 'succeeded' if success else ('recovery-required' if journal.incomplete() else 'blocked')
+                        if success and self.completion is not None:
+                            self.completion(candidate, lease)
                         journal.finish_authorization(claims.nonce, state)
                         return ProductionResult(state, identity, () if success else ('production-execution-incomplete',), results)
                     except Exception:

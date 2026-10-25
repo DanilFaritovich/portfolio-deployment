@@ -22,13 +22,20 @@ def owner(app, component=None):
 
 
 class Reader:
-    def __init__(self, root, revision, adapter, images, gateway, probes):
+    def __init__(self, root, revision, adapter, images, gateway, probes, *, local_scope=None):
         self.root, self.revision, self.adapter = root, revision, adapter
         self.images, self.gateway, self.probes = images, gateway, probes
         self.endpoints, self.actual = {}, {}
+        self.local_scope = local_scope
 
     def __call__(self):
-        self.adapter.guest.validate()
+        if self.local_scope is None:
+            self.adapter.guest.validate()
+        else:
+            from scripts.docker_adapter import LocalScope
+            require(type(self.local_scope) is LocalScope and self.local_scope is self.adapter.scope,
+                    'explicit-disposable-local-scope-required')
+            self.local_scope.validate()
         desired = build_desired_state(self.root, self.revision)
         require(0 < len(desired.applications) <= 16, "bounded-test-registry-required")
         require(all(a.id.startswith("e2e-") and a.source_repository == "fixtures/local-e2e" and
