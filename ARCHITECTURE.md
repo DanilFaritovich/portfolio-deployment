@@ -25,8 +25,9 @@ workflow context. Requests are exclusively published before execution; existing
 executor nonce consumption and under-lock revalidation remain mandatory.
 Hourly first-phase review is retained for bootstrap, not renewed by automation.
 Standing authority does not replace fresh Engine, ACTIVE, storage, journal or
-readiness evidence. First bootstrap and first rollout use the original signed
-production mechanisms during the separately approved setup window.
+readiness evidence. `production-bootstrap.yml` coordinates first installation,
+bootstrap and first rollout through the original signed production mechanisms
+during the separately approved setup window.
 
 Manager updates reuse `ManagerBundleVerifier`, preserve a whole previous sealed
 tree and atomically exchange directories under the canonical host flock. The
@@ -61,9 +62,47 @@ requires a short-lived root-published exact-kit/machine decision and never start
 an executor. Environment configuration supplies pinned host keys, immutable CD
 client SHA, reviewed binding bytes and the two delegated keys. Initial observation
 is the explicit `observe-initial` dispatch, granting no deployment authority.
-Production installation, bootstrap, first rollout and both live CD chains remain
-unperformed until separately authorized. Publishing artifacts or passing local
-checks does not establish production CD.
+Production Bootstrap is an explicit protected-main `workflow_dispatch` in the same
+`production` Environment and concurrency group as Manager CD. It uses the reviewed
+immutable `CD_MANAGER_CLIENT_SHA`, the existing pinned-host SSH client and an
+exact-SHA successful Offline CI gate before host contact. `install` fetches only
+the selected Manager release run/attempt artifact. The independent capsule reuses
+`ManagerReleaseVerifier` (protected source, exact tree/dependencies and signed
+GitHub provenance), requires the standing policy's initial Manager SHA, then invokes
+the independently installed stdlib helper. A separately published, short-lived
+exact-bundle administrative decision remains mandatory and is consumed by the
+helper. Existing Manager directories, dangling links and conflicting intake bytes
+block this path; it cannot update or repair a Manager.
+
+For each of `first-bootstrap`, `prepare-project-router-image` and
+`first-project-router-rollout`, `prepare` exports the exact candidate as a bounded
+Actions artifact. After independent review/signing, `execute` accepts
+`approval_b64`: base64 of canonical JSON with exactly `candidate` and `envelope`
+(the existing base64 operator SSHSIG envelope). Actions never receives an operator
+private key or signs these approvals. A separately inventoried capsule entry
+verifies the sealed installed tree and calls its unchanged `bindings.build` and
+`ProductionExecutor`; exact-candidate revalidation under flock, source/signature
+checks, nonce consumption, journal/LKG, readiness and recovery fences remain there.
+The existing independent HTTPS witness runs alongside first rollout. Preparation
+is read-only; failed or unknown execution is never automatically replayed.
+
+First-use prerequisites are the prepared infrastructure host; independently
+reviewed bootstrap helper, operator trust, fixed bindings, external tool/token/CA
+pins and CD capsule/account; the signed standing policy and protected Environment
+variables/secrets already described above. Include the operator trust file in the
+capsule's external inventory. Publish the exact installation decision before
+`install`, and fresh administrative phase reviews before collecting/signing each
+candidate. The empty-host → rollout transition still requires independent review
+of actual inodes/runtime IDs; Actions cannot manufacture or renew that authority.
+Environment approval and operator-signature freshness are separate gates: allow
+for approval delays and re-review expired candidates. Subsequent main updates use
+the existing Manager CD, including whole-tree rollback and separately signed
+recovery. The capsule entry supports an already installed sealed Manager without
+changing its frozen bindings, launcher or journal schema; an older capsule needs
+separate administrative review/installation of this capability, never self-update
+through Manager CD. Production installation, bootstrap, first rollout and both live
+CD chains remain unperformed until separately authorized. Publishing artifacts or
+passing local checks does not establish production CD.
 
 ## Status and scope
 
