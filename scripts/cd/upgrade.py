@@ -169,6 +169,7 @@ class ManagerUpdater:
             record['new_inventory'] = verify_tree(staged, active_root=self.root, uid=os.geteuid())
             self.policy.current()
             self.installation.verify()
+            self.quiescent(lease)
             review_approval(candidate,envelope,verifier=Verifier(),now=time.time())
             record['status'] = 'switch-intent'
             durable_replace(self.state, name, json.dumps(record).encode())
