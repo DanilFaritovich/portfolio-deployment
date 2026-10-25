@@ -48,6 +48,18 @@ class ImageRelease:
         return self
 
 
+def require_forward_release(previous, target, github):
+    """Out-of-order completed workflows must never downgrade a healthy source."""
+    previous.validate()
+    target.validate()
+    if previous.source_sha == target.source_sha:
+        return target
+    comparison=github.get(PRODUCER,'/compare/'+previous.source_sha+'...'+target.source_sha)
+    require(comparison['status']=='ahead' and comparison['base_commit']['sha']==previous.source_sha and
+            comparison['merge_base_commit']['sha']==previous.source_sha,'cd-application-source-downgrade-forbidden')
+    return target
+
+
 class ImageReleaseVerifier:
     def __init__(self, policy, github, registry, crypto):
         self.policy, self.github, self.registry, self.crypto = policy, github, registry, crypto

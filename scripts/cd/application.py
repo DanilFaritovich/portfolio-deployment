@@ -8,7 +8,7 @@ import time
 
 from scripts.cd.host import StandingReview
 from scripts.cd.policy import AutomationVerifier, pin, read_policy
-from scripts.cd.release import ImageRelease, ImageReleaseVerifier, ProjectedContent
+from scripts.cd.release import ImageRelease, ImageReleaseVerifier, ProjectedContent, require_forward_release
 from scripts.production_integration.artifacts import bind_engine_image
 from scripts.production_integration.authorization import OperationCandidate
 from scripts.production_integration.candidate import hashed
@@ -95,6 +95,7 @@ def compose(installation, standing, fixed, release):
         previous = ImageRelease(**json.loads(CURRENT.read_bytes())).validate()
     else:
         previous = ImageRelease(**standing.document['application']['initial_release']).validate()
+    require_forward_release(previous,release,github)
     # Stored current-release is written only after journal promotion under flock.
     # The initial baseline is explicitly bound by the operator-signed policy.
     content = ProjectedContent(installation, standing, release)

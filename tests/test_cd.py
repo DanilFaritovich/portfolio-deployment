@@ -378,3 +378,15 @@ def test_observer_accepts_pinned_ca_bundle_larger_than_request_header(tmp_path,m
     monkeypatch.setattr(bridge,'STATE',tmp_path)
     monkeypatch.setattr(bridge,'protected',lambda path:None)
     assert bridge.observe(SimpleNamespace(identity=challenge['policy_id']))==challenge
+
+
+@pytest.mark.parametrize('status,base,accepted',[('ahead',BASE,True),('behind',BASE,False),('diverged',BASE,False),('ahead',NEXT,False)])
+def test_delayed_workflow_cannot_downgrade_application_source(status,base,accepted):
+    from scripts.cd.release import require_forward_release
+    previous=ImageRelease(BASE,IMAGE,'c'*64,'1','1')
+    target=replace(previous,source_sha=NEXT)
+    github=SimpleNamespace(get=lambda repo,path:{'status':status,'base_commit':{'sha':BASE},'merge_base_commit':{'sha':base}})
+    if accepted:assert require_forward_release(previous,target,github)==target
+    else:
+        with pytest.raises(DockerError,match='source-downgrade'):
+            require_forward_release(previous,target,github)
