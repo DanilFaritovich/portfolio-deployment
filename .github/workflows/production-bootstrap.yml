@@ -1,0 +1,104 @@
+name: Production Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Install approved bundle, collect candidate, or execute operator-signed candidate
+        type: choice
+        options: [prepare, install, execute]
+        required: true
+      scope:
+        description: Separately reviewed first-phase operation (ignored for install)
+        type: choice
+        options: [first-bootstrap, prepare-project-router-image, first-project-router-rollout]
+        required: true
+      manager_sha:
+        description: Exact reviewed protected-main Manager SHA
+        type: string
+        required: true
+      release_run:
+        description: Manager trusted release run ID (install only)
+        type: string
+        required: false
+      release_attempt:
+        description: Manager trusted release run attempt (install only)
+        type: string
+        required: false
+      approval_b64:
+        description: Base64 JSON candidate + original operator envelope (execute only; no private key)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+
+# Shared with normal Manager CD. Canonical host flock also serializes other repos.
+concurrency:
+  group: production-cd-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    if: github.repository == 'DanilFaritovich/portfolio-deployment' && github.ref == 'refs/heads/main' && github.ref_protected
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - name: Require reviewed immutable client and exact inputs
+        env:
+          CLIENT_SHA: ${{ vars.CD_MANAGER_CLIENT_SHA }}
+          MANAGER_SHA: ${{ inputs.manager_sha }}
+          ACTION: ${{ inputs.action }}
+          RELEASE_RUN: ${{ inputs.release_run }}
+          RELEASE_ATTEMPT: ${{ inputs.release_attempt }}
+        run: |
+          python - <<'PY'
+          import os, re
+          for name in ('CLIENT_SHA', 'MANAGER_SHA'):
+              assert re.fullmatch('[0-9a-f]{40}', os.environ[name]), 'Exact reviewed SHA required'
+          if os.environ['ACTION'] == 'install':
+              for name in ('RELEASE_RUN', 'RELEASE_ATTEMPT'):
+                  assert re.fullmatch('[1-9][0-9]{0,19}', os.environ[name]), 'Exact release run/attempt required'
+          PY
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: DanilFaritovich/portfolio-deployment
+          ref: ${{ vars.CD_MANAGER_CLIENT_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.12'
+      - run: python -m pip install --quiet -r requirements-dev.txt
+      - name: Fetch exact release bundle as untrusted data
+        if: inputs.action == 'install'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: manager-release-${{ inputs.manager_sha }}-${{ inputs.release_attempt }}
+          run-id: ${{ inputs.release_run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/bootstrap
+      - name: Run through restricted bridge and unchanged production executor
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+          BOOTSTRAP_ACTION: ${{ inputs.action }}
+          BOOTSTRAP_SCOPE: ${{ inputs.scope }}
+          BOOTSTRAP_MANAGER_SHA: ${{ inputs.manager_sha }}
+          BOOTSTRAP_APPROVAL_B64: ${{ inputs.approval_b64 }}
+          CD_HOST: ${{ vars.CD_HOST }}
+          CD_USER: ${{ vars.CD_USER }}
+          CD_KNOWN_HOSTS_B64: ${{ vars.CD_KNOWN_HOSTS_B64 }}
+          CD_POLICY_ID: ${{ vars.CD_POLICY_ID }}
+          CD_OBSERVER_PRINCIPAL: ${{ vars.CD_OBSERVER_PRINCIPAL }}
+          CD_AUTOMATION_KEY_B64: ${{ secrets.CD_AUTOMATION_KEY_B64 }}
+          CD_OBSERVER_KEY_B64: ${{ secrets.CD_OBSERVER_KEY_B64 }}
+        run: python -m scripts.cd.bootstrap_runner "$RUNNER_TEMP/bootstrap"
+      - name: Retain bounded result or candidate for independent signing
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bootstrap-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/bootstrap/bootstrap-result.json
+          if-no-files-found: error
+          retention-days: 30
