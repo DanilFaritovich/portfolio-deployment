@@ -199,3 +199,20 @@ def test_empty_caddy_validation_requires_independent_resources_and_pin(monkeypat
     with pytest.raises(DockerError): binding.validate_empty(runtime, 'arbitrary route')
     installation.files = ()
     with pytest.raises(DockerError): binding.validate_empty(runtime, content(()))
+
+
+@pytest.mark.parametrize('suffix', ['-journal', '-wal', '-shm'])
+@pytest.mark.parametrize('symlink', [False, True])
+def test_absent_database_with_sidecar_never_qualifies_for_initial_update(journal_source, suffix, symlink):
+    directory, locks = journal_source
+    sidecar = directory / ('journal.sqlite3' + suffix)
+    if symlink:
+        sidecar.symlink_to(directory / 'missing')
+    else:
+        sidecar.write_bytes(b'recovery evidence')
+    inode = sidecar.lstat().st_ino
+    with host_lock(locks) as lease:
+        with pytest.raises(DockerError, match='recovery-sidecar-present'):
+            ReadOnlyJournalSource().read(lease)
+    assert not (directory / 'journal.sqlite3').exists()
+    assert sidecar.lstat().st_ino == inode

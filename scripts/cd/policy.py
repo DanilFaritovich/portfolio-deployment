@@ -43,7 +43,10 @@ class StandingPolicy:
 
     def validate(self):
         d = self.document
-        require(type(d) is dict and set(d) == FIELDS and d['version'] == 1, 'cd-policy-fields-invalid')
+        require(type(d) is dict and set(d) in (FIELDS, FIELDS | {'initial_journal'}) and
+                d['version'] == 1, 'cd-policy-fields-invalid')
+        require('initial_journal' not in d or d['initial_journal'] == 'reviewed-empty-host',
+                'cd-initial-journal-policy-invalid')
         require(type(d['id']) is str and re.fullmatch(r'[0-9a-f]{32}', d['id']) and
                 re.fullmatch(r'[0-9a-f]{32}', d['host']) and
                 type(d['daemon']) is str and 0 < len(d['daemon']) <= 128 and

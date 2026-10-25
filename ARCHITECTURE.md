@@ -38,6 +38,16 @@ recovery. Filesystem upgrade receipts live outside the application SQLite journa
 so an older Manager can still read its unchanged journal after rollback. No
 schema migration, unit replacement or modification of `/srv/portfolio` occurs.
 
+An absent journal blocks Manager updates by default. The signed optional
+`initial_journal: reviewed-empty-host` permission covers only the initial Manager
+lineage before a successful update, with a fresh `empty-host` administrative
+review and complete matching live empty-host evidence under the canonical lock.
+Quiescence is rechecked before exchange. Observing an existing journal writes a
+durable capsule-state establishment receipt; later journal loss stays blocked.
+Pending first-exchange recovery additionally binds the exact recorded new tree
+and requires fresh administrative review for its installed SHA plus the existing
+separate operator recovery signature. No SQLite file is initialized by this gate.
+
 Application CD projects only image/release claims into the sealed template and
 reruns complete existing admission. Verified current/target contracts feed the
 existing observation ports. `update-project-router` accepts only a present

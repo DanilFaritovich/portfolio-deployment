@@ -18,7 +18,6 @@ from scripts.cd.upgrade import ManagerUpdater, ROOT, STATE, verify_tree
 from scripts.production_integration.authorization import OperationCandidate
 from scripts.production_integration.gateway_write import durable_replace
 from scripts.production_integration.installation import SealedInstallation, protected
-from scripts.production_integration.local_sources import ReadOnlyJournalSource
 from scripts.production_integration.locking import production_host_lock
 from scripts.production_integration.observations import require
 from scripts.production_integration.operator_approval import canonical, closed_json, authenticate_signed
@@ -65,10 +64,11 @@ def manager_verifier(policy):
 
 def updater(installed, policy):
     def quiescent(lease):
-        state = ReadOnlyJournalSource().read(lease)
-        require(not state['incomplete'] and not state['authorizations'], 'cd-journal-recovery-required')
-    return ManagerUpdater(policy=policy, installation=installed, bundle_verifier=manager_verifier(policy),
+        from scripts.cd.quiescence import check
+        check(manager, lease)
+    manager = ManagerUpdater(policy=policy, installation=installed, bundle_verifier=manager_verifier(policy),
         lock=production_host_lock, quiescent=quiescent, health=manager_health)
+    return manager
 
 
 def observe(policy):
