@@ -134,3 +134,42 @@ def test_initial_bootstrap_can_establish_policy_but_rollout_requires_it(monkeypa
 def test_unclassified_errors_never_echo_exception_text(error,capsys):
     runner.report_failure(error)
     assert 'PRIVATE-SENTINEL' not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('port,expected', [(None,'22'),('','22'),('22','22'),('2222','2222'),('65535','65535')])
+def test_explicit_ssh_port_preserves_strict_host_check(client,tmp_path,monkeypatch,port,expected):
+    if port is None:monkeypatch.delenv('CD_PORT',raising=False)
+    else:monkeypatch.setenv('CD_PORT',port)
+    directory=tmp_path/'port-client'
+    directory.mkdir()
+    configured=runner.Client(directory)
+    commands=[]
+    def run(argv,**kwargs):
+        commands.append(argv)
+        return SimpleNamespace(returncode=0,stdout=b'{"status":"prepared"}',stderr=b'')
+    monkeypatch.setattr(runner.subprocess,'run',run)
+    configured.call({'op':'manager-prepare'})
+    argv=commands[0]
+    assert argv[argv.index('-p')+1]==expected
+    assert '-oStrictHostKeyChecking=yes' in argv
+    assert '-oIdentityAgent=none' in argv and '-oIdentitiesOnly=yes' in argv
+    assert argv[-2:]==['portfolio-cd@example.invalid','portfolio-cd-v1']
+
+
+@pytest.mark.parametrize('port',['0','65536','-1','+2222','02222','2222 PRIVATE-SENTINEL','999999999999999999999',' 2222'])
+def test_invalid_port_is_rejected_before_key_files(client,monkeypatch,capsys,port):
+    monkeypatch.setenv('CD_PORT',port)
+    with pytest.raises(DockerError,match='cd-ssh-port-invalid') as caught:
+        runner.Client('/does-not-exist-or-materialize-keys')
+    runner.report_failure(caught.value)
+    assert 'PRIVATE-SENTINEL' not in capsys.readouterr().out
+
+
+def test_both_workflows_forward_the_configured_ssh_port():
+    from pathlib import Path
+    import yaml
+    root=Path(__file__).resolve().parents[1]
+    for name,job in [('cd-deploy.yml','deploy'),('production-bootstrap.yml','bootstrap')]:
+        workflow=yaml.load((root/'.github/workflows'/name).read_text(),Loader=yaml.BaseLoader)
+        step=next(s for s in workflow['jobs'][job]['steps'] if 'CD_HOST' in s.get('env',{}))
+        assert step['env']['CD_PORT']=='${{ vars.CD_PORT }}'

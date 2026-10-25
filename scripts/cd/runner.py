@@ -25,6 +25,7 @@ from scripts.production_integration.candidate import hashed
 
 
 DIAGNOSTICS = {
+    'cd-ssh-port-invalid': 'configure CD_PORT as a decimal SSH port between 1 and 65535',
     'cd-policy-id-required': 'configure CD_POLICY_ID from the exact operator-approved signed standing policy; complete administrative bootstrap first',
     'cd-ssh-authentication-failed': 'SSH authentication failed; check the restricted account/key installation',
     'cd-ssh-host-key-mismatch': 'SSH host identity was rejected; verify pinned host keys independently',
@@ -60,6 +61,9 @@ class Client:
         host, user = os.environ['CD_HOST'], os.environ['CD_USER']
         require(re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}', host) and
                 re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', user) and user != 'root', 'cd-ssh-target-invalid')
+        port = os.environ.get('CD_PORT') or '22'
+        require(re.fullmatch(r'[1-9][0-9]{0,4}', port) is not None and int(port) <= 65535,
+                'cd-ssh-port-invalid')
         self.target = user + '@' + host
         self.keys = {}
         for role in roles:
@@ -70,7 +74,7 @@ class Client:
         known = self.directory / 'known_hosts'
         known.write_bytes(base64.b64decode(os.environ['CD_KNOWN_HOSTS_B64'], validate=True))
         require(known.stat().st_size > 0, 'cd-known-host-required')
-        self.options = ['ssh', '-F', '/dev/null', '-oBatchMode=yes', '-oIdentitiesOnly=yes', '-oIdentityAgent=none',
+        self.options = ['ssh', '-F', '/dev/null', '-p', port, '-oBatchMode=yes', '-oIdentitiesOnly=yes', '-oIdentityAgent=none',
             '-oStrictHostKeyChecking=yes', '-oUserKnownHostsFile=' + str(known), '-oClearAllForwardings=yes',
             '-oRequestTTY=no', '-oPermitLocalCommand=no', '-oProxyCommand=none', '-oConnectTimeout=10']
 
