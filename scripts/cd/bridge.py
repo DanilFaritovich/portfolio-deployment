@@ -53,17 +53,21 @@ def manager_health(root, revision):
     return None
 
 
-def updater(installed, policy):
+def manager_verifier(policy):
     # This copy is an approved capsule binding, not the candidate's bindings.py.
     import cd_bindings
     fixed = cd_bindings.POLICY
     github, _, _, _ = release_ports(fixed)
     crypto = AttestationVerifier(GH, fixed.gh_sha256, SIGSTORE_ROOT, fixed.sigstore_root_sha256,
                                 repository='DanilFaritovich/portfolio-deployment', subject_limit=LIMIT)
+    return ManagerReleaseVerifier(policy, github, crypto)
+
+
+def updater(installed, policy):
     def quiescent(lease):
         state = ReadOnlyJournalSource().read(lease)
         require(not state['incomplete'] and not state['authorizations'], 'cd-journal-recovery-required')
-    return ManagerUpdater(policy=policy, installation=installed, bundle_verifier=ManagerReleaseVerifier(policy, github, crypto),
+    return ManagerUpdater(policy=policy, installation=installed, bundle_verifier=manager_verifier(policy),
         lock=production_host_lock, quiescent=quiescent, health=manager_health)
 
 
@@ -126,6 +130,9 @@ def publish_request(policy, candidate, envelope, request):
 def handle(role, request, stream):
     require(role in ('automation', 'observer') and type(request) is dict and type(request.get('op')) is str,
             'cd-bridge-request-invalid')
+    if role == 'automation' and request['op'] == 'bootstrap-install':
+        from scripts.cd.bootstrap import install
+        return install(request, stream)
     installed = installation()
     policy = installed_policy(installed)
     if role == 'observer':
@@ -134,6 +141,9 @@ def handle(role, request, stream):
         return observe(policy) if request['op'] == 'observe' else witness(policy, request['receipt'])
     manager = updater(installed, policy)
     manager.fenced()
+    if request['op'] in ('bootstrap-prepare', 'bootstrap-execute'):
+        from scripts.cd.bootstrap import operation
+        return operation(request)
     if request['op'] == 'application':
         require(set(request) in ({'op', 'request'}, {'op', 'request', 'context'}), 'cd-application-fields-invalid')
         if request['request'].get('op') == 'execute':
