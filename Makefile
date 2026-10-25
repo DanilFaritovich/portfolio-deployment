@@ -206,7 +206,7 @@ production-host-evidence:
 
 .PHONY: cd-check cd-integration
 cd-check:
-	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_cd.py tests/test_cd_lifecycle.py tests/test_cd_setup.py tests/test_bootstrap_network_inventory.py
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_cd.py tests/test_cd_lifecycle.py tests/test_cd_setup.py tests/test_cd_bootstrap.py tests/test_bootstrap_network_inventory.py
 
 # Explicit disposable local fixture namespace; never part of offline checks.
 export CD_TEST_ENDPOINT CD_TEST_IMAGES CD_TEST_EVIDENCE CD_TEST_AUTHORIZE

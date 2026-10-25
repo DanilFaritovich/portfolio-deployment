@@ -32,6 +32,7 @@ def export(repository, *, assets, bindings, external_pins, signed_policy):
                 files['capsule/' + name] = path.read_bytes()
     files['capsule/installation/operator_bootstrap.py'] = (repository/'installation/operator_bootstrap.py').read_bytes()
     files['capsule/cd_launcher.py'] = (repository/'installation/cd_launcher.py').read_bytes()
+    files['capsule/bootstrap_entry.py'] = (repository/'installation/bootstrap_entry.py').read_bytes()
     files['capsule/health_check.py'] = (repository/'installation/cd_health_check.py').read_bytes()
     files['capsule/cd_bindings.py'] = bindings
     for name, raw in assets.items():
