@@ -5,13 +5,13 @@ It is not loaded from inspection JSON and cannot approve backup/console drills.
 Those require a separate installed evidence authority on every collection.
 """
 from dataclasses import asdict, dataclass
-import ipaddress
 import os
 from pathlib import Path
 import stat
 import time
 
 from scripts.docker_adapter import DockerError
+from scripts.production_integration.network_inventory import network_subnets
 from scripts.docker_discovery import discover
 from scripts.planning_inputs import parse_snapshot
 from scripts.production_integration.candidate import HostContracts, hashed
@@ -100,30 +100,16 @@ def network_facts(host, docker):
 
 def validate_network_inventory(docker):
     for resource in docker.resources:
-        if resource.kind != 'network':
-            continue
-        f = resource.facts
-        if f.get('driver') in ('host', 'null'):
-            require(resource.name in ('host', 'none') and f.get('scope') == 'local',
-                    'production-host-network-ipam-unknown')
-            continue
-        require(f.get('driver') == 'bridge' and f.get('scope') == 'local' and
-                isinstance(f.get('ipam'), dict) and f['ipam'].get('Driver') == 'default' and
-                bool(f['ipam'].get('Config')), 'production-host-network-ipam-unknown')
-        try:
-            for config in f['ipam']['Config']:
-                subnet = ipaddress.ip_network(config['Subnet'], strict=True)
-                if config.get('Gateway') and ipaddress.ip_address(config['Gateway']) not in subnet:
-                    raise ValueError
-        except (TypeError, KeyError, ValueError):
-            raise DockerError('production-host-network-ipam-unknown') from None
+        if resource.kind == 'network':
+            network_subnets(resource)
 
 
 class PolicyHostContracts:
     def __init__(self, installation, engine, local, journal, policy, *, prerequisites=None,
-                 contents=storage_contents, clock=time.monotonic):
+                 contents=storage_contents, clock=time.monotonic, facts_policy=None):
         self.installation, self.engine, self.local, self.journal = installation, engine, local, journal
         self.policy, self.prerequisites, self.contents, self.clock = policy, prerequisites, contents, clock
+        self.facts_policy = facts_policy
         self.last = None
 
     def collect(self):
@@ -150,9 +136,13 @@ class PolicyHostContracts:
         require(host.identity == identity and docker.complete, 'production-host-inventory-incomplete')
         validate_network_inventory(docker)
         network, contents = network_facts(host, docker), self.contents()
-        require(hashed(network) == p.network_hash and hashed(asdict(docker)) == p.resources_hash,
-                'production-host-network-or-resource-policy-mismatch')
-        require(hashed(contents) == p.storage_hash and {r['path'] for r in host.storage} == set(PATHS) and
+        if self.facts_policy is None:
+            require(hashed(network) == p.network_hash and hashed(asdict(docker)) == p.resources_hash,
+                    'production-host-network-or-resource-policy-mismatch')
+            require(hashed(contents) == p.storage_hash, 'production-host-storage-policy-mismatch')
+        else:
+            self.facts_policy.validate_facts(p, host, docker, network, contents)
+        require({r['path'] for r in host.storage} == set(PATHS) and
                 all(r['availableBytes'] >= p.minimum_bytes and r['availableInodes'] >= p.minimum_inodes
                     and r['uid'] == r['gid'] == 0 and r['mode'] == 0o700 for r in host.storage),
                 'production-host-storage-policy-mismatch')

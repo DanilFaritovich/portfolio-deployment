@@ -1,5 +1,70 @@
 # Portfolio Deployment architecture
 
+## Minimal continuous delivery — implementation, production activation pending
+
+Protected `main` now has two delivery paths. Manager `manager-release.yml` waits
+for successful exact-SHA Offline CI, builds the same bundle twice from Git objects
+and existing pinned wheels/Caddy, and signs its exact digest with GitHub artifact
+attestations. `cd-deploy.yml` consumes only a completed successful main-push release.
+ProjectRouter publishes a signed `public-content/v1` predicate over HTML extracted
+from the exact OCI digest; its completed-CI workflow calls the same CD client.
+
+The root-owned CD verifier capsule is installed independently at
+`/usr/local/lib/portfolio-deployment-cd`, outside `/opt/portfolio-deployment`.
+Its launcher checks the complete capsule/tool inventory before imports. The
+fixed `portfolio-cd` account has two restricted forced-command keys, no shell
+capability through those keys, no forwarding, no Docker group and only exact
+sudoers commands for automation/observer intake. Operator recovery is absent
+from that account's allowed commands. Actions receives no operator private key.
+
+An operator-signed standing policy binds the host/daemon, separate automation and
+observer identities, reviewed workflow contents, bundle dependencies/frozen files,
+application template and independently reviewed host invariants. Every mutation
+also needs a short-lived exact-candidate SSHSIG approval and authenticated run/
+workflow context. Requests are exclusively published before execution; existing
+executor nonce consumption and under-lock revalidation remain mandatory.
+Hourly first-phase review is retained for bootstrap, not renewed by automation.
+Standing authority does not replace fresh Engine, ACTIVE, storage, journal or
+readiness evidence. First bootstrap and first rollout use the original signed
+production mechanisms during the separately approved setup window.
+
+Manager updates reuse `ManagerBundleVerifier`, preserve a whole previous sealed
+tree and atomically exchange directories under the canonical host flock. The
+fixed activation path remains a real directory. Import/integrity checks gate
+success; a definite failed health result restores the old tree. Exceptions or
+interrupted intent fence subsequent delivery until separately signed operator
+recovery. Filesystem upgrade receipts live outside the application SQLite journal
+so an older Manager can still read its unchanged journal after rollback. No
+schema migration, unit replacement or modification of `/srv/portfolio` occurs.
+
+Application CD projects only image/release claims into the sealed template and
+reruns complete existing admission. Verified current/target contracts feed the
+existing observation ports. `update-project-router` accepts only a present
+stateless image-only update; exact no-op performs health/public acceptance without
+writing journal/LKG or recreating containers. A delayed success transition keeps
+the existing rollback path available until public HTTPS and the separate SSHSIG
+witness pass. The gateway remains unchanged during image-only updates.
+
+Offline checks include `make cd-check`. Explicit `make cd-integration` requires
+`CD_TEST_ENDPOINT`, `CD_TEST_IMAGES`, a new `CD_TEST_EVIDENCE` directory and
+`CD_TEST_AUTHORIZE=disposable-cd-integration`. Its fixture-only local Engine
+adapter reuses the existing executor, E2E reader/probes and journal; its loopback
+TLS proxy is test infrastructure, not production DNS/ACME acceptance. It retains
+volumes, images and evidence and removes only owned test containers/empty networks.
+
+One-time setup must independently review/install `installation/cd_setup.py`,
+create the locked-down `portfolio-cd` account through the approved administrative
+channel, approve a signed standing policy and capsule kit, then provision the
+`production-release`/`production` GitHub Environments on the two repositories.
+`python -m scripts.cd.package --help` exports the kit offline; the setup helper
+requires a short-lived root-published exact-kit/machine decision and never starts
+an executor. Environment configuration supplies pinned host keys, immutable CD
+client SHA, reviewed binding bytes and the two delegated keys. Initial observation
+is the explicit `observe-initial` dispatch, granting no deployment authority.
+Production installation, bootstrap, first rollout and both live CD chains remain
+unperformed until separately authorized. Publishing artifacts or passing local
+checks does not establish production CD.
+
 ## Status and scope
 
 Stages 01–04 provide registry/admission validation, immutable planning models and
@@ -122,7 +187,8 @@ evidence and installed production attestation; no Caddy acquisition/rollout is a
 
 Python CLI, Docker Engine/Compose (stable plugin versions >= 2, with separate CLI/configuration gates),
 GHCR, Git and Caddy are selected technologies.
-There is no daemon, database server, Kubernetes or production deployment trigger.
+There is no daemon, database server or Kubernetes. The minimal Actions CD trigger
+requires separately installed standing authority before it can deploy.
 
 Stage 09.4B.3's [execution contract](docs/production-execution.md) separates sealed
 root-owned installation, authenticated read-only collection/attestation, deterministic

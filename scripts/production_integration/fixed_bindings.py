@@ -56,7 +56,8 @@ class FixedPolicy:
     publication_check: WorkflowCheck
 
 
-def build_fixed(installation, policy):
+def build_fixed(installation, policy, *, review=None, content_reader=None, contracts=None,
+                gateway_postconditions=None, composition_options=None, image_resolver=None):
     require(type(policy) is FixedPolicy, 'production-installed-bindings-unavailable-owner-policy-required')
     require(type(policy.producer_checks) is tuple and bool(policy.producer_checks) and
             all(type(c) is WorkflowCheck and c.repository == PRODUCER for c in policy.producer_checks) and
@@ -64,7 +65,7 @@ def build_fixed(installation, policy):
             'production-fixed-producer-checks-invalid')
     policy.public.validate()
     installation.verify()
-    review = AdministrativePhaseReview(installation)
+    review = AdministrativePhaseReview(installation) if review is None else review
     require(policy.public.identity == (review.policy.host, review.policy.daemon), 'production-fixed-host-mismatch')
     pins = dict(installation.files)
     require(pins.get(GH) == policy.gh_sha256 and pins.get(ROOT) == policy.sigstore_root_sha256 and
@@ -117,16 +118,20 @@ def build_fixed(installation, policy):
     # The empty phase needs no images/IDs to be fabricated. Its real collector
     # verifies Caddy at bootstrap preflight. Rollout verifies it again now.
     if review.document['phase'] == 'empty-host':
-        return build_reviewed_phase(installation, empty_host=empty, rollout={})
+        return build_reviewed_phase(installation, empty_host=empty, rollout={}, review=review)
     evidence = collector.collect(caddy, policy.caddy_source_sha)
     review.verify(caddy, evidence, engine.identity())
-    contracts = InstalledContentReader(installation)()[0].applications
+    contracts = InstalledContentReader(installation)()[0].applications if contracts is None else contracts
     require({a.id for a in contracts} == {'project-router'}, 'production-fixed-catalog-invalid')
     def resolve_image(reference, inspected):
-        return bind_engine_image(registry.collect(reference), inspected)
+        return (bind_engine_image(registry.collect(reference), inspected) if image_resolver is None else
+                image_resolver(reference, inspected))
     rollout = dict(common, contracts=contracts, resolve_image=resolve_image, bootstrap_proxy=proxy,
-        caddy_image=evidence, gateway_postconditions=PublicPostconditions(policy.public,
-            external=SignedPublicWitness(installation, policy.observer_key)),
+        caddy_image=evidence, gateway_postconditions=(PublicPostconditions(policy.public,
+            external=SignedPublicWitness(installation, policy.observer_key)) if gateway_postconditions is None else gateway_postconditions),
         bootstrap_reader=reader, bootstrap_attestor=reader, bootstrap_resources=resources,
         image_registry=partial(project_router_image_registry, context=context))
-    return build_reviewed_phase(installation, empty_host=empty, rollout=rollout)
+    rollout.update(composition_options or {})
+    if content_reader is not None:
+        rollout['content_reader'] = content_reader
+    return build_reviewed_phase(installation, empty_host=empty, rollout=rollout, review=review)

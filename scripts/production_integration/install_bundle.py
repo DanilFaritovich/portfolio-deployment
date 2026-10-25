@@ -30,11 +30,14 @@ def source_target(name):
     if name in CADDY_INPUTS:
         return name
     if name.startswith('scripts/'):
+        if name.startswith('scripts/cd/'):
+            return None if name.rsplit('/', 1)[-1] in ('build.py', 'package.py', 'runner.py', 'integration.py') else name
         if name.startswith('scripts/production_integration/'):
             return None if name.rsplit('/', 1)[-1] in ('install_bundle.py', 'bundle_review.py', 'cli.py') else name
         return name if Path(name).parent.as_posix() == 'scripts' and Path(name).stem in RUNTIME_ROOT_MODULES else None
     if name.startswith('installation/'):
         return {'installation/launcher.py': 'launcher.py', 'installation/bindings.py': 'bindings.py',
+                'installation/cd_entry.py': 'cd_entry.py',
                 'installation/portfolio-deployment-executor.service': 'executor.service'}.get(name)
     if name.startswith(('registry/applications/', 'policy/')):
         return 'manager/' + name if name.startswith('registry/') or name == 'policy/admission.yaml' else None
