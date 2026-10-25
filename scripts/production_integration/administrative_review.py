@@ -26,6 +26,13 @@ FIELDS = {'version', 'phase', 'manager_sha', 'host_policy', 'not_before', 'expir
           'runtime_acceptance', 'rollout'}
 
 
+def _file_identity(info):
+    # Reading can update atime. Changes to ownership, permissions, links,
+    # contents or the path binding must still invalidate this exact read.
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+            info.st_uid, info.st_gid, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
 def read_review():
     """Protected, bounded, stable read. Root ownership authenticates admin intake.
 
@@ -40,8 +47,10 @@ def read_review():
                 stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size <= LIMIT,
                 'production-review-metadata-invalid')
         raw = stream.read(LIMIT + 1)
-        require(0 < len(raw) <= LIMIT and os.fstat(stream.fileno()) == info and
-                Path(REVIEW).lstat() == info, 'production-review-changed')
+        require(0 < len(raw) <= LIMIT and
+                _file_identity(os.fstat(stream.fileno())) == _file_identity(info) and
+                _file_identity(Path(REVIEW).lstat()) == _file_identity(info),
+                'production-review-changed')
     value = parse_snapshot(raw)
     require(encode(value).encode() == raw, 'production-review-noncanonical')
     return value
