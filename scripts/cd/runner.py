@@ -12,6 +12,7 @@ import threading
 import time
 import uuid
 
+from scripts.docker_adapter import DockerError
 from scripts.cd.policy import pin
 from scripts.cd.release import ImageRelease
 from scripts.cd.signatures import sign, REQUEST_NAMESPACE
@@ -23,12 +24,46 @@ from scripts.production_integration.public_witness import NAMESPACE as OBSERVER_
 from scripts.production_integration.candidate import hashed
 
 
+DIAGNOSTICS = {
+    'cd-ssh-port-invalid': 'configure CD_PORT as a decimal SSH port between 1 and 65535',
+    'cd-policy-id-required': 'configure CD_POLICY_ID from the exact operator-approved signed standing policy; complete administrative bootstrap first',
+    'cd-ssh-authentication-failed': 'SSH authentication failed; check the restricted account/key installation',
+    'cd-ssh-host-key-mismatch': 'SSH host identity was rejected; verify pinned host keys independently',
+    'cd-ssh-connection-failed': 'SSH could not reach the configured host',
+    'cd-ssh-transport-failed': 'SSH failed; inspect bounded connection diagnostics through the operator channel',
+    'cd-ssh-timeout': 'SSH timed out; remote outcome may be unknown; inspect host receipts before any retry',
+    'cd-ssh-result-unavailable': 'SSH returned no bounded result; inspect host receipts before any retry',
+    'cd-ssh-result-invalid': 'SSH returned an invalid result; inspect host receipts before any retry',
+    'cd-remote-intake-blocked': 'the independent host intake blocked the request; review capsule, installation and authority prerequisites',
+    'cd-remote-recovery-required': 'the host reported recovery or rollback; inspect retained receipts; do not replay',
+    'cd-remote-command-failed': 'the remote command failed or blocked; inspect retained host receipts',
+}
+
+
+def require_policy_id():
+    require(re.fullmatch(r'sha256:[0-9a-f]{64}', os.environ.get('CD_POLICY_ID', '')) is not None,
+            'cd-policy-id-required')
+
+
+def report_failure(error, operation='cd-deployment'):
+    # Only reviewed fixed messages reach Actions logs. Neither SSH stderr nor
+    # response bodies, traceback strings or environment values are diagnostics.
+    code = str(error) if isinstance(error, DockerError) else ''
+    if code in DIAGNOSTICS:
+        print(operation + '-failed; ' + code + '; ' + DIAGNOSTICS[code])
+    else:
+        print(operation + '-failed; inspect bounded host receipts; do not replay unknown outcomes')
+
+
 class Client:
     def __init__(self, directory, *, roles=('automation', 'observer')):
         self.directory = Path(directory)
         host, user = os.environ['CD_HOST'], os.environ['CD_USER']
         require(re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}', host) and
                 re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', user) and user != 'root', 'cd-ssh-target-invalid')
+        port = os.environ.get('CD_PORT') or '22'
+        require(re.fullmatch(r'[1-9][0-9]{0,4}', port) is not None and int(port) <= 65535,
+                'cd-ssh-port-invalid')
         self.target = user + '@' + host
         self.keys = {}
         for role in roles:
@@ -39,17 +74,40 @@ class Client:
         known = self.directory / 'known_hosts'
         known.write_bytes(base64.b64decode(os.environ['CD_KNOWN_HOSTS_B64'], validate=True))
         require(known.stat().st_size > 0, 'cd-known-host-required')
-        self.options = ['ssh', '-F', '/dev/null', '-oBatchMode=yes', '-oIdentitiesOnly=yes', '-oIdentityAgent=none',
+        self.options = ['ssh', '-F', '/dev/null', '-p', port, '-oBatchMode=yes', '-oIdentitiesOnly=yes', '-oIdentityAgent=none',
             '-oStrictHostKeyChecking=yes', '-oUserKnownHostsFile=' + str(known), '-oClearAllForwardings=yes',
             '-oRequestTTY=no', '-oPermitLocalCommand=no', '-oProxyCommand=none', '-oConnectTimeout=10']
 
     def call(self, request, *, role='automation', raw=b'', timeout=1500):
-        result = subprocess.run([*self.options, '-i', str(self.keys[role]), self.target, 'portfolio-cd-v1'],
-            input=canonical(request) + b'\n' + raw, capture_output=True, timeout=timeout, check=False)
+        try:
+            result = subprocess.run([*self.options, '-i', str(self.keys[role]), self.target, 'portfolio-cd-v1'],
+                input=canonical(request) + b'\n' + raw, capture_output=True, timeout=timeout, check=False)
+        except subprocess.TimeoutExpired:
+            raise DockerError('cd-ssh-timeout') from None
+        if result.returncode == 255:
+            stderr = result.stderr
+            if b'Permission denied' in stderr:
+                code = 'cd-ssh-authentication-failed'
+            elif any(p in stderr for p in (b'Host key verification failed', b'REMOTE HOST IDENTIFICATION HAS CHANGED')):
+                code = 'cd-ssh-host-key-mismatch'
+            elif any(p in stderr for p in (b'Connection refused', b'Connection timed out', b'No route to host', b'Could not resolve hostname')):
+                code = 'cd-ssh-connection-failed'
+            else:
+                code = 'cd-ssh-transport-failed'
+            raise DockerError(code)
         require(len(result.stdout) <= (2*1024*1024 if role=='observer' else 131072) and result.stdout,
                 'cd-ssh-result-unavailable')
-        doc = json.loads(result.stdout)
+        try:
+            doc = json.loads(result.stdout)
+        except (ValueError, UnicodeError, RecursionError):
+            raise DockerError('cd-ssh-result-invalid') from None
         require(type(doc) is dict, 'cd-ssh-result-invalid')
+        if doc.get('status') in ('recovery-required', 'rolled-back'):
+            raise DockerError('cd-remote-recovery-required')
+        if doc.get('status') == 'blocked' or result.returncode != 0:
+            if doc.get('reason') in ('cd-trusted-intake-failed', 'cd-installed-entry-failed', 'bootstrap-installed-entry-failed'):
+                raise DockerError('cd-remote-intake-blocked')
+            raise DockerError('cd-remote-command-failed')
         return doc
 
     def approval(self, candidate):
@@ -137,6 +195,7 @@ def main():
             (os.environ.get('GITHUB_EVENT_NAME') == 'workflow_run' or observe_only and
              os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch' and
              os.environ.get('GITHUB_REF') == 'refs/heads/main'), 'cd-trusted-workflow-required')
+    require_policy_id()
     with tempfile.TemporaryDirectory(prefix='pd-cd-client-') as temporary:
         client = Client(temporary, roles=('observer',) if observe_only else ('automation','observer'))
         stop = threading.Event()
@@ -155,9 +214,14 @@ def main():
         print(json.dumps(result))
 
 
-if __name__ == '__main__':
+def entrypoint():
     try:
         main()
-    except Exception:
-        print('cd-deployment-failed; inspect bounded host receipts')
-        sys.exit(1)
+        return 0
+    except Exception as error:
+        report_failure(error)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(entrypoint())

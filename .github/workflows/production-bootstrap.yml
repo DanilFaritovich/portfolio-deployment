@@ -88,6 +88,7 @@ jobs:
           BOOTSTRAP_MANAGER_SHA: ${{ inputs.manager_sha }}
           BOOTSTRAP_APPROVAL_B64: ${{ inputs.approval_b64 }}
           CD_HOST: ${{ vars.CD_HOST }}
+          CD_PORT: ${{ vars.CD_PORT }}
           CD_USER: ${{ vars.CD_USER }}
           CD_KNOWN_HOSTS_B64: ${{ vars.CD_KNOWN_HOSTS_B64 }}
           CD_POLICY_ID: ${{ vars.CD_POLICY_ID }}
