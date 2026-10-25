@@ -173,3 +173,63 @@ def test_both_workflows_forward_the_configured_ssh_port():
         workflow=yaml.load((root/'.github/workflows'/name).read_text(),Loader=yaml.BaseLoader)
         step=next(s for s in workflow['jobs'][job]['steps'] if 'CD_HOST' in s.get('env',{}))
         assert step['env']['CD_PORT']=='${{ vars.CD_PORT }}'
+
+
+@pytest.mark.parametrize('failed', [False, True])
+def test_manager_entrypoint_uses_only_automation_without_observer(client,monkeypatch,capsys,failed):
+    monkeypatch.setenv('GITHUB_ACTIONS','true')
+    monkeypatch.setenv('GITHUB_EVENT_NAME','workflow_run')
+    monkeypatch.setenv('CD_POLICY_ID','sha256:'+'a'*64)
+    monkeypatch.delenv('CD_OBSERVER_KEY_B64')
+    monkeypatch.setattr(runner.sys,'argv',['runner','manager','unused'])
+    monkeypatch.setattr(runner.threading,'Thread',lambda *a,**k:pytest.fail('Manager must not start observer intake'))
+    calls=[]
+    def deploy(configured,kind,directory):
+        assert set(configured.keys)=={'automation'}
+        assert kind=='manager' and directory=='unused'
+        calls.append(kind)
+        if failed:raise DockerError('cd-remote-intake-blocked')
+        return {'status':'succeeded'}
+    monkeypatch.setattr(runner,'deploy',deploy)
+    assert runner.entrypoint()==(1 if failed else 0)
+    assert calls==['manager']
+    output=capsys.readouterr().out
+    if failed:assert 'cd-remote-intake-blocked' in output
+    else:assert json.loads(output)=={'status':'succeeded'}
+
+
+@pytest.mark.parametrize('kind,failed', [('application',False),('application',True),('observe-initial',False)])
+def test_public_operations_keep_observer_and_always_stop_worker(client,monkeypatch,capsys,kind,failed):
+    monkeypatch.setenv('GITHUB_ACTIONS','true')
+    monkeypatch.setenv('GITHUB_EVENT_NAME','workflow_dispatch' if kind=='observe-initial' else 'workflow_run')
+    monkeypatch.setenv('GITHUB_REF','refs/heads/main')
+    monkeypatch.setenv('CD_POLICY_ID','sha256:'+'a'*64)
+    monkeypatch.setattr(runner.sys,'argv',['runner',kind,'unused'])
+    if kind=='observe-initial':monkeypatch.delenv('CD_AUTOMATION_KEY_B64')
+    events=[]
+    class Worker:
+        def __init__(self,*,target,args,daemon):
+            configured=target.__self__
+            assert target.__func__ is runner.Client.observer and daemon is True
+            assert set(configured.keys)==({'observer'} if kind=='observe-initial' else {'automation','observer'})
+            self.stop,self.observed=args
+        def start(self):
+            events.append('started')
+            if kind=='observe-initial':self.observed.set()
+        def join(self,*,timeout):
+            assert self.stop.is_set() and timeout==30
+            events.append('joined')
+    monkeypatch.setattr(runner.threading,'Thread',Worker)
+    calls=[]
+    def deploy(configured,actual,directory):
+        assert actual=='application' and directory=='unused'
+        calls.append(actual)
+        if failed:raise DockerError('cd-remote-intake-blocked')
+        return {'status':'succeeded'}
+    monkeypatch.setattr(runner,'deploy',deploy)
+    assert runner.entrypoint()==(1 if failed else 0)
+    assert events==['started','joined']
+    assert calls==([] if kind=='observe-initial' else ['application'])
+    output=capsys.readouterr().out
+    if failed:assert 'cd-remote-intake-blocked' in output
+    else:assert json.loads(output)=={'status':'observed' if kind=='observe-initial' else 'succeeded'}
