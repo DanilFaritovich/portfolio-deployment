@@ -18,16 +18,20 @@ class ScopedProductionDocker(ProductionDockerAdapter):
     No image pull is implicit: OCI/source verification and preloading are separate
     prerequisites. Reuses the Stage 05 exact config/up sequence and options.
     """
-    def __init__(self, contract, host_identity, *, installation, grant, application):
+    def __init__(self, contract, host_identity, *, installation, grant, application, rollback_application=None):
         super().__init__(contract, host_identity)
         self.binary = '/usr/bin/docker'
         self.installation, self.grant, self.application = installation, grant, application
+        self.rollback_application = rollback_application
 
     def authorize(self, artifact):
         self.installation.verify()
         self.grant.require()
-        if (self.grant.candidate.scope != 'first-project-router-rollout' or
-            self.application.id != 'project-router' or artifact != render_compose(self.application) or
+        allowed = [render_compose(self.application)]
+        if self.grant.candidate.scope == 'update-project-router' and self.rollback_application is not None:
+            allowed.append(render_compose(self.rollback_application))
+        if (self.grant.candidate.scope not in ('first-project-router-rollout', 'update-project-router') or
+            self.application.id != 'project-router' or artifact not in allowed or
             self.application.spec['components'][0]['image'] != self.grant.candidate.image):
             raise DockerError('production-compose-scope-mismatch')
         self.identity()

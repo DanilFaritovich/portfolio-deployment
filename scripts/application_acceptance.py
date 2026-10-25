@@ -166,6 +166,9 @@ def verified_statement(raw, image, expectation):
     matches = [s for s in statements if s.get('predicateType') == expectation['predicateType'] and any(
         sub.get('name') == repository and sub.get('digest') == {'sha256': digest[7:]}
         for sub in s.get('subject', []))]
+    if 'expectedInvocation' in expectation:
+        matches = [s for s in matches if s.get('predicate', {}).get('runDetails', {}).get('metadata', {}).get('invocationId') ==
+                   expectation['expectedInvocation']]
     require(len(matches) == 1)
     if 'expectedPredicate' in expectation:
         require(encode(matches[0].get('predicate')) == encode(expectation['expectedPredicate']))

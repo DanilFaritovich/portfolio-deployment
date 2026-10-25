@@ -13,7 +13,7 @@ from scripts.production_integration.observations import require
 from scripts.production_integration.runtime import ProxyContract
 
 
-def build_reviewed_phase(installation, *, empty_host, rollout):
+def build_reviewed_phase(installation, *, empty_host, rollout, review=None):
     """Arguments are fixed sealed Python wiring, never deserialized data.
 
     empty_host contains all build_first_phase inputs except host_policy,
@@ -22,7 +22,7 @@ def build_reviewed_phase(installation, *, empty_host, rollout):
     infrastructure, active_pins, active_channel and gateway_runtime.
     Unapproved inputs leave the shipped binding raising, even with a review file.
     """
-    review = AdministrativePhaseReview(installation)
+    review = AdministrativePhaseReview(installation) if review is None else review
     policy = review.policy
     if review.document['phase'] == 'empty-host':
         return build_first_phase(installation, host_policy=policy, prerequisites=review,

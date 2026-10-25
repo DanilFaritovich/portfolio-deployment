@@ -53,7 +53,8 @@ def build(installation, *, engine_contract, host_policy, prerequisites, contract
           caddy, caddy_image, active_channel, gateway_runtime, gateway_postconditions, bootstrap_reader,
           bootstrap_attestor, bootstrap_resources, producer_sha, image,
           github, registry, crypto, checks, publication_check, signer_sha, builder, slsa_builder,
-          image_registry=None, active_pins=None):
+          image_registry=None, active_pins=None, content_reader=None, approval_verifier=None,
+          facts_policy=None, content_verifier=None, rollback_application=None, lifecycle_options=None, completion=None):
     # This is an API for a reviewed fixed bindings.py, never a configuration loader.
     # image_registry is an independently installed bounded factory (e.g. the
     # fixed ProjectRouter factory above), separate from release collection.
@@ -71,7 +72,7 @@ def build(installation, *, engine_contract, host_policy, prerequisites, contract
             container_id=active_pins[0], network_id=active_pins[1])
     if active_channel is None or gateway_runtime is None:
         raise DockerError('production-fixed-composition-authority-incomplete')
-    content_reader = InstalledContentReader(installation)
+    content_reader = InstalledContentReader(installation) if content_reader is None else content_reader
     gateway_transport = ActiveConfigTransport(engine, active_channel, gateway_runtime,
         InstalledConfigAdapter(installation), lambda: desired_routes(content_reader()[0]))
     gateway = ManagedGatewayReadPort(gateway_transport, image_evidence=caddy_image,
@@ -92,7 +93,7 @@ def build(installation, *, engine_contract, host_policy, prerequisites, contract
     provider = ProductionStateReader(lambda: content_reader()[0], engine, runtime, gateway_source, readiness,
                                     resolve_image, proxy, source_trust=trust).provider()
     host = PolicyHostContracts(installation, engine, LocalHostSources(installation, engine),
-                              ReadOnlyJournalSource(), host_policy, prerequisites=prerequisites)
+                              ReadOnlyJournalSource(), host_policy, prerequisites=prerequisites, facts_policy=facts_policy)
     preflight = CandidatePreflight(manager_sha=installation.manager_sha, producer_sha=producer_sha, image=image,
         content_reader=content_reader, engine=engine, contracts=host, attestor=host, provider=provider,
         bootstrap_reader=bootstrap_reader, bootstrap_attestor=bootstrap_attestor, proxy=bootstrap_proxy,
@@ -100,19 +101,20 @@ def build(installation, *, engine_contract, host_policy, prerequisites, contract
     checks = tuple(checks)
     def release(candidate):
         collector = AuthenticatedReleaseCollector(candidate, github=github, registry=registry, crypto=crypto,
-            checks=checks, publication_check=publication_check, signer_sha=signer_sha, builder=builder, slsa_builder=slsa_builder)
+            checks=checks, publication_check=publication_check, signer_sha=signer_sha, builder=builder, slsa_builder=slsa_builder,
+            content_verifier=content_verifier)
         return ReleaseVerifier(candidate, required_checks=[(c.repository, c.name, c.app_id) for c in checks],
                                allowed_builders=[builder], collector=collector)
     def adapter(grant):
         application = next(a for a in content_reader()[0].applications if a.id == 'project-router')
         return ScopedProductionDocker(engine_contract, engine.host_identity, installation=installation,
-                                      grant=grant, application=application)
+                                      grant=grant, application=application, rollback_application=rollback_application)
     resources = BootstrapValidationBinding(installation, caddy, resources=bootstrap_resources)
     bootstrap = ManagedBootstrapPort(installation=installation, caddy=caddy, proxy=bootstrap_proxy,
         private_subnet=private_subnet, attestor=resources, engine=engine)
     return ProductionExecutor(installation=installation, preflight=preflight,
-        journal_directory='/srv/portfolio/journal', approval_verifier=SSHSIGVerifier(installation),
+        journal_directory='/srv/portfolio/journal', approval_verifier=(SSHSIGVerifier(installation) if approval_verifier is None else approval_verifier),
         release_factory=release, adapter_factory=adapter, probes=probes,
         gateway=GatewayExecutionFactory(installation, gateway, engine), bootstrap=BootstrapExecution(bootstrap),
         image_preparation=(ImagePreparation(installation=installation, engine=engine)
-                           if image_registry is not None else None))
+                           if image_registry is not None else None), lifecycle_options=lifecycle_options, completion=completion)

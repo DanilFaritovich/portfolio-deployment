@@ -31,7 +31,8 @@ class OperationCandidate:
             not re.fullmatch(r'[A-Za-z0-9:_-]{1,128}', self.daemon) or
             not all(re.fullmatch(r'[0-9a-f]{40}', s) for s in (self.manager_sha, self.producer_sha)) or
             not re.fullmatch(r'ghcr.io/danilfaritovich/project-router@sha256:[0-9a-f]{64}', self.image) or
-            self.scope not in ('first-bootstrap', 'first-project-router-rollout', 'prepare-project-router-image')):
+            self.scope not in ('first-bootstrap', 'first-project-router-rollout', 'prepare-project-router-image',
+                               'update-project-router', 'manager-upgrade')):
             raise DockerError('production-candidate-identity-invalid')
         for key, value in asdict(self).items():
             if key.endswith('_hash') and not re.fullmatch(r'sha256:[0-9a-f]{64}', value):

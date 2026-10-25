@@ -7,6 +7,7 @@ from scripts.docker_adapter import DockerError
 from scripts.production_integration.runtime import ProxyContract, validate_proxy
 from scripts.reconciliation import encode
 from scripts.production_integration.artifacts import blob_digest
+from scripts.production_integration.network_inventory import network_subnets
 
 
 @dataclass(frozen=True)
@@ -81,12 +82,10 @@ def plan_bootstrap(sample, *, expected_identity, proxy, private_subnet, now, att
         if network.name == 'portfolio-proxy':
             continue
         try:
-            configs = network.facts['ipam']['Config']
-            for config in configs:
-                subnet = ipaddress.ip_network(config['Subnet'], strict=True)
+            for subnet in network_subnets(network):
                 if subnet.overlaps(public) or subnet.overlaps(private):
                     blockers.add('bootstrap-ipam-collision')
-        except (KeyError, ValueError, TypeError):
+        except (DockerError, KeyError, ValueError, TypeError):
             blockers.add('bootstrap-network-ipam-unverified')
     if existing_proxy:
         try:

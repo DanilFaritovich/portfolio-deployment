@@ -18,7 +18,8 @@ BUILD_ORIGIN = 'https://github.com/' + PRODUCER + '/attestations/build-origin/v1
 
 class AuthenticatedReleaseCollector:
     def __init__(self, candidate, *, github, registry, crypto, checks, signer_sha,
-                 builder, slsa_builder, publication_check, manifest_path='registry/applications/project-router.yaml'):
+                 builder, slsa_builder, publication_check, manifest_path='registry/applications/project-router.yaml',
+                 content_verifier=None):
         candidate.validate()
         self.candidate, self.github, self.registry, self.crypto = candidate, github, registry, crypto
         self.checks, self.signer_sha, self.builder = tuple(checks), signer_sha, builder
@@ -32,6 +33,7 @@ class AuthenticatedReleaseCollector:
         require(isinstance(slsa_builder, str) and slsa_builder.startswith('https://github.com/') and
                 len(slsa_builder) <= 256, 'production-release-builder-policy-invalid')
         self.manifest_path = manifest_path
+        self.content_verifier = content_verifier
         require(manifest_path in ('registry/applications/project-router.yaml', 'docs/candidates/project-router.yaml'),
                 'production-release-manifest-path-rejected')
         require(re.fullmatch(r'[0-9a-f]{40}', signer_sha) is not None and
@@ -79,6 +81,8 @@ class AuthenticatedReleaseCollector:
                 publication = run
         manifest_hash = self._content_hash(self.manifest_path)
         policy_hash = self._content_hash('policy/admission.yaml')
+        if self.content_verifier is not None:
+            manifest_hash = self.content_verifier(c, manifest_hash, policy_hash)
         require((manifest_hash, policy_hash) == (c.manifest_hash, c.policy_hash),
                 'production-release-manager-content-mismatch')
         blobs = self.registry.collect(c.image)
@@ -94,7 +98,11 @@ class AuthenticatedReleaseCollector:
         origin = {'sourceRepository': PRODUCER, 'sourceSha': c.producer_sha, 'sourceRef': 'refs/heads/main',
                   'platform': 'linux/amd64', 'buildArguments': {'VITE_SITE_ORIGIN': ORIGIN},
                   'originOutputVerified': True, 'runId': publication[0], 'runAttempt': publication[1]}
-        expectations = ({'predicateType': SLSA}, {'predicateType': BUILD_ORIGIN, 'expectedPredicate': origin})
+        provenance = {'predicateType': SLSA}
+        if self.content_verifier is not None:
+            provenance['expectedInvocation'] = ('https://github.com/' + PRODUCER + '/actions/runs/' +
+                                                publication[0] + '/attempts/' + publication[1])
+        expectations = (provenance, {'predicateType': BUILD_ORIGIN, 'expectedPredicate': origin})
         # crypto returns statements only after pinned gh succeeds; unsigned API
         # JSON can never be interpreted as verifier stdout at this boundary.
         statements = self.crypto.verify(blobs[c.image.split('@')[1]], c.image, identity, expectations, bundles)
