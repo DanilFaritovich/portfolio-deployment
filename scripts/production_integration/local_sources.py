@@ -64,16 +64,23 @@ class LocalHostSources:
     def __init__(self, installation, engine, *, clock=time.monotonic):
         self.installation, self.engine, self.clock = installation, engine, clock
 
-    def collect(self):
+    def collect(self, *, before_observation=None):
+        """Notify a composite reader after seal verification, before mutable IO.
+
+        The notification never skips verification or supplies a trusted timestamp.
+        The caller starts its own clock; standalone reads retain their own bound.
+        """
         try:
-            return self._collect()
+            return self._collect(before_observation=before_observation)
         except DockerError:
             raise
         except Exception:
             raise DockerError('production-host-source-unavailable') from None
 
-    def _collect(self):
+    def _collect(self, *, before_observation=None):
         self.installation.verify()
+        if before_observation is not None:
+            before_observation()
         start = self.clock()
         before = self.engine.identity()
         network = {}

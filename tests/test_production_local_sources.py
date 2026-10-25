@@ -56,6 +56,26 @@ def test_bounded_host_reads_emit_facts_without_source_authority(sources):
     assert len(sources.calls) == 5
 
 
+def test_composite_notification_follows_verification_and_precedes_io(sources):
+    events = []
+    sources.installation.verify = lambda: events.append('verified')
+    def beginning():
+        assert not sources.calls
+        events.append('observing')
+    sources.reader.collect(before_observation=beginning)
+    assert events == ['verified', 'observing'] and len(sources.calls) == 5
+
+
+def test_notification_cannot_bypass_failed_integrity_check(sources):
+    events = []
+    def failed():
+        raise DockerError('synthetic-integrity-failure')
+    sources.installation.verify = failed
+    with pytest.raises(DockerError, match='synthetic-integrity-failure'):
+        sources.reader.collect(before_observation=lambda: events.append('observing'))
+    assert not events and not sources.calls
+
+
 def test_host_reads_use_exact_pinned_ip_path(sources, monkeypatch):
     # Literal expectations avoid deriving the regression oracle from COMMANDS.
     sources.installation.files = (('/usr/bin/ip', 'a'*64), ('/usr/bin/ss', 'b'*64))
