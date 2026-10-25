@@ -190,27 +190,36 @@ def deploy(client, kind, directory):
 
 
 def main():
-    observe_only = sys.argv[1] == 'observe-initial'
+    kind = sys.argv[1]
+    observe_only = kind == 'observe-initial'
     require(os.environ.get('GITHUB_ACTIONS') == 'true' and
             (os.environ.get('GITHUB_EVENT_NAME') == 'workflow_run' or observe_only and
              os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch' and
              os.environ.get('GITHUB_REF') == 'refs/heads/main'), 'cd-trusted-workflow-required')
     require_policy_id()
     with tempfile.TemporaryDirectory(prefix='pd-cd-client-') as temporary:
-        client = Client(temporary, roles=('observer',) if observe_only else ('automation','observer'))
+        roles = ('automation',)
+        if kind != 'manager':
+            roles = ('observer',) if observe_only else ('automation','observer')
+        client = Client(temporary, roles=roles)
         stop = threading.Event()
         observed = threading.Event()
-        thread = threading.Thread(target=client.observer, args=(stop,observed), daemon=True)
-        thread.start()
+        thread = None
+        # Manager upgrades verify sealed trees/imports and never serve public
+        # traffic. Observer intake competes with their bounded host observations.
+        if kind != 'manager':
+            thread = threading.Thread(target=client.observer, args=(stop,observed), daemon=True)
+            thread.start()
         try:
             if observe_only:
                 require(observed.wait(timeout=1200), 'cd-initial-https-not-observed')
                 result = {'status': 'observed'}
             else:
-                result = deploy(client, sys.argv[1], sys.argv[2])
+                result = deploy(client, kind, sys.argv[2])
         finally:
             stop.set()
-            thread.join(timeout=30)
+            if thread is not None:
+                thread.join(timeout=30)
         print(json.dumps(result))
 
 
