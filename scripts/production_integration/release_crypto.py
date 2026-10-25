@@ -57,15 +57,18 @@ class AttestationVerifier:
     gh verifies the DSSE signature, certificate identity and witnessed timestamps;
     policy constraints reuse acceptance's exact signer/source flags and selector.
     """
-    def __init__(self, binary, binary_sha256, trusted_root, root_sha256, *, repository=PRODUCER):
+    def __init__(self, binary, binary_sha256, trusted_root, root_sha256, *, repository=PRODUCER, subject_limit=LIMIT):
         self.binary, self.binary_hash = Path(binary), binary_sha256
         self.root, self.root_hash = Path(trusted_root), root_sha256
         require(repository in (PRODUCER, 'DanilFaritovich/portfolio-deployment'),
                 'production-release-crypto-repository-invalid')
         self.repository = repository
+        require(type(subject_limit) is int and LIMIT <= subject_limit <= 128 * LIMIT,
+                'production-release-subject-limit-invalid')
+        self.subject_limit = subject_limit
 
     def verify(self, subject, image, identity, expectations, bundles):
-        require(type(subject) is bytes and len(subject) <= LIMIT)
+        require(type(subject) is bytes and len(subject) <= self.subject_limit)
         with tempfile.TemporaryDirectory(prefix='pd-release-crypto-') as temporary:
             directory = Path(temporary)
             for source, digest, name, bound in (

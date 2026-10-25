@@ -71,7 +71,7 @@ def safe_name(name):
 
 
 def allowed(name):
-    return (name in CADDY_INPUTS or name in ('launcher.py', 'bindings.py', 'tools/caddy') or
+    return (name in CADDY_INPUTS or name in ('launcher.py', 'bindings.py', 'cd_entry.py', 'tools/caddy') or
             name.startswith(('scripts/', 'schemas/', 'vendor/', 'manager/registry/applications/')) or
             name == 'manager/policy/admission.yaml')
 

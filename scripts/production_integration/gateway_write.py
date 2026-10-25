@@ -58,7 +58,7 @@ class GrantedGatewayPort:
         self.grant.require()
         if self.engine is None or self.engine.identity() != (self.grant.candidate.host, self.grant.candidate.daemon):
             raise DockerError('production-gateway-engine-identity-unverified')
-        if self.grant.candidate.scope != 'first-project-router-rollout':
+        if self.grant.candidate.scope not in ('first-project-router-rollout', 'update-project-router'):
             raise DockerError('production-gateway-scope-invalid')
 
     def read(self):
@@ -67,6 +67,8 @@ class GrantedGatewayPort:
 
     def validate(self, text):
         self._require()
+        if self.grant.candidate.scope == 'update-project-router':
+            raise DockerError('production-image-update-gateway-write-forbidden')
         if text != self.new:
             raise DockerError('production-gateway-candidate-mismatch')
         binary = '/opt/portfolio-deployment/tools/caddy'

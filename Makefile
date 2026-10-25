@@ -203,3 +203,12 @@ qa-release-check:
 export HOST_EVIDENCE_REPORT
 production-host-evidence:
 	@$(PYTHON) -c 'import os,sys; from scripts.production.host_evidence import main; sys.exit(main(["--report",os.environ.get("HOST_EVIDENCE_REPORT","")]))'
+
+.PHONY: cd-check cd-integration
+cd-check:
+	@$(PYTHON) -m pytest -q -p no:cacheprovider tests/test_cd.py tests/test_cd_lifecycle.py tests/test_cd_setup.py tests/test_bootstrap_network_inventory.py
+
+# Explicit disposable local fixture namespace; never part of offline checks.
+export CD_TEST_ENDPOINT CD_TEST_IMAGES CD_TEST_EVIDENCE CD_TEST_AUTHORIZE
+cd-integration:
+	@$(PYTHON) -c 'import os,sys; from scripts.cd.integration import main; sys.argv=["cd-integration","--endpoint",os.environ.get("CD_TEST_ENDPOINT",""),"--image-lock",os.environ.get("CD_TEST_IMAGES",""),"--evidence",os.environ.get("CD_TEST_EVIDENCE",""),"--authorize",os.environ.get("CD_TEST_AUTHORIZE","")]; main()'

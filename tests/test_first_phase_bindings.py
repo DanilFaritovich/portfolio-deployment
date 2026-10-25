@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.docker_adapter import DockerError
-from scripts.docker_discovery import DockerObservation, DockerResource
+from scripts.docker_discovery import DockerObservation, DockerResource, discover
 from scripts.production_integration import first_phase as phase
 from scripts.production_integration.bootstrap import BootstrapNetworkContract, plan_bootstrap
 from scripts.production_integration.candidate import hashed
@@ -59,6 +59,30 @@ def test_empty_host_sample_is_bound_fresh_and_needs_no_runtime_ids(reader):
     assert proposal.blockers == ('stage-09-4b-bootstrap-approval-and-execution-required',)
     assert 'create-manager-proxy-with-reviewed-ipam' in proposal.operations
     with pytest.raises(DockerError): port.verify(replace(sample), (sample.host, sample.daemon))
+
+
+def test_empty_host_with_engine_default_networks_and_null_ipam(reader):
+    """Production-shaped Engine inspect: host/none IPAM.Config is JSON null."""
+    port, state, _ = reader
+    raw = [dict(Name=name, Id=str(i)*64, Driver=driver, Scope='local',
+                IPAM={'Driver': 'default', 'Options': None, 'Config': configs})
+           for i, (name, driver, configs) in enumerate([
+               ('bridge', 'bridge', [{'Subnet': '172.17.0.0/16', 'Gateway': '172.17.0.1'}]),
+               ('host', 'host', None), ('none', 'null', None)], 1)]
+    state.docker = discover(SimpleNamespace(inventory=lambda kind: raw if kind == 'network' else []), ())
+    assert state.docker.complete
+    assert state.docker.resources[1].facts['ipam']['Config'] is None
+    port.policy = replace(port.policy, network_hash=hashed(network_facts(state.host, state.docker)),
+                          resources_hash=hashed(asdict(state.docker)))
+    sample = port.collect()
+    proposal = plan_bootstrap(sample, expected_identity=(sample.host, sample.daemon),
+        proxy=BootstrapNetworkContract('172.30.240.0/24', '172.30.240.1'),
+        private_subnet='172.30.241.0/24', now=1, attestor=port)
+    assert proposal.blockers == ('stage-09-4b-bootstrap-approval-and-execution-required',)
+    assert proposal.operations
+    # Even correctly classified builtins do not bypass the independently reviewed universe.
+    port.policy = replace(port.policy, resources_hash=hashed({}))
+    with pytest.raises(DockerError): port.verify(sample, (sample.host, sample.daemon))
 
 
 @pytest.mark.parametrize('case', ['machine', 'stale', 'unsigned', 'policy', 'storage', 'incomplete', 'container'])
