@@ -53,7 +53,11 @@ def main():
     installation.verify()
     request = closed_json(sys.stdin.buffer.read(131073), 131072)
     import bindings
-    result = run(request, installation, bindings.build(installation))
+    from scripts.cd.diagnostics import blocked
+    try:
+        result = run(request, installation, bindings.build(installation))
+    except Exception as error:
+        result = blocked(error, 'bootstrap-installed-entry-failed')
     print(canonical(result).decode())
     return 0 if result['status'] in ('prepared', 'succeeded') else 2
 

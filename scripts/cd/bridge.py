@@ -190,7 +190,11 @@ def main(role):
     raw = sys.stdin.buffer.readline(HEADER_LIMIT + 1)
     require(len(raw) <= HEADER_LIMIT and raw.endswith(b'\n'), 'cd-bridge-header-invalid')
     request = closed_json(raw[:-1], HEADER_LIMIT)
-    result = handle(role, request, sys.stdin.buffer)
+    from scripts.cd.diagnostics import blocked
+    try:
+        result = handle(role, request, sys.stdin.buffer)
+    except Exception as error:
+        result = blocked(error, 'cd-trusted-intake-failed')
     print(canonical(result).decode())
     return 0 if result.get('status') not in ('blocked', 'recovery-required', 'rolled-back') else 2
 

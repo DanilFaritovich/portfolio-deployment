@@ -549,7 +549,8 @@ def test_fixed_first_phase_composition_has_no_rollout_ports(reader, monkeypatch)
 
 @pytest.mark.parametrize('failure', [None, 'missing-network', 'private-ipam', 'private-owner', 'proxy-member',
                                    'foreign-volume', 'changed-active', 'foreign-config', 'capacity'])
-def test_created_resources_validate_actual_ipam_and_two_active_rounds(reader, monkeypatch, failure):
+@pytest.mark.parametrize('mode', ['created', 'recovery'])
+def test_created_resources_validate_actual_ipam_and_two_active_rounds(reader, monkeypatch, failure, mode):
     from scripts.compose import LABEL, labels
     from scripts.production_integration.gateway_read import GatewaySnapshot
     port, state, directory = reader
@@ -566,7 +567,7 @@ def test_created_resources_validate_actual_ipam_and_two_active_rounds(reader, mo
                    {**labels('project-router'), 'com.docker.compose.project': 'portfolio-project-router',
                     'com.docker.compose.network': 'private'}, {})
     container = DockerResource('container', cid, 'portfolio-gateway-caddy-1', encode({'labels': {
-        'com.docker.compose.project': 'portfolio-gateway', 'com.docker.compose.service': 'caddy'}}))
+        'com.docker.compose.project': 'portfolio-gateway', 'com.docker.compose.service': 'caddy'}, 'host': {}}))
     state.docker = DockerObservation((net, priv, container), (), True)
     if failure in ('private-ipam', 'private-owner'):
         facts = priv.facts
@@ -600,10 +601,21 @@ def test_created_resources_validate_actual_ipam_and_two_active_rounds(reader, mo
                                resource_contract=encode({'baseline': {'docker': {'resources': []}}}))
     resources = phase.BootstrapResources(port.installation, port.engine, port, proxy, '172.30.241.0/24', None, None)
     resources.prepared, resources.evidence, resources.runtime = prepared, SimpleNamespace(image_id=sample.image_config_id), runtime
+    verify = lambda: resources.verify_created(prepared, runtime)
+    if mode == 'recovery':
+        port.installation.manager_sha = 'a'*40
+        port.prerequisites.current = lambda: None
+        runtime.render = lambda: SimpleNamespace(model={'fixed': 'runtime'})
+        candidate = SimpleNamespace(host='a'*32, daemon='daemon', manager_sha='a'*40,
+                                    scope='first-bootstrap', runtime_hash=hashed(runtime.render().model))
+        resources.release = SimpleNamespace(collect=lambda *args: resources.evidence)
+        resources.runtime_acceptance = SimpleNamespace(verify=lambda runtime, evidence, identity: evidence)
+        resources.clock = lambda: 1
+        verify = lambda: resources.verify_existing(candidate, runtime)[1]
     if failure:
-        with pytest.raises(DockerError): resources.verify_created(prepared, runtime)
+        with pytest.raises(DockerError): verify()
     else:
-        proof = resources.verify_created(prepared, runtime)
+        proof = verify()
         assert proof.status == 'verified' and proof.consecutive == 2
         assert len(reads) == 4
         assert observed_ids == [{'container_id': cid, 'network_id': nid}]*2

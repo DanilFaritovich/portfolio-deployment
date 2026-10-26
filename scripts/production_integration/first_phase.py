@@ -3,11 +3,12 @@
 No rollout ports or preexisting runtime IDs. The shipped binding remains closed
 until the external policies and authenticated authorities receive owner review.
 """
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import ipaddress
 from pathlib import Path
 import re
 import time
+from types import SimpleNamespace
 
 from scripts.compose import labels
 from scripts.docker_discovery import discover
@@ -34,6 +35,7 @@ from scripts.production_integration.release import ReleaseVerifier
 from scripts.production_integration.release_collector import AuthenticatedReleaseCollector
 from scripts.production_integration.runtime import ProxyContract, validate_proxy
 from scripts.readiness import ReadinessEvidence
+from scripts.reconciliation import encode
 
 
 class EmptyHostReader:
@@ -230,6 +232,48 @@ class BootstrapResources:
         require(first == second and 0 <= self.clock() - start <= 15,
                 'production-bootstrap-postconditions-changed-or-expired')
         return ReadinessEvidence('verified', 'readiness-verified', 2, 2)
+
+    def verify_existing(self, candidate, runtime):
+        """Read-only operator recovery probe; cannot apply or replay bootstrap.
+
+        Authenticate the retained inventory against the independent original
+        empty-host policy before reusing all normal created-runtime checks.
+        A separate signed decision must bind the returned current observation.
+        """
+        self.installation.verify()
+        require(candidate.scope == 'first-bootstrap' and
+                candidate.manager_sha == self.installation.manager_sha and
+                candidate.runtime_hash == hashed(runtime.render().model),
+                'production-bootstrap-recovery-runtime-mismatch')
+        self.reader.prerequisites.current()
+        evidence = self.release.collect(runtime, self.source_sha)
+        require(self.runtime_acceptance is not None and
+                self.runtime_acceptance.verify(runtime, evidence, self.engine.identity()) is evidence,
+                'production-bootstrap-runtime-acceptance-unverified')
+        docker = discover(self.engine, ())
+        require(docker.complete, 'production-bootstrap-created-inventory-incomplete')
+        names = {'portfolio-proxy', 'portfolio-project-router-private', 'portfolio-gateway-caddy-1'}
+        baseline = replace(docker, resources=tuple(r for r in docker.resources if r.name not in names))
+        require(hashed(asdict(baseline)) == self.reader.policy.resources_hash,
+                'production-bootstrap-recovery-baseline-mismatch')
+        prepared = SimpleNamespace(candidate=candidate, resource_contract=encode({
+            'baseline': {'docker': {'resources': [asdict(r) for r in baseline.resources]}}}))
+        self.evidence = evidence
+        host = self.reader.local.collect()
+        network = hashed(network_facts(host, docker))
+        contents = hashed(storage_contents())
+        start = self.clock()
+        first = self._check_created(prepared, runtime)
+        second = self._check_created(prepared, runtime)
+        require(first == second and 0 <= self.clock() - start <= 15,
+                'production-bootstrap-postconditions-changed-or-expired')
+        require(discover(self.engine, ()) == docker and hashed(storage_contents()) == contents and
+                hashed(network_facts(self.reader.local.collect(), docker)) == network,
+                'production-bootstrap-recovery-facts-changed')
+        self.reader.prerequisites.current()
+        return {'runtime': candidate.runtime_hash, 'resources': first,
+                'baseline': self.reader.policy.resources_hash, 'network': network,
+                'storage': contents}, ReadinessEvidence('verified', 'readiness-verified', 2, 2)
 
 
 def build_first_phase(installation, *, engine_contract, host_policy, prerequisites, proxy, private_subnet,

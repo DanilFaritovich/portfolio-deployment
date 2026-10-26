@@ -179,10 +179,13 @@ class ProductionExecutor:
                             self.completion(candidate, lease)
                         journal.finish_authorization(claims.nonce, state)
                         return ProductionResult(state, identity, () if success else ('production-execution-incomplete',), results)
-                    except Exception:
+                    except Exception as error:
                         # Ambiguous exceptions are never classified as safe retry.
                         journal.finish_authorization(claims.nonce, 'recovery-required')
-                        return ProductionResult('recovery-required', identity, ('production-execution-outcome-unverified',))
+                        from scripts.cd.diagnostics import public_code
+                        code = public_code(error)
+                        reasons = ('production-execution-outcome-unverified',) + ((code,) if code else ())
+                        return ProductionResult('recovery-required', identity, reasons)
                     finally:
                         grant.active = False
         except DockerError as error:
