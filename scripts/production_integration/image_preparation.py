@@ -2,7 +2,7 @@
 
 No container/network actions, build, tag fallback, credentials or deletion. Ledger
 consumption is the durable image-cache intent; unknown outcomes fence all scopes.
-Caddy is intentionally excluded until independent provenance policy is approved.
+Caddy is excluded from this application scope; signed bootstrap prepares it separately.
 """
 from dataclasses import asdict
 import re
@@ -16,6 +16,28 @@ from scripts.production_integration.release_transport import IMAGE_REPOSITORY
 
 SCOPE = 'prepare-project-router-image'
 LIST = ['image', 'ls', '--all', '--digests', '--no-trunc', '--format', '{{json .}}']
+
+
+def cached_image(engine, reference, evidence):
+    """Successful bounded inventory distinguishes absence from inspect failure."""
+    rows = engine._run(LIST).splitlines()
+    if len(rows) > 512:
+        raise DockerError('production-image-inventory-incomplete')
+    repository, digest = reference.split('@')
+    found = False
+    for raw in rows:
+        try:
+            row = parse_snapshot(raw)
+            if (not isinstance(row, dict) or
+                not all(isinstance(row.get(k), str) for k in ('Repository', 'Digest', 'ID')) or
+                not re.fullmatch(r'sha256:[0-9a-f]{64}', row['ID'])):
+                raise ValueError
+        except (ValueError, TypeError, UnicodeError):
+            raise DockerError('production-image-inventory-incomplete') from None
+        found |= row['Repository'] == repository and row['Digest'] == digest
+    if found:
+        bind_engine_image(evidence, engine.inspect('image', reference))
+    return found
 
 
 class ImagePreparation:
@@ -35,27 +57,7 @@ class ImagePreparation:
 
     def present(self, prepared):
         """Absence needs successful complete inventory; inspect failure is not absence."""
-        c = prepared.candidate
-        rows = self.engine._run(LIST).splitlines()
-        if len(rows) > 512:
-            raise DockerError('production-image-inventory-incomplete')
-        repository, digest = c.image.split('@')
-        found = []
-        for raw in rows:
-            try:
-                row = parse_snapshot(raw)
-                if (not isinstance(row, dict) or
-                    not all(isinstance(row.get(k), str) for k in ('Repository', 'Digest', 'ID')) or
-                    not re.fullmatch(r'sha256:[0-9a-f]{64}', row['ID'])):
-                    raise ValueError
-            except (ValueError, TypeError, UnicodeError):
-                raise DockerError('production-image-inventory-incomplete') from None
-            if row['Repository'] == repository and row['Digest'] == digest:
-                found.append(row)
-        if not found:
-            return False
-        bind_engine_image(prepared.image_evidence, self.engine.inspect('image', c.image))
-        return True
+        return cached_image(self.engine, prepared.candidate.image, prepared.image_evidence)
 
     def execute(self, prepared, grant):
         grant.require()

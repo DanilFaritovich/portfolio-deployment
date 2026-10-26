@@ -129,7 +129,7 @@ def bootstrap(sample=None, **kwargs):
 
 def test_first_host_proposal_is_ordered_bound_and_always_blocked():
     plan = bootstrap()
-    assert plan.operations[0] == 'create-manager-proxy-with-reviewed-ipam'
+    assert plan.operations[:2] == ('prepare-exact-caddy-image', 'create-manager-proxy-with-reviewed-ipam')
     assert plan.release_sequence.index('verify-application-readiness') < plan.release_sequence.index('activate-first-public-route')
     assert plan.release_sequence.index('officially-validate-complete-caddy-candidate') < plan.release_sequence.index('activate-first-public-route')
     assert not any('deploy-application' in op or 'activate-first-public-route' in op for op in plan.operations)

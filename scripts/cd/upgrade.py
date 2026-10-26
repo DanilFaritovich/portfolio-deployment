@@ -18,6 +18,7 @@ import stat
 from installation.operator_bootstrap import read_bundle, exclusive, sync_directory
 from scripts.cd.policy import pin
 from scripts.cd.policy import FROZEN_BOUNDARY
+from scripts.production_integration.installation import protected
 from scripts.production_integration.authorization import OperationCandidate
 from scripts.production_integration.candidate import hashed
 from scripts.production_integration.observations import require
@@ -73,6 +74,15 @@ class ManagerUpdater:
         self.root, self.state, self.swap = Path(root), Path(state), swap
 
     def fenced(self):
+        administrative = list(self.state.glob('admin-upgrade-*.json'))
+        require(len(administrative) <= 10000, 'cd-upgrade-retention-required')
+        for path in administrative:
+            protected(path)
+            require(path.stat().st_size <= 131072, 'cd-admin-receipt-too-large')
+            record = json.loads(path.read_bytes())
+            own = getattr(self, 'administrative_operation', None) == (record['id'], record['decision_sha256'])
+            require(own or record['status'] in ('succeeded', 'rolled-back', 'no-op', 'recovered'),
+                    'cd-admin-recovery-required')
         receipts = list(self.state.glob('upgrade-*.json'))
         require(len(receipts) <= 10000, 'cd-upgrade-retention-required')
         for path in receipts:
@@ -120,13 +130,20 @@ class ManagerUpdater:
         return candidate
 
     def run(self, raw, candidate, envelope):
-        require(candidate.scope == 'manager-upgrade', 'cd-upgrade-scope-required')
         role = self.policy.document['automation']
-        claims = authenticate_signed(envelope, {role['principal']: role['key']})
+        return self._run(raw, candidate, envelope, {role['principal']: role['key']})
+
+    def run_operator(self, raw, candidate, envelope):
+        """Independent administrative entry only; no delegated SSH route calls this."""
+        return self._run(raw, candidate, envelope, self.policy.keys)
+
+    def _run(self, raw, candidate, envelope, keys):
+        require(candidate.scope == 'manager-upgrade', 'cd-upgrade-scope-required')
+        claims = authenticate_signed(envelope, keys)
         from scripts.production_integration.authorization import review_approval
         class Verifier:
             def authenticate(_, raw):
-                return authenticate_signed(raw, {role['principal']: role['key']})
+                return authenticate_signed(raw, keys)
         import time
         review_approval(candidate, envelope, verifier=Verifier(), now=time.time())
         require(claims.expires - claims.not_before <= 300, 'cd-upgrade-approval-too-long')

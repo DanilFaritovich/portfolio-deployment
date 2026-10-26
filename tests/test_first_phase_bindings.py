@@ -255,6 +255,57 @@ def test_host_contract_window_must_begin_exactly_once(clocked_preflight, notific
     assert preflight.contracts.last is None
 
 
+@pytest.mark.parametrize('cached', [False, True])
+def test_signed_bootstrap_prepares_only_exact_caddy_digest(reader, monkeypatch, cached):
+    from scripts import docker_adapter
+    from scripts.production_integration import image_preparation
+    port, _, _ = reader
+    reference = 'ghcr.io/danilfaritovich/portfolio-caddy@sha256:'+'c'*64
+    runtime = SimpleNamespace(image=reference)
+    candidate = SimpleNamespace(host='a'*32, daemon='daemon')
+    prepared = SimpleNamespace(candidate=candidate)
+    grant = SimpleNamespace(candidate=candidate, require=lambda: None)
+    engine = SimpleNamespace(identity=port.engine.identity, inspect=lambda kind, ref: {'reference': ref})
+    resources = phase.BootstrapResources(port.installation, engine, port, None, None, None, None)
+    resources.prepared, resources.runtime = prepared, runtime
+    resources.evidence = SimpleNamespace(reference=reference)
+    pulls, bindings = [], []
+    monkeypatch.setattr(image_preparation, 'cached_image', lambda *args: cached)
+    monkeypatch.setattr(docker_adapter, 'run_bounded', lambda argv, **kw: pulls.append(argv))
+    monkeypatch.setattr(phase, 'bind_caddy_engine', lambda runtime, evidence, raw: bindings.append(raw))
+    resources.prepare_image(prepared, runtime, grant)
+    assert len(pulls) == (0 if cached else 1)
+    if pulls:
+        assert pulls[0] == ['/usr/bin/docker', '--host', 'unix:///run/docker.sock', 'image', 'pull',
+                            '--platform', 'linux/amd64', reference]
+    assert bindings == [{'reference': reference}]*2
+
+
+@pytest.mark.parametrize('failure', ['no-evidence', 'grant', 'host', 'inventory', 'pull'])
+def test_caddy_cache_failure_never_reaches_container_creation(reader, monkeypatch, failure):
+    from scripts import docker_adapter
+    from scripts.production_integration import image_preparation
+    port, _, _ = reader
+    runtime = SimpleNamespace(image='ghcr.io/danilfaritovich/portfolio-caddy@sha256:'+'c'*64)
+    candidate = SimpleNamespace(host='a'*32, daemon='daemon')
+    prepared = SimpleNamespace(candidate=candidate)
+    grant = SimpleNamespace(candidate=candidate, require=lambda: None)
+    resources = phase.BootstrapResources(port.installation, port.engine, port, None, None, None, None)
+    resources.prepared, resources.runtime = prepared, runtime
+    resources.evidence = SimpleNamespace(reference=runtime.image)
+    def reject(*args, **kwargs): raise DockerError('synthetic-cache-failure')
+    monkeypatch.setattr(image_preparation, 'cached_image', lambda *args: False)
+    calls = []
+    monkeypatch.setattr(docker_adapter, 'run_bounded', lambda *a, **kw: calls.append(a))
+    if failure == 'no-evidence': resources.evidence = None
+    elif failure == 'grant': grant.require = reject
+    elif failure == 'host': port.engine.identity = lambda: ('b'*32, 'foreign')
+    elif failure == 'inventory': monkeypatch.setattr(image_preparation, 'cached_image', reject)
+    else: monkeypatch.setattr(docker_adapter, 'run_bounded', reject)
+    with pytest.raises(DockerError): resources.prepare_image(prepared, runtime, grant)
+    assert not calls
+
+
 @pytest.mark.parametrize('failed_check', [1, 2, 3])
 def test_each_integrity_failure_stops_before_mutable_reads(clocked_reader, failed_check):
     port, state = clocked_reader

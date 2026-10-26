@@ -352,7 +352,7 @@ def test_signed_bootstrap_then_separate_rollout_or_partial_fence(integrated, sig
         assert len(actions) == 1 and not s.world.calls
         return
     assert result.status == 'succeeded', result
-    assert len(actions) == 5 and len(postconditions) == 2
+    assert len(actions) == 6 and actions[0] == 'prepare-exact-caddy-image' and len(postconditions) == 2
     assert postconditions[0] == postconditions[1]
     s.host.policy = s.policy  # separately approved next-phase exact Engine policy
     rollout, rollout_envelope = signed(s, signer)

@@ -46,3 +46,7 @@ class BootstrapValidationBinding:
     def verify_created(self, prepared, runtime):
         self._require(runtime)
         return self.resources.verify_created(prepared, runtime)
+
+    def prepare_image(self, prepared, runtime, grant):
+        self._require(runtime)
+        return self.resources.prepare_image(prepared, runtime, grant)
