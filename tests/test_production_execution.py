@@ -287,7 +287,8 @@ def test_simultaneous_operation_and_inode(setup):
     assert s.executor.run(c, envelope).status == 'succeeded'
 
 
-def test_bootstrap_executes_only_ordered_manager_actions_and_journals(setup):
+@pytest.mark.parametrize('failure', [None, 'production-storage-content-changed', 'PRIVATE-SENTINEL'])
+def test_bootstrap_executes_only_ordered_manager_actions_and_journals(setup, failure):
     s = setup
     with s.lock() as lease, Journal(s.directory, lease) as j:
         for table in ('good', 'events', 'attempts', 'runs', 'authorizations'):
@@ -305,10 +306,23 @@ def test_bootstrap_executes_only_ordered_manager_actions_and_journals(setup):
         def apply(self, action, prepared, grant):
             assert grant.journal.rows()[-1]['state'] == 'applying'
             actions.append(action)
-        def verify(self, prepared, grant): return VERIFIED
+        def verify(self, prepared, grant):
+            if failure: raise DockerError(failure)
+            return VERIFIED
     s.executor.bootstrap = BootstrapExecution(Port())
     c, envelope = approve(s, prepared.candidate)
-    assert s.executor.run(c, envelope).status == 'succeeded'
+    result = s.executor.run(c, envelope)
+    if failure:
+        assert result.status == 'recovery-required'
+        expected = ('production-execution-outcome-unverified',)
+        if failure != 'PRIVATE-SENTINEL': expected += (failure,)
+        assert result.reasons == expected
+        with s.lock() as lease, Journal(s.directory, lease) as journal:
+            assert journal.last_good('manager-bootstrap', 'gateway') is None
+            assert journal.incomplete()[0]['state'] == 'verifying'
+        assert tuple(actions) == prepared.bootstrap.operations
+        return
+    assert result.status == 'succeeded'
     assert tuple(actions) == prepared.bootstrap.operations
     assert not s.world.calls
     # Exact bootstrap approval cannot authorize rollout.

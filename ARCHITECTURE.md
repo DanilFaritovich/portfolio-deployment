@@ -185,6 +185,27 @@ trees and receipts, and keep application execution closed during this controlled
 transition. Delegated SSH keys/sudoers and ordinary CD gain no containment role.
 This implementation and its offline checks do not establish live recovery.
 
+The separate root-only `operator-bootstrap-verification-recovery` capsule role
+handles a failed first bootstrap that reached `verifying / mutation-completed`.
+It requires fresh administrative review and an operator SSHSIG in
+`portfolio-bootstrap-verification-recovery-v1`, binding the original journal,
+run/candidate, host/daemon, Manager/capsule inventories, standing policy and the
+fresh runtime observation for at most five minutes. The retained Docker inventory
+must match the independently reviewed original empty-host baseline after excluding
+only the three bootstrap resources. Existing provenance, exact image/runtime,
+IPAM/ownership/storage and authenticated empty ACTIVE checks run twice per probe;
+the signed observation also binds current network and storage facts. After audit
+retention and repeated verification under the canonical flock, one SQLite
+transaction appends verified success, records gateway LKG and completes the
+original consumed authorization. Prior contained attempts remain unchanged.
+There is no Docker mutation, bootstrap replay, journal schema migration or change
+to frozen Journal code. A lost reply requires the original retained approval and
+fresh verification before reporting the existing commit. Ordinary CD and delegated
+SSH receive no recovery role; independent capsule installation and review remain
+required. Closed diagnostic codes preserve journal/authority failures through
+Actions without exposing raw exceptions. Offline tests do not establish that this
+recovery or the first application rollout has been performed in production.
+
 ## Status and scope
 
 Stages 01–04 provide registry/admission validation, immutable planning models and

@@ -21,7 +21,14 @@ def checked_process(argv, *, raw=None, timeout=1500):
     require(0 < len(result.stdout) <= 131072, 'bootstrap-result-unavailable')
     from scripts.planning_inputs import parse_snapshot
     document = parse_snapshot(result.stdout.strip())
-    require(result.returncode == 0 and type(document) is dict, 'bootstrap-operation-failed')
+    require(type(document) is dict, 'bootstrap-operation-failed')
+    if result.returncode != 0:
+        from scripts.cd.diagnostics import remote_code
+        from scripts.docker_adapter import DockerError
+        code = remote_code(document)
+        if code is not None:
+            raise DockerError(code)
+        require(False, 'bootstrap-operation-failed')
     return document
 
 
