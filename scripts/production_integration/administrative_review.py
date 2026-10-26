@@ -162,7 +162,10 @@ class AdministrativePhaseReview:
         require(not state.get('incomplete') and not state.get('authorizations') and state.get('bootstrap') and
                 a and a['state'] == 'succeeded', 'production-review-bootstrap-not-successful')
         c = parse_snapshot(a['payload'].encode())
+        # Bootstrap is historical evidence for this host/daemon. A later Manager
+        # CD must not invalidate it: the fresh administrative review already binds
+        # this installed Manager and independently approved runtime identities.
         require(c['scope'] == 'first-bootstrap' and
-                (c['host'], c['daemon']) == (self.policy.host, self.policy.daemon) and
-                c['manager_sha'] == self.installation.manager_sha, 'production-review-bootstrap-unbound')
+                (c['host'], c['daemon']) == (self.policy.host, self.policy.daemon),
+                'production-review-bootstrap-unbound')
         return dict(self.document['rollout'])
