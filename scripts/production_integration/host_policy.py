@@ -43,6 +43,13 @@ class HostPolicy:
         return hashed(asdict(self))
 
 
+def _storage_file_identity(info):
+    # Reading a file may update atime without changing any protected data.
+    # Keep inode, ownership, permissions, size and nanosecond mtime/ctime checks.
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+            info.st_uid, info.st_gid, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
 def storage_contents():
     """Bounded fixed-path read, never initializes/adopts data or reads credentials.
 
@@ -80,7 +87,8 @@ def storage_contents():
                     opened = os.fstat(stream.fileno())
                     require((opened.st_dev, opened.st_ino) == (info.st_dev, info.st_ino), 'production-storage-content-changed')
                     record['digest'] = hashlib.sha256(stream.read(info.st_size + 1)).hexdigest()
-                    require(os.fstat(stream.fileno()) == opened and path.lstat() == info,
+                    require(_storage_file_identity(os.fstat(stream.fileno())) == _storage_file_identity(opened) and
+                            _storage_file_identity(path.lstat()) == _storage_file_identity(info),
                             'production-storage-content-changed')
             require(directory != HOST_DIRECTORY or is_dir and path == root or is_socket,
                     'production-admin-directory-foreign-content')
