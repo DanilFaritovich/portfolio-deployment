@@ -11,7 +11,7 @@ ROOT = Path('/usr/local/lib/portfolio-deployment-cd')
 
 
 def main():
-    if (os.geteuid() != 0 or len(sys.argv) != 2 or sys.argv[1] not in ('automation', 'observer', 'operator-recovery') or
+    if (os.geteuid() != 0 or len(sys.argv) != 2 or sys.argv[1] not in ('automation', 'observer', 'operator-recovery', 'operator-prebootstrap') or
         not sys.flags.isolated or not sys.flags.no_site or not sys.dont_write_bytecode):
         return 2
     for path in (*reversed(ROOT.parents), ROOT):
@@ -57,6 +57,10 @@ def main():
             if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
                 return 2
     sys.path[0:0] = [str(ROOT), str(ROOT / 'vendor')]
+    if sys.argv[1] == 'operator-prebootstrap':
+        # Root administrative channel only; never in the deploy-account sudoers.
+        from scripts.cd.administrative import main
+        return main()
     if sys.argv[1] == 'operator-recovery':
         # Never present in deploy-account sudoers/authorized_keys.
         from scripts.cd.bridge import recover_main

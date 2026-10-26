@@ -102,6 +102,9 @@ class ManagedBootstrapPort:
         self._identity(grant)
         if grant.candidate.scope != 'first-bootstrap' or action not in prepared.bootstrap.operations:
             raise DockerError('production-bootstrap-action-out-of-scope')
+        if action == 'prepare-exact-caddy-image':
+            self.attestor.prepare_image(prepared, self.caddy, grant)
+            return
         if action == 'create-manager-proxy-with-reviewed-ipam':
             self._network('portfolio-proxy', self.proxy.subnet, self.proxy.gateway,
                           {LABEL + '.managed': 'true', LABEL + '.role': 'proxy'}, False)

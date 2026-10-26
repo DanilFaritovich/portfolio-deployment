@@ -4,6 +4,10 @@ from types import SimpleNamespace
 import hashlib
 import json
 import time
+import io
+import os
+import stat
+import zipfile
 
 import pytest
 
@@ -71,7 +75,8 @@ def test_fixed_installation_replay_and_no_runtime_activation(host):
     assert lock.stat().st_ino==before
     assert host.commands and all(c[0]=='/usr/sbin/visudo' for c in host.commands)
     sudoers=(host.root/'etc/sudoers.d/portfolio-cd').read_text()
-    assert 'operator-recovery' not in sudoers and 'docker' not in sudoers
+    assert 'operator-recovery' not in sudoers and 'operator-prebootstrap' not in sudoers and 'docker' not in sudoers
+    assert (cd_setup.CAPSULE/'scripts/cd/administrative.py').is_file()
     keys=(host.root/'var/lib/portfolio-cd/.ssh/authorized_keys').read_text().splitlines()
     assert len(keys)==2 and all(k.startswith('restrict,command=') for k in keys)
     assert (host.root/'var/lib/portfolio-deployment-cd/.cd-state-v1').is_file()
@@ -98,3 +103,120 @@ def test_unsafe_initial_setup_is_rejected_before_authorized_keys(host,monkeypatc
     with pytest.raises(ValueError):cd_setup.main()
     assert not (host.root/'var/lib/portfolio-cd/.ssh/authorized_keys').exists()
     assert not (host.root/'etc/sudoers.d/portfolio-cd').exists()
+
+
+def rewrite_kit(host, mutate):
+    path = host.base/'cd-capsule.zip'
+    with zipfile.ZipFile(io.BytesIO(path.read_bytes())) as archive:
+        files = {n: archive.read(n) for n in archive.namelist() if n != 'kit.json'}
+    mutate(files)
+    files['kit.json'] = canonical({'version': 1, 'files': {n: hashlib.sha256(v).hexdigest() for n, v in files.items()}})
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_STORED) as archive:
+        for name, value in sorted(files.items()):
+            entry = zipfile.ZipInfo(name)
+            entry.external_attr = (stat.S_IFREG|0o600) << 16
+            archive.writestr(entry, value)
+    path.write_bytes(out.getvalue())
+    host.decision['kit_sha256'] = hashlib.sha256(out.getvalue()).hexdigest()
+    (host.base/'cd-install-decision.json').write_bytes(canonical(host.decision))
+
+
+@pytest.fixture
+def capsule_update(host, monkeypatch):
+    tool = host.root/'usr/bin/ssh-keygen'
+    tool.parent.mkdir(parents=True, exist_ok=True)
+    tool.write_bytes(b'fixed external tool')
+    def external(files):
+        d = json.loads(files['capsule/capsule.json'])
+        d['files']['/usr/bin/ssh-keygen'] = hashlib.sha256(tool.read_bytes()).hexdigest()
+        files['capsule/capsule.json'] = canonical(d)
+    rewrite_kit(host, external)
+    cd_setup.main()
+    manager = host.root/'opt/portfolio-deployment'
+    manager.mkdir(parents=True, mode=0o700)
+    (manager/'app.py').write_bytes(b'# installed manager')
+    (manager/'app.py').chmod(0o600)
+    inventory = canonical({'manager_sha': 'a'*40, 'files': [
+        ['/opt/portfolio-deployment/app.py', hashlib.sha256((manager/'app.py').read_bytes()).hexdigest()]]})
+    (manager/'installation.json').write_bytes(inventory)
+    (manager/'installation.json').chmod(0o600)
+    capsule = cd_setup.CAPSULE
+    host.decision.update(id='c'*32, action='replace-capsule',
+        from_capsule_sha256=hashlib.sha256((capsule/'capsule.json').read_bytes()).hexdigest(),
+        manager_inventory_sha256=hashlib.sha256(inventory).hexdigest(),
+        policy_sha256=hashlib.sha256((host.root/'etc/portfolio-deployment/cd-policy.json').read_bytes()).hexdigest())
+    def add(files):
+        files['capsule/reviewed_extra.py'] = b'# independently reviewed new capsule capability'
+        d = json.loads(files['capsule/capsule.json'])
+        d['files']['/usr/local/lib/portfolio-deployment-cd/reviewed_extra.py'] = hashlib.sha256(files['capsule/reviewed_extra.py']).hexdigest()
+        files['capsule/capsule.json'] = canonical(d)
+    rewrite_kit(host, add)
+    # Host ownership is synthetic; real tree closure/digests and exchange remain.
+    original = Path.lstat
+    def metadata(path, *args, **kwargs):
+        info = original(path, *args, **kwargs)
+        if path.is_relative_to(host.root):
+            values = list(info)
+            values[4:6] = [0, 0]
+            return os.stat_result(values)
+        return info
+    monkeypatch.setattr(Path, 'lstat', metadata)
+    return host
+
+
+def test_exact_capsule_exchange_preserves_manager_policy_keys_and_lock(capsule_update):
+    h = capsule_update
+    paths = [h.root/n for n in ('opt/portfolio-deployment/installation.json', 'etc/portfolio-deployment/cd-policy.json',
+                              'var/lib/portfolio-cd/.ssh/authorized_keys', 'etc/sudoers.d/portfolio-cd')]
+    before = {p: p.read_bytes() for p in paths}
+    inode = (h.root/'srv/portfolio/locks/host.lock').stat().st_ino
+    cd_setup.main()
+    assert (cd_setup.CAPSULE/'reviewed_extra.py').is_file()
+    retained = cd_setup.CAPSULE.parent/('.portfolio-deployment-cd-'+'c'*32)
+    assert retained.is_dir() and not (retained/'reviewed_extra.py').exists()
+    assert {p: p.read_bytes() for p in paths} == before
+    assert (h.root/'srv/portfolio/locks/host.lock').stat().st_ino == inode
+    assert json.loads((h.base/('capsule-update-'+'c'*32+'.json')).read_bytes())['status'] == 'succeeded'
+
+
+@pytest.mark.parametrize('failure', ['manager-changed', 'capsule-changed', 'external-tool-changed', 'ssh-policy-changed', 'expired'])
+def test_capsule_replacement_rejects_drift_before_reservation(capsule_update, failure):
+    h = capsule_update
+    if failure == 'manager-changed':
+        (h.root/'opt/portfolio-deployment/app.py').write_bytes(b'drift')
+    elif failure == 'capsule-changed':
+        (cd_setup.CAPSULE/'unreviewed.py').write_bytes(b'drift')
+    elif failure == 'external-tool-changed':
+        (h.root/'usr/bin/ssh-keygen').write_bytes(b'drift')
+    elif failure == 'ssh-policy-changed':
+        path = h.root/'etc/sudoers.d/portfolio-cd'
+        path.chmod(0o600)
+        path.write_bytes(b'drift')
+    else:
+        h.decision['expires'] = 1
+        (h.base/'cd-install-decision.json').write_bytes(canonical(h.decision))
+    with pytest.raises(ValueError): cd_setup.main()
+    assert not (h.base/('cd-decision-'+'c'*32+'.used')).exists()
+
+
+@pytest.mark.parametrize('after_exchange', [False, True])
+def test_capsule_unknown_exchange_is_fenced_until_separate_restore(capsule_update, monkeypatch, after_exchange):
+    h = capsule_update
+    original = cd_setup.exchange
+    def interrupt(*args):
+        if after_exchange:
+            original(*args)
+        raise RuntimeError('unknown exchange')
+    monkeypatch.setattr(cd_setup, 'exchange', interrupt)
+    with pytest.raises(RuntimeError): cd_setup.main()
+    h.decision['id'] = 'd'*32
+    (h.base/'cd-install-decision.json').write_bytes(canonical(h.decision))
+    with pytest.raises(ValueError): cd_setup.main()
+    h.decision.update(action='restore-capsule', restore_id='c'*32,
+                      from_capsule_sha256=hashlib.sha256((cd_setup.CAPSULE/'capsule.json').read_bytes()).hexdigest())
+    (h.base/'cd-install-decision.json').write_bytes(canonical(h.decision))
+    monkeypatch.setattr(cd_setup, 'exchange', original)
+    cd_setup.main()
+    assert not (cd_setup.CAPSULE/'reviewed_extra.py').exists()
+    assert json.loads((h.base/('capsule-update-'+'c'*32+'.json')).read_bytes())['status'] == 'restored'
