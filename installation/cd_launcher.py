@@ -11,7 +11,7 @@ ROOT = Path('/usr/local/lib/portfolio-deployment-cd')
 
 
 def main():
-    if (os.geteuid() != 0 or len(sys.argv) != 2 or sys.argv[1] not in ('automation', 'observer', 'operator-recovery', 'operator-prebootstrap') or
+    if (os.geteuid() != 0 or len(sys.argv) != 2 or sys.argv[1] not in ('automation', 'observer', 'operator-recovery', 'operator-prebootstrap', 'operator-bootstrap-containment') or
         not sys.flags.isolated or not sys.flags.no_site or not sys.dont_write_bytecode):
         return 2
     for path in (*reversed(ROOT.parents), ROOT):
@@ -65,6 +65,10 @@ def main():
         # Never present in deploy-account sudoers/authorized_keys.
         from scripts.cd.bridge import recover_main
         return recover_main()
+    if sys.argv[1] == 'operator-bootstrap-containment':
+        # Independent root channel only, absent from forced SSH keys and sudoers.
+        from scripts.cd.bootstrap_containment import main
+        return main()
     from scripts.cd.bridge import main as bridge
     return bridge(sys.argv[1])
 

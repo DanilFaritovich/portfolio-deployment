@@ -165,6 +165,26 @@ through Manager CD. Production installation, bootstrap, first rollout and both l
 CD chains remain unperformed until separately authorized. Publishing artifacts or
 passing local checks does not establish production CD.
 
+An independently installed capsule additionally provides root-only
+`operator-bootstrap-containment` for one failed first bootstrap with no previous
+LKG. A fresh operator SSHSIG in `portfolio-bootstrap-containment-v1` binds the
+exact journal bytes, run/candidate, host/daemon, installed Manager/capsule
+inventories, standing policy and a maximum five-minute decision. Two existing
+complete empty-host reviews run under the canonical flock before mutation. The
+capsule retains the original SQLite bytes and signed decision outside the journal,
+then atomically appends `empty-bootstrap-contained`, marks that run `contained`
+and its authorization `blocked`. Original events, target, consumed nonce and LKG
+pointers remain; no bootstrap is replayed and no success/LKG is fabricated. A
+lost reply can report the same committed containment without rewriting it.
+
+SQLite tables/version remain unchanged, but the new terminal state changes the
+frozen journal code contract. Independently review/install the capsule and review
+the new journal pin in the operator-signed standing policy before delivery of a
+compatible Manager. Older journal readers reject contained history; retain their
+trees and receipts, and keep application execution closed during this controlled
+transition. Delegated SSH keys/sudoers and ordinary CD gain no containment role.
+This implementation and its offline checks do not establish live recovery.
+
 ## Status and scope
 
 Stages 01–04 provide registry/admission validation, immutable planning models and
