@@ -79,7 +79,8 @@ def test_missing_or_unapproved_fields_fail_closed(review, case):
     with pytest.raises(DockerError): ar.AdministrativePhaseReview(seal)
 
 
-def test_rollout_requires_real_journal_success_and_exact_host_source(review, monkeypatch):
+@pytest.mark.parametrize('bootstrap_manager', ['a'*40, '9'*40])
+def test_rollout_requires_real_journal_success_and_current_review(review, monkeypatch, bootstrap_manager):
     seal, d, _, _ = review
     d['phase'] = 'rollout'
     d['rollout'] = dict(container_id='1'*64, proxy_id='2'*64, private_id='3'*64,
@@ -89,7 +90,7 @@ def test_rollout_requires_real_journal_success_and_exact_host_source(review, mon
     port = ar.AdministrativePhaseReview(seal)
     state = dict(incomplete=[], authorizations=[], bootstrap={'gateway': 'lkg'},
         bootstrapAuthorization={'state': 'succeeded', 'payload': encode(dict(scope='first-bootstrap',
-            host=port.policy.host, daemon=port.policy.daemon, manager_sha=seal.manager_sha))})
+            host=port.policy.host, daemon=port.policy.daemon, manager_sha=bootstrap_manager))})
     lease = object()
     def read(self, actual):
         assert actual is lease
@@ -102,9 +103,19 @@ def test_rollout_requires_real_journal_success_and_exact_host_source(review, mon
         state[key] = bad
         with pytest.raises(DockerError): port.rollout_pins(ReadOnlyJournalSource(), lease)
         state[key] = saved
-    state['bootstrapAuthorization']['payload'] = encode(dict(scope='first-bootstrap', host='wrong',
-        daemon=port.policy.daemon, manager_sha=seal.manager_sha))
-    with pytest.raises(DockerError): port.rollout_pins(ReadOnlyJournalSource(), lease)
+    original = state['bootstrapAuthorization']['payload']
+    for field, bad in [('host', 'wrong'), ('daemon', 'other'), ('scope', 'first-project-router-rollout')]:
+        payload = ar.parse_snapshot(original.encode())
+        payload[field] = bad
+        state['bootstrapAuthorization']['payload'] = encode(payload)
+        with pytest.raises(DockerError, match='production-review-bootstrap-unbound'):
+            port.rollout_pins(ReadOnlyJournalSource(), lease)
+    state['bootstrapAuthorization']['payload'] = original
+    d['manager_sha'] = bootstrap_manager if bootstrap_manager != seal.manager_sha else '0'*40
+    with pytest.raises(DockerError, match='production-review-revoked-or-replaced'):
+        port.rollout_pins(ReadOnlyJournalSource(), lease)
+    with pytest.raises(DockerError, match='production-review-phase-or-source-invalid'):
+        ar.AdministrativePhaseReview(seal)
 
 
 @pytest.fixture
