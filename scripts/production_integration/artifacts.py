@@ -7,11 +7,9 @@ import hashlib
 import re
 
 from scripts.docker_adapter import DockerError
-from scripts.docker_discovery import ImageEvidence, MANIFEST_TYPES
+from scripts.docker_discovery import ImageEvidence, INDEX_TYPES, MANIFEST_TYPES, engine_image_id_matches
 from scripts.planning_inputs import parse_snapshot
 from scripts.reconciliation import encode, revision
-
-INDEX_TYPES = {'application/vnd.oci.image.index.v1+json', 'application/vnd.docker.distribution.manifest.list.v2+json'}
 
 
 def blob_digest(raw):
@@ -244,6 +242,7 @@ def bind_engine_image(evidence, inspected):
         'imageIdMatchesConfig': inspected.get('Id') == evidence.image_id,
         'imageIdMatchesManifest': inspected.get('Id') == evidence.manifest_digest,
         'imageIdMatchesRequestedDigest': inspected.get('Id') == evidence.reference.split('@')[1],
+        'imageIdentityMatches': engine_image_id_matches(evidence, inspected.get('Id'), inspected.get('Descriptor')),
         'repoDigestsValid': valid_digests,
         'repoDigestsContainRequested': valid_digests and evidence.reference in digests,
         'repoDigestsContainPlatformManifest': valid_digests and manifest_ref in digests,
@@ -264,7 +263,7 @@ def bind_engine_image(evidence, inspected):
             k: {'oci': config_shape(expected, k), 'engine': config_shape(config, k)}
             for k in CONFIG_FIELDS if k in differing}
     codes = tuple(code for key, code in (
-        ('imageIdMatchesConfig', 'engine-image-id-mismatch'),
+        ('imageIdentityMatches', 'engine-image-id-mismatch'),
         ('repoDigestsContainRequested', 'engine-repo-digests-mismatch'),
         ('platformMatches', 'engine-platform-mismatch'),
         ('configMatches', 'engine-config-mismatch'),
