@@ -207,6 +207,46 @@ def test_active_expired_evidence_and_changed_config():
     assert port.last is None
 
 
+@pytest.mark.parametrize('failure', [None, 'changed-runtime', 'changed-file', 'slow-socket'])
+def test_slow_seal_verification_is_outside_authenticated_socket_io(monkeypatch, tmp_path, failure):
+    tick, seals, reads = [0], [], []
+    source = tmp_path / 'sealed.py'
+    source.write_bytes(b'original')
+    def verify():
+        seals.append(1)
+        tick[0] += 2
+    installation = SimpleNamespace(files=((str(source), 'fixture'),), verify=verify)
+    engine = SimpleNamespace(identity=lambda: ('host', 'daemon'))
+    runtime = PinnedCaddyRuntime(installation, engine, None, None, container_id=CID, network_id=NID)
+    def inspect(channel):
+        if runtime._read_window is None: installation.verify()
+        else: runtime._read_window.verify()
+        return snapshot(image_config_id='sha256:'+'e'*64) if failure == 'changed-runtime' and len(reads) == 2 else snapshot()
+    monkeypatch.setattr(runtime, '_inspect', inspect)
+    channel = a.UnixActiveChannel(runtime, clock=lambda: tick[0])
+    @contextmanager
+    def fixed(): yield '/fixed/admin.sock', TOKEN
+    monkeypatch.setattr(a, 'protected_socket', fixed)
+    monkeypatch.setattr(a, 'socket_identity', lambda: TOKEN)
+    def read(*args, **kwargs):
+        reads.append(1)
+        assert 0 < kwargs['timeout'] <= 1
+        if failure == 'changed-file': source.write_bytes(b'modified')
+        if failure == 'slow-socket': tick[0] += 2
+        return b'{}'
+    monkeypatch.setattr(a, '_read_socket', read)
+    adapter = SimpleNamespace(adapt=lambda routes: b'{}')
+    port = ActiveConfigTransport(engine, channel, runtime, adapter, lambda: (), clock=lambda: tick[0])
+    if failure:
+        with pytest.raises(DockerError): port.read_active()
+        assert port.last is None
+    else:
+        result = port.read_active()
+        assert result.container_id == CID and seals == [1, 1] and reads == [1, 1]
+        assert port.last[2] == 2 and tick[0] == 4
+    assert runtime._read_window is None and channel._snapshot is None
+
+
 @pytest.mark.parametrize('raw', [b'{"a":1,"a":2}', b'{} {}', b'[]', b'{"a":NaN}', b'{"a":Infinity}', b'\xff', b'{'*33+b'}'*33, b'x'*(a.LIMIT+1)])
 def test_closed_active_json(raw):
     with pytest.raises(DockerError): active_json(raw)
