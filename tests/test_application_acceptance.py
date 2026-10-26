@@ -296,7 +296,8 @@ def test_attestation_binding(tmp_path):
 
 def fixture_evidence(app):
     return {c['name']: SimpleNamespace(reference=c['image'], manifest_digest='sha256:' + 'c' * 64,
-            image_id='sha256:' + 'd' * 64, defaults_json=json.dumps({'Healthcheck': {'Test': ['CMD', '/health']}}))
+            image_id='sha256:' + 'd' * 64, platform='linux/amd64',
+            defaults_json=json.dumps({'Healthcheck': {'Test': ['CMD', '/health']}}))
             for c in app.spec['components']}
 
 
@@ -572,6 +573,7 @@ def test_pull_inspect_binding_failures_stop_before_runtime(tmp_path, monkeypatch
     for item in evidence.values():
         item.image_id = proof.image_id
         item.defaults_json = proof.defaults_json
+        item.verified = True
     def fail_command(args, **kwargs):
         if args[:2] == ['docker', 'pull'] and failure == 'pull':
             raise TimeoutError('SECRET=private-value')

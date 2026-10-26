@@ -11,6 +11,7 @@ from scripts.planning_inputs import load_observed_state
 from scripts.reconciliation import encode
 
 MANIFEST_TYPES = {"application/vnd.oci.image.manifest.v1+json", "application/vnd.docker.distribution.manifest.v2+json"}
+INDEX_TYPES = {"application/vnd.oci.image.index.v1+json", "application/vnd.docker.distribution.manifest.list.v2+json"}
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,47 @@ class ImageEvidence:
     manifest_digest: str | None
     verified: bool
     defaults_json: str
+
+
+def _image_descriptor_matches(descriptor, digest, media_types):
+    return (isinstance(descriptor, dict) and isinstance(digest, str) and
+            re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is not None and
+            descriptor.get('digest') == digest and isinstance(descriptor.get('mediaType'), str) and
+            descriptor['mediaType'] in media_types and
+            type(descriptor.get('size')) is int and 0 < descriptor['size'] <= 1024 * 1024 and
+            ('platform' not in descriptor or descriptor['platform'] == {'os': 'linux', 'architecture': 'amd64'}))
+
+
+def engine_image_id_matches(image, identifier, descriptor=None):
+    """Legacy config ID or containerd target, using an already verified OCI map.
+
+    Containerd returns the target digest in both image Id and Descriptor:
+    https://github.com/moby/moby/blob/v28.0.4/daemon/containerd/image_inspect.go
+    Never rewrite image.image_id: it remains the authenticated config digest.
+    """
+    if image.verified is not True or image.platform != 'linux/amd64':
+        return False
+    requested = image.reference.split('@')[-1]
+    target_matches = (_image_descriptor_matches(descriptor, image.manifest_digest, MANIFEST_TYPES) or
+                      (requested != image.manifest_digest and
+                       _image_descriptor_matches(descriptor, requested, INDEX_TYPES)))
+    if identifier == image.image_id:
+        return descriptor is None or target_matches
+    return target_matches and identifier == descriptor['digest']
+
+
+def container_image_id_matches(image, identifier, descriptor=None):
+    """Bind a container to the verified config or its selected platform manifest.
+
+    ImageManifestDescriptor selects the actual platform when Image is an index
+    digest. RepoDigests, matching defaults or an index ID alone are insufficient.
+    """
+    if image.verified is not True or image.platform != 'linux/amd64':
+        return False
+    manifest_matches = _image_descriptor_matches(descriptor, image.manifest_digest, MANIFEST_TYPES)
+    if identifier == image.image_id:
+        return descriptor is None or manifest_matches
+    return manifest_matches and identifier in (image.manifest_digest, image.reference.split('@')[-1])
 
 
 @dataclass(frozen=True)
@@ -87,6 +129,8 @@ def discover(adapter, references, *, resolve_image=image_evidence):
                              "imageId": raw.get("Image"), "config": config, "host": host,
                              "networks": (raw.get("NetworkSettings") or {}).get("Networks") or {},
                              "mounts": raw.get("Mounts") or []}
+                    if 'ImageManifestDescriptor' in raw:
+                        facts['imageManifestDescriptor'] = raw['ImageManifestDescriptor']
                 else:
                     facts = {"labels": raw.get("Labels") or {}, "driver": raw.get("Driver"),
                              "internal": raw.get("Internal"), "options": raw.get("Options") or {},

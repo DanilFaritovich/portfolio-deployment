@@ -178,6 +178,8 @@ def verified_statement(raw, image, expectation):
 def runtime_verification(document, artifact, service, evidence):
     facts = {'config': document['Config'], 'host': document['HostConfig'], 'imageId': document['Image'],
              'networks': document['NetworkSettings']['Networks'], 'mounts': document['Mounts']}
+    if 'ImageManifestDescriptor' in document:
+        facts['imageManifestDescriptor'] = document['ImageManifestDescriptor']
     resource = DockerResource('container', document['Id'], document['Name'].lstrip('/'), encode(facts))
     return container_runtime_verification(resource, artifact, service, evidence)
 
