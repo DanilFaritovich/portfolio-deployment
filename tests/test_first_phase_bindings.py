@@ -424,6 +424,27 @@ def test_two_actual_postconditions_required_before_readiness(reader, monkeypatch
     assert len(calls) == 2
 
 
+@pytest.mark.parametrize('seconds_per_round,accepted', [(19, True), (30, True), (31, False)])
+def test_postcondition_rounds_include_seal_cost_but_remain_bounded(reader, monkeypatch, seconds_per_round, accepted):
+    port, _, _ = reader
+    ticks, calls = [0], []
+    resources = phase.BootstrapResources(port.installation, port.engine, port, None, None, None, None,
+                                        clock=lambda: ticks[0])
+    prepared, runtime = object(), object()
+    resources.prepared, resources.runtime, resources.evidence = prepared, runtime, object()
+    def check(*args):
+        ticks[0] += seconds_per_round
+        calls.append(1)
+        return ('same-confirmed-runtime',)
+    monkeypatch.setattr(resources, '_check_created', check)
+    if accepted:
+        assert resources.verify_created(prepared, runtime).consecutive == 2
+    else:
+        with pytest.raises(DockerError, match='postconditions-changed-or-expired'):
+            resources.verify_created(prepared, runtime)
+    assert calls == [1, 1]
+
+
 @pytest.fixture
 def admin(monkeypatch):
     def load(name, path):

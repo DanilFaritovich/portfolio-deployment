@@ -37,6 +37,10 @@ from scripts.production_integration.runtime import ProxyContract, validate_proxy
 from scripts.readiness import ReadinessEvidence
 from scripts.reconciliation import encode
 
+# Two complete runtime observations include full seal checks outside each
+# five-second mutable ACTIVE window. Real host observations take ~19s each.
+POSTCONDITION_SECONDS = 60
+
 
 class EmptyHostReader:
     """Fresh local facts authenticated against the independent phase HostPolicy.
@@ -229,7 +233,7 @@ class BootstrapResources:
         start = self.clock()
         first = self._check_created(prepared, runtime)
         second = self._check_created(prepared, runtime)
-        require(first == second and 0 <= self.clock() - start <= 15,
+        require(first == second and 0 <= self.clock() - start <= POSTCONDITION_SECONDS,
                 'production-bootstrap-postconditions-changed-or-expired')
         return ReadinessEvidence('verified', 'readiness-verified', 2, 2)
 
@@ -265,7 +269,7 @@ class BootstrapResources:
         start = self.clock()
         first = self._check_created(prepared, runtime)
         second = self._check_created(prepared, runtime)
-        require(first == second and 0 <= self.clock() - start <= 15,
+        require(first == second and 0 <= self.clock() - start <= POSTCONDITION_SECONDS,
                 'production-bootstrap-postconditions-changed-or-expired')
         require(discover(self.engine, ()) == docker and hashed(storage_contents()) == contents and
                 hashed(network_facts(self.reader.local.collect(), docker)) == network,

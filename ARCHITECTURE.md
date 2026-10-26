@@ -206,6 +206,17 @@ required. Closed diagnostic codes preserve journal/authority failures through
 Actions without exposing raw exceptions. Offline tests do not establish that this
 recovery or the first application rollout has been performed in production.
 
+Capsules include the same three immutable Caddy producer inputs as Manager
+bundles; export fails if any is absent. ACTIVE observation uses a single-use
+verified read scope: complete seal hashing before and after the scope, unchanged
+file identities (including nanosecond ctime/mtime) on every runtime inspection,
+and no authority retained after exit. Two peer-authenticated GETs share a bound
+runtime snapshot, which is inspected again before returning. Official config
+adaptation and opening seal verification precede the five-second mutable window;
+closing seal verification does not refresh the observation timestamp. Socket I/O
+retains its one-second deadline. The two bootstrap postcondition rounds have a
+sixty-second aggregate bound, including their complete seal checks.
+
 ## Status and scope
 
 Stages 01–04 provide registry/admission validation, immutable planning models and

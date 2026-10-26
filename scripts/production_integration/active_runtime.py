@@ -20,6 +20,22 @@ class PinnedCaddyRuntime:
     def __init__(self, installation, engine, runtime, evidence, *, container_id, network_id):
         self.installation, self.engine, self.runtime, self.evidence = installation, engine, runtime, evidence
         self.container_id, self.network_id = container_id, network_id
+        self._read_window = None
+
+    def observation(self):
+        """A fresh scope, never shared across transport calls or requests."""
+        from contextlib import contextmanager
+        from scripts.production_integration.verified_read import VerifiedRead
+        @contextmanager
+        def opened():
+            require(self._read_window is None, 'production-admin-observation-already-open')
+            with VerifiedRead(self.installation).open() as window:
+                self._read_window = window
+                try:
+                    yield
+                finally:
+                    self._read_window = None
+        return opened()
 
     def inspect(self, channel):
         try:
@@ -28,7 +44,10 @@ class PinnedCaddyRuntime:
             raise DockerError('production-admin-runtime-unavailable') from None
 
     def _inspect(self, channel):
-        self.installation.verify()
+        if self._read_window is None:
+            self.installation.verify()
+        else:
+            self._read_window.verify()
         require(channel.runtime is self and self.runtime.paths.admin_socket_directory == HOST_DIRECTORY and
                 self.runtime.version == '2.11.7' and
                 all(isinstance(pin, str) and re.fullmatch(r'[0-9a-f]{64}', pin)

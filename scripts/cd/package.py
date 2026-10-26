@@ -11,6 +11,7 @@ import stat
 import zipfile
 
 from scripts.cd.policy import pin
+from installation.operator_bootstrap import CADDY_INPUTS
 from scripts.production_integration.install_bundle import source_target
 from scripts.production_integration.observations import require
 from scripts.production_integration.operator_approval import canonical, closed_json, trust_keys
@@ -21,6 +22,10 @@ CAPSULE = '/usr/local/lib/portfolio-deployment-cd/'
 def export(repository, *, assets, bindings, external_pins, signed_policy):
     repository = Path(repository)
     files = {}
+    for name in sorted(CADDY_INPUTS):
+        path = repository / name
+        require(path.is_file() and not path.is_symlink(), 'cd-capsule-caddy-input-required')
+        files['capsule/' + name] = path.read_bytes()
     for directory in ('scripts', 'schemas'):
         for path in sorted((repository / directory).rglob('*')):
             if not path.is_file() or path.suffix == '.pyc':
