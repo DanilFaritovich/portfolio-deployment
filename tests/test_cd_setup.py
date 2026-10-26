@@ -76,7 +76,9 @@ def test_fixed_installation_replay_and_no_runtime_activation(host):
     assert host.commands and all(c[0]=='/usr/sbin/visudo' for c in host.commands)
     sudoers=(host.root/'etc/sudoers.d/portfolio-cd').read_text()
     assert 'operator-recovery' not in sudoers and 'operator-prebootstrap' not in sudoers and 'docker' not in sudoers
+    assert 'operator-bootstrap-containment' not in sudoers
     assert (cd_setup.CAPSULE/'scripts/cd/administrative.py').is_file()
+    assert (cd_setup.CAPSULE/'scripts/cd/bootstrap_containment.py').is_file()
     keys=(host.root/'var/lib/portfolio-cd/.ssh/authorized_keys').read_text().splitlines()
     assert len(keys)==2 and all(k.startswith('restrict,command=') for k in keys)
     assert (host.root/'var/lib/portfolio-deployment-cd/.cd-state-v1').is_file()

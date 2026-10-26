@@ -24,18 +24,19 @@ class JournalError(RuntimeError):
 
 TRANSITIONS = {
     "prepared": {"applying", "verifying", "recovery-required", "recovered-verified"},
-    "applying": {"verifying", "failed", "outcome-unknown", "recovery-required"},
+    "applying": {"verifying", "failed", "outcome-unknown", "recovery-required", "contained"},
     "verifying": {"succeeded", "failed", "recovery-required"},
     "failed": {"rolling-back", "recovery-required"},
     "outcome-unknown": {"recovery-required"},
     "rolling-back": {"rolled-back-verified", "recovery-required"},
     "succeeded": {"recovered-verified"}, "rolled-back-verified": {"recovered-verified"},
-    "recovered-verified": set(), "recovery-required": set(),
+    "recovered-verified": set(), "recovery-required": set(), "contained": set(),
 }
 REASONS = {"intent-recorded", "mutation-started", "mutation-completed", "mutation-failed",
            "mutation-outcome-unknown", "readiness-verified", "readiness-failed", "fresh-state-unavailable",
            "dependency-readiness-unverified", "gateway-unverified", "rollback-started", "rollback-verified",
-           "rollback-failed", "rollback-unsafe", "recovery-analysis-required", "runtime-unverified", "recovery-verified"}
+           "rollback-failed", "rollback-unsafe", "recovery-analysis-required", "runtime-unverified", "recovery-verified",
+           "empty-bootstrap-contained"}
 SCHEMA = (
     "CREATE TABLE runs (id TEXT PRIMARY KEY, application TEXT NOT NULL, revision TEXT NOT NULL, created REAL NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, updated REAL NOT NULL)",
     "CREATE TABLE attempts (run TEXT NOT NULL REFERENCES runs(id), component TEXT NOT NULL, previous TEXT, target TEXT NOT NULL, runtime TEXT NOT NULL, state TEXT NOT NULL, reason TEXT NOT NULL, readiness TEXT NOT NULL, probes INTEGER NOT NULL, consecutive INTEGER NOT NULL, updated REAL NOT NULL, PRIMARY KEY(run,component))",
@@ -212,7 +213,10 @@ class Journal:
                 not valid_intent(Intent(r["component"], r["previous"], r["target"], r["runtime"])) or
                 (type(r["updated"]) not in (int, float) or not math.isfinite(r["updated"])) or
                 r["run_reason"] not in REASONS or type(r["run_updated"]) not in (int, float) or not math.isfinite(r["run_updated"]) or
-                r["run_status"] not in ("active", "succeeded", "recovery-required", "recovered") or
+                r["run_status"] not in ("active", "succeeded", "recovery-required", "recovered", "contained") or
+                ((r["run_status"] == "contained") != (r["state"] == "contained")) or
+                ((r["run_status"] == "contained") != (r["run_reason"] == "empty-bootstrap-contained")) or
+                ((r["state"] == "contained") != (r["reason"] == "empty-bootstrap-contained")) or
                 (r["run_status"] == "succeeded" and r["state"] != "succeeded") or
                 ((r["run_status"] == "recovered") != (r["state"] == "recovered-verified")) or
                 ((r["run_status"] == "recovered") != (r["run_reason"] == "recovery-verified")) or
@@ -232,6 +236,7 @@ class Journal:
                     type(e["probes"]) is not int or type(e["consecutive"]) is not int or not 0 <= e["consecutive"] <= e["probes"] <= 3001 or
                     type(e["at"]) not in (int, float) or not math.isfinite(e["at"]) or
                     ((e["state"] == "recovered-verified") != (e["reason"] == "recovery-verified")) or
+                    ((e["state"] == "contained") != (e["reason"] == "empty-bootstrap-contained")) or
                     (e["state"] in ("succeeded", "rolled-back-verified", "recovered-verified") and
                      (e["readiness"] != "verified" or e["consecutive"] < 2))):
                     raise JournalError("corrupt-journal-events")
@@ -240,6 +245,8 @@ class Journal:
                 raise JournalError("incomplete-journal-record")
         for run in {r["run"] for r in rows if r["run_status"] == "recovered"}:
             self.recovery_baseline(run, completed=True)
+        for run in {r["run"] for r in rows if r["run_status"] == "contained"}:
+            self.bootstrap_containment_record(run, completed=True)
         for good in self.db.execute("SELECT * FROM good"):
             run = [r for r in rows if r["run"] == good["run"]]
             if (not run or any(r["state"] != "succeeded" or r["run_status"] != "succeeded" for r in run) or
@@ -277,7 +284,8 @@ class Journal:
         self.db.execute("INSERT INTO events(run,component,state,reason,readiness,probes,consecutive,at) SELECT run,component,state,reason,readiness,probes,consecutive,updated FROM attempts WHERE run=? AND component=?", (run, component))
 
     def transition(self, run, component, state, reason, evidence=None):
-        if reason not in REASONS or state == "recovered-verified" or reason == "recovery-verified":
+        if (reason not in REASONS or state in ("recovered-verified", "contained") or
+            reason in ("recovery-verified", "empty-bootstrap-contained")):
             raise JournalError("invalid-journal-reason")
         with self.transaction():
             row = self.db.execute("SELECT * FROM attempts WHERE run=? AND component=?", (run, component)).fetchone()
@@ -372,7 +380,59 @@ class Journal:
             self.db.execute("UPDATE runs SET status='recovery-required',reason=?,updated=? WHERE id=? AND status='active'", (reason, time.time(), run))
 
     def incomplete(self):
-        return [r for r in self.rows() if r["run_status"] not in ("succeeded", "recovered")]
+        return [r for r in self.rows() if r["run_status"] not in ("succeeded", "recovered", "contained")]
+
+    def bootstrap_containment_record(self, run, *, completed=False):
+        """One failed initial bootstrap, never an application rollback or LKG.
+
+        A contained record retains its original intent, target and consumed nonce.
+        Only the separate operator-only administrative entry may close it after
+        authenticating exact journal bytes and fresh complete empty-host facts.
+        """
+        self._locked()
+        from scripts.production_integration.authorization import OperationCandidate
+        rows = [r for r in self.rows() if r['run'] == run]
+        approval = self.db.execute('SELECT * FROM authorizations WHERE nonce=?', (run,)).fetchone()
+        if len(rows) != 1 or approval is None:
+            raise JournalError('bootstrap-containment-not-eligible')
+        row = rows[0]
+        candidate = OperationCandidate(**json.loads(approval['payload']))
+        events = [dict(e) for e in self.db.execute('SELECT * FROM events WHERE run=? ORDER BY sequence', (run,))]
+        states = ['prepared', 'applying'] + (['contained'] if completed else [])
+        reasons = ['intent-recorded', 'mutation-started'] + (['empty-bootstrap-contained'] if completed else [])
+        if (candidate.scope != 'first-bootstrap' or candidate.identity != approval['candidate'] or
+            row['application'] != 'manager-bootstrap' or row['component'] != 'gateway' or
+            row['revision'] != candidate.manager_sha or row['target'] != candidate.image or
+            row['runtime'] != candidate.runtime_hash.removeprefix('sha256:') or row['previous'] is not None or
+            row['run_status'] != ('contained' if completed else 'recovery-required') or
+            row['state'] != ('contained' if completed else 'applying') or
+            row['run_reason'] != ('empty-bootstrap-contained' if completed else 'recovery-analysis-required') or
+            approval['state'] != ('blocked' if completed else 'recovery-required') or
+            [e['state'] for e in events] != states or [e['reason'] for e in events] != reasons or
+            any(e['component'] != 'gateway' or e['readiness'] != 'unknown' or e['probes'] or e['consecutive'] for e in events) or
+            (completed and row['run_updated'] != row['updated'])):
+            raise JournalError('bootstrap-containment-not-eligible')
+        return candidate
+
+    def contain_empty_bootstrap(self, run, candidate):
+        """Trusted administrative primitive, not an executor/request capability.
+
+        Caller must durably retain the signed decision and original database and
+        attest empty runtime under this same lease before entering this method.
+        No tables, intents, events, approvals or LKG pointers are removed.
+        """
+        with self.transaction():
+            self.validate()
+            if (any(self.db.execute('SELECT count(*) FROM ' + table).fetchone()[0] != count
+                    for table, count in (('runs', 1), ('attempts', 1), ('authorizations', 1), ('good', 0))) or
+                self.bootstrap_containment_record(run).identity != candidate):
+                raise JournalError('bootstrap-containment-not-eligible')
+            now = time.time()
+            self.db.execute("UPDATE attempts SET state='contained',reason='empty-bootstrap-contained',updated=? WHERE run=?", (now, run))
+            self._event(run, 'gateway')
+            self.db.execute("UPDATE runs SET status='contained',reason='empty-bootstrap-contained',updated=? WHERE id=?", (now, run))
+            self.db.execute("UPDATE authorizations SET state='blocked' WHERE nonce=? AND state='recovery-required'", (run,))
+            self.validate()
 
     def consume_authorization(self, claims, candidate):
         """Irreversible reservation, durable before intent or any host mutation.
