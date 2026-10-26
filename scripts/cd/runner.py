@@ -22,9 +22,11 @@ from scripts.production_integration.operator_approval import NAMESPACE, canonica
 from scripts.production_integration.public_postconditions import PublicPolicy, PublicPostconditions
 from scripts.production_integration.public_witness import NAMESPACE as OBSERVER_NAMESPACE
 from scripts.production_integration.candidate import hashed
+from scripts.cd.diagnostics import PUBLIC_FAILURES, remote_code
 
 
 DIAGNOSTICS = {
+    **PUBLIC_FAILURES,
     'cd-ssh-port-invalid': 'configure CD_PORT as a decimal SSH port between 1 and 65535',
     'cd-policy-id-required': 'configure CD_POLICY_ID from the exact operator-approved signed standing policy; complete administrative bootstrap first',
     'cd-ssh-authentication-failed': 'SSH authentication failed; check the restricted account/key installation',
@@ -102,6 +104,10 @@ class Client:
         except (ValueError, UnicodeError, RecursionError):
             raise DockerError('cd-ssh-result-invalid') from None
         require(type(doc) is dict, 'cd-ssh-result-invalid')
+        if doc.get('status') in ('blocked', 'recovery-required', 'rolled-back') or result.returncode != 0:
+            diagnostic = remote_code(doc)
+            if diagnostic is not None:
+                raise DockerError(diagnostic)
         if doc.get('status') in ('recovery-required', 'rolled-back'):
             raise DockerError('cd-remote-recovery-required')
         if doc.get('status') == 'blocked' or result.returncode != 0:

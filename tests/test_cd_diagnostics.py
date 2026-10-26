@@ -68,6 +68,54 @@ def test_valid_prepared_response_is_preserved(client,monkeypatch):
     assert client.call({'op':'manager-prepare'})==document
 
 
+@pytest.mark.parametrize('status', ['blocked', 'recovery-required'])
+def test_reviewed_remote_diagnostic_survives_transport_without_private_text(client, monkeypatch, capsys, status):
+    document = {'status': status, 'reason': 'cd-trusted-intake-failed',
+                'diagnostic': 'cd-journal-recovery-required', 'private': 'PRIVATE-SENTINEL'}
+    monkeypatch.setattr(runner.subprocess, 'run', lambda *a, **k: SimpleNamespace(
+        returncode=2, stdout=json.dumps(document).encode(), stderr=b'PRIVATE-SENTINEL'))
+    with pytest.raises(DockerError, match='cd-journal-recovery-required') as caught:
+        client.call({'op': 'manager-prepare'})
+    runner.report_failure(caught.value)
+    output = capsys.readouterr().out
+    assert 'unfinished journal' in output and 'do not replay' in output and 'PRIVATE-SENTINEL' not in output
+
+
+@pytest.mark.parametrize('diagnostic', ['PRIVATE-SENTINEL', 'cd-journal-recovery-required PRIVATE-SENTINEL',
+                                    [], {}, None, 123])
+def test_unreviewed_or_malformed_remote_diagnostics_remain_redacted(client, monkeypatch, capsys, diagnostic):
+    document = {'status': 'blocked', 'reason': 'cd-trusted-intake-failed', 'diagnostic': diagnostic}
+    monkeypatch.setattr(runner.subprocess, 'run', lambda *a, **k: SimpleNamespace(
+        returncode=2, stdout=json.dumps(document).encode(), stderr=b'PRIVATE-SENTINEL'))
+    with pytest.raises(DockerError, match='cd-remote-intake-blocked') as caught:
+        client.call({'op': 'manager-prepare'})
+    runner.report_failure(caught.value)
+    assert 'PRIVATE-SENTINEL' not in capsys.readouterr().out
+
+
+def test_bridge_catches_journal_gate_without_losing_specific_safe_code(monkeypatch, capsys):
+    import io
+    from scripts.cd import bridge
+    monkeypatch.setattr(bridge.sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(b'{"op":"manager-prepare"}\n')))
+    def fail(*args): raise DockerError('cd-journal-recovery-required')
+    monkeypatch.setattr(bridge, 'handle', fail)
+    assert bridge.main('automation') == 2
+    document = json.loads(capsys.readouterr().out)
+    assert document == {'status': 'blocked', 'reason': 'cd-trusted-intake-failed',
+                        'diagnostic': 'cd-journal-recovery-required'}
+
+
+@pytest.mark.parametrize('error', [RuntimeError('PRIVATE-SENTINEL'), DockerError('PRIVATE-SENTINEL')])
+def test_bridge_unknown_failures_still_fail_closed_and_redacted(monkeypatch, capsys, error):
+    import io
+    from scripts.cd import bridge
+    monkeypatch.setattr(bridge.sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(b'{"op":"manager-prepare"}\n')))
+    def fail(*args): raise error
+    monkeypatch.setattr(bridge, 'handle', fail)
+    assert bridge.main('automation') == 2
+    assert json.loads(capsys.readouterr().out) == {'status': 'blocked', 'reason': 'cd-trusted-intake-failed'}
+
+
 @pytest.mark.parametrize('raw,reason', [(b'', 'cd-ssh-result-unavailable'),
     (b'PRIVATE-SENTINEL invalid JSON','cd-ssh-result-invalid'),
     (b'[]','cd-ssh-result-invalid'),(b'x'*131073,'cd-ssh-result-unavailable')])
