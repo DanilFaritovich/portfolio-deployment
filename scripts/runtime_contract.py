@@ -6,6 +6,7 @@ from container labels. Diagnostics contain only code-owned field names.
 from dataclasses import dataclass, asdict
 import json
 
+from scripts.docker_discovery import container_image_id_matches
 from scripts.runtime_security import differing_fields
 
 
@@ -102,7 +103,8 @@ def verify_runtime(resource, artifact, service, image):
         return RuntimeVerification((RuntimeMismatch('input', 'Structure', 'runtime-field-invalid'),))
 
     check('image', 'Verified', lambda: image.verified is True)
-    check('image', 'ImageID', lambda: facts['imageId'] == image.image_id)
+    check('image', 'ImageID', lambda: container_image_id_matches(
+        image, facts['imageId'], facts.get('imageManifestDescriptor')))
     check('image', 'Image', lambda: config['Image'] == wanted['image'] == image.reference)
     for key in ('Cmd', 'Entrypoint', 'Env', 'User', 'WorkingDir', 'Healthcheck', 'ExposedPorts', 'Volumes', 'StopSignal'):
         check('config', key, lambda k=key: _config_value(k, config.get(k)) == _config_value(

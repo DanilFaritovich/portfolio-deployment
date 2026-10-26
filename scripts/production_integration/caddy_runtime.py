@@ -1,6 +1,7 @@
 """Read-only Caddy Engine comparison. No transport, controller or write authority."""
 import json
 
+from scripts.docker_discovery import container_image_id_matches
 from scripts.production_integration.caddy_image import inspect_caddy_contract
 from scripts.runtime_contract import _config_value, empty_field
 from scripts.runtime_security import differing_fields
@@ -30,7 +31,8 @@ def verify_caddy_runtime(runtime, artifact, evidence, doc):
         def check(ok, code):
             if not ok:
                 codes.append(code)
-        check(doc['Image'] == evidence.image_id and config['Image'] == wanted['image'] == evidence.reference,
+        check(container_image_id_matches(evidence, doc['Image'], doc.get('ImageManifestDescriptor')) and
+              config['Image'] == wanted['image'] == evidence.reference,
               'caddy-runtime-image-mismatch')
         check(all(_config_value(k, config.get(k)) == _config_value(k, defaults.get(k)) for k in
                   ('Cmd', 'Entrypoint', 'Env', 'User', 'WorkingDir', 'Healthcheck', 'ExposedPorts', 'Volumes', 'StopSignal')),
