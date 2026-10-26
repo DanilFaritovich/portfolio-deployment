@@ -17,6 +17,38 @@ from scripts.production_integration.operator_approval import canonical
 from test_cd import identities, policy_document, signed_policy, REPO
 
 
+def test_exported_capsule_loads_its_own_complete_caddy_inputs(host, tmp_path):
+    import importlib.util
+    from installation.operator_bootstrap import CADDY_INPUTS
+    extracted = tmp_path / 'exported-capsule'
+    with zipfile.ZipFile(host.base / 'cd-capsule.zip') as archive:
+        for name in CADDY_INPUTS:
+            assert archive.read('capsule/' + name) == (REPO / name).read_bytes()
+            target = extracted / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(archive.read('capsule/' + name))
+        source = extracted / 'scripts/caddy_producer.py'
+        source.parent.mkdir(parents=True)
+        source.write_bytes(archive.read('capsule/scripts/caddy_producer.py'))
+    spec = importlib.util.spec_from_file_location('exported_caddy_producer', source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.INPUTS == extracted / 'images/caddy'
+    assert module.load_lock()['version'] == '2.11.7'
+
+
+@pytest.mark.parametrize('missing', ['inputs.lock.json', 'Dockerfile', 'github-trusted-root.jsonl'])
+def test_capsule_export_rejects_missing_caddy_inputs(tmp_path, missing):
+    from installation.operator_bootstrap import CADDY_INPUTS
+    from scripts.docker_adapter import DockerError
+    for name in CADDY_INPUTS:
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.name != missing: target.write_bytes((REPO / name).read_bytes())
+    with pytest.raises(DockerError, match='cd-capsule-caddy-input-required'):
+        export(tmp_path, assets={}, bindings=b'', external_pins={}, signed_policy=b'{}')
+
+
 @pytest.fixture
 def host(tmp_path,monkeypatch,identities):
     root=tmp_path/'host'

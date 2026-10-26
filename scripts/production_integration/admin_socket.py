@@ -141,21 +141,37 @@ def _read_socket(address, expected_pid, *, timeout, limit, clock=time.monotonic)
 class UnixActiveChannel:
     def __init__(self, runtime, *, clock=time.monotonic):
         self.runtime, self.clock = runtime, clock
+        self._snapshot = None
+
+    @contextmanager
+    def observation(self, snapshot):
+        """Share one authenticated snapshot across two GETs and outer recheck."""
+        window = getattr(self.runtime, '_read_window', None)
+        require(self._snapshot is None and window is not None and window.active and
+                self.runtime.inspect(self) == snapshot, 'production-admin-observation-unbound')
+        self._snapshot = snapshot
+        try:
+            yield
+        finally:
+            self._snapshot = None
 
     def read_active(self, container_id, *, timeout, limit):
         require(type(timeout) in (int, float) and 0 < timeout <= 1 and
                 type(limit) is int and 0 < limit <= LIMIT, 'production-admin-read-bound-invalid')
-        deadline = self.clock() + timeout
-        before = self.runtime.inspect(self)
+        before = self._snapshot if self._snapshot is not None else self.runtime.inspect(self)
         require(container_id == before.container_id, 'production-admin-container-changed')
+        deadline = self.clock() + timeout
         try:
             with protected_socket() as (address, token):
                 require(token == before.channel_identity[0], 'production-admin-socket-replaced')
                 body = _read_socket(address, before.channel_identity[1],
                                     timeout=deadline - self.clock(), limit=limit, clock=self.clock)
-            require(socket_identity() == token and before == self.runtime.inspect(self),
-                    'production-admin-runtime-changed')
             require(self.clock() <= deadline, 'production-admin-read-timeout')
+            require(socket_identity() == token, 'production-admin-runtime-changed')
+            if self._snapshot is None:
+                require(before == self.runtime.inspect(self), 'production-admin-runtime-changed')
+            else:
+                self.runtime._read_window.verify()
             return body
         except (OSError, ValueError):
             raise DockerError('production-admin-read-unavailable') from None

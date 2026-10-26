@@ -1,5 +1,6 @@
 """Double ACTIVE reads compared with sealed official Caddy adaptation."""
 from dataclasses import replace
+from contextlib import nullcontext
 from pathlib import Path
 import re
 import tempfile
@@ -10,6 +11,7 @@ from scripts.gateway import route_set
 from scripts.planning_inputs import parse_snapshot
 from scripts.production_integration.gateway import content
 from scripts.production_integration.gateway_read import GatewaySnapshot
+from scripts.production_integration.admin_socket import UnixActiveChannel
 from scripts.production_integration.installation import protected
 from scripts.production_integration.observations import require
 
@@ -62,25 +64,32 @@ class ActiveConfigTransport:
 
     def read_active(self):
         self.last = None
-        start, identity = self.clock(), self.engine.identity()
-        before = self.runtime.inspect(self.channel)
-        require(type(before) is GatewaySnapshot and isinstance(before.container_id, str) and
-                re.fullmatch(r'[0-9a-f]{64}', before.container_id) and before.runtime_verified is True and
-                before.ownership_verified is True and before.certificates_storage_verified is True,
-                'production-active-config-runtime-unverified')
         # Consider empty and admitted full route sets; do not infer from disk/LKG.
         options = ((), route_set(self.routes_reader()))
         options = tuple(dict.fromkeys(options))
         expected = [(routes, active_json(self.adapter.adapt(routes))) for routes in options]
-        first = active_json(self.channel.read_active(before.container_id, timeout=1, limit=LIMIT))
-        matches = [routes for routes, document in expected if document == first]
-        require(len(matches) == 1, 'production-active-config-foreign-or-ambiguous')
-        second = active_json(self.channel.read_active(before.container_id, timeout=1, limit=LIMIT))
-        after = self.runtime.inspect(self.channel)
-        require(first == second and before == after and identity == self.engine.identity() and self.clock() - start <= 5,
-                'production-active-config-changed')
+        opening = getattr(self.runtime, 'observation', nullcontext)
+        with opening():
+            start, identity = self.clock(), self.engine.identity()
+            before = self.runtime.inspect(self.channel)
+            require(type(before) is GatewaySnapshot and isinstance(before.container_id, str) and
+                    re.fullmatch(r'[0-9a-f]{64}', before.container_id) and before.runtime_verified is True and
+                    before.ownership_verified is True and before.certificates_storage_verified is True,
+                    'production-active-config-runtime-unverified')
+            channel_scope = (self.channel.observation(before) if isinstance(self.channel, UnixActiveChannel) and
+                             hasattr(self.runtime, 'observation') else nullcontext())
+            with channel_scope:
+                first = active_json(self.channel.read_active(before.container_id, timeout=1, limit=LIMIT))
+                matches = [routes for routes, document in expected if document == first]
+                require(len(matches) == 1, 'production-active-config-foreign-or-ambiguous')
+                second = active_json(self.channel.read_active(before.container_id, timeout=1, limit=LIMIT))
+            after = self.runtime.inspect(self.channel)
+            require(first == second and before == after and identity == self.engine.identity() and self.clock() - start <= 5,
+                    'production-active-config-changed')
+            captured = self.clock()
+        require(0 <= self.clock() - captured <= 5, 'production-active-config-changed')
         result = replace(before, routes=matches[0], active_caddyfile=content(matches[0]))
-        self.last = (result, identity, self.clock())
+        self.last = (result, identity, captured)
         return result
 
     def verify(self, transport, image, version, sample):
