@@ -207,16 +207,43 @@ def test_full_bootstrap_preflight_excludes_all_slow_seals(clocked_preflight):
     assert port.last is not None
 
 
-@pytest.mark.parametrize('discovery_seconds, accepted', [(0.9375, True), (0.95, False)])
-def test_full_bootstrap_sources_share_one_five_second_window(clocked_preflight, discovery_seconds, accepted):
+@pytest.mark.parametrize('discovery_seconds, elapsed', [(0.9375, 5), (0.95, 5.05), (1.4375, 7), (2.1875, 10)])
+def test_bootstrap_composes_two_bounded_five_second_sources(clocked_preflight, discovery_seconds, elapsed):
     preflight, _, state = clocked_preflight
     state.discovery_seconds = discovery_seconds
-    if accepted:
-        assert preflight.prepare_locked('first-bootstrap', object()).candidate.scope == 'first-bootstrap'
-        assert state.time - state.reads[0] == 5
-    else:
-        with pytest.raises(DockerError, match='host-contract-unverified'):
-            preflight.prepare_locked('first-bootstrap', object())
+    assert preflight.prepare_locked('first-bootstrap', object()).candidate.scope == 'first-bootstrap'
+    assert state.time - state.reads[0] == pytest.approx(elapsed)
+
+
+@pytest.mark.parametrize('scope, maximum', [('first-bootstrap', 10), ('first-project-router-rollout', 5),
+                                         ('update-project-router', 5)])
+def test_preflight_rejects_expired_aggregate_after_bounded_sources(clocked_preflight, scope, maximum):
+    preflight, _, state = clocked_preflight
+    state.discovery_seconds = 2.1875  # Each individual source takes exactly five seconds.
+    original = preflight.contracts.collect_under_lease
+    def delayed(*args, **kwargs):
+        result = original(*args, **kwargs)
+        state.time += 0.01
+        return result
+    preflight.contracts.collect_under_lease = delayed
+    with pytest.raises(DockerError, match='host-contract-unverified'):
+        preflight.prepare_locked(scope, object())
+    assert state.time - state.reads[0] == pytest.approx(maximum + 0.01)
+
+
+def test_bootstrap_final_recheck_still_rejects_over_ten_seconds(clocked_preflight, monkeypatch):
+    from scripts.production_integration import candidate
+    preflight, _, state = clocked_preflight
+    state.discovery_seconds = 2.1875
+    original = candidate.plan_bootstrap
+    def slow_plan(*args, **kwargs):
+        result = original(*args, **kwargs)
+        state.time += 0.01
+        return result
+    monkeypatch.setattr(candidate, 'plan_bootstrap', slow_plan)
+    with pytest.raises(DockerError, match='preflight-state-changed'):
+        preflight.prepare_locked('first-bootstrap', object())
+    assert state.time - state.reads[0] == pytest.approx(10.01)
 
 
 @pytest.mark.parametrize('failed_check', range(1, 8))
