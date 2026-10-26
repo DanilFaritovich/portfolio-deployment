@@ -78,6 +78,7 @@ def read_journal(directory, lease):
 
 
 class BootstrapContainment:
+    audit_prefix = 'bootstrap-containment-'
     def __init__(self, *, installation, policy, lock, observe_empty, inventories, keys,
                  directory='/srv/portfolio/journal', state='/var/lib/portfolio-deployment-cd', clock=time.time):
         self.installation, self.policy, self.lock = installation, policy, lock
@@ -122,7 +123,7 @@ class BootstrapContainment:
 
     def retain(self, decision, envelope, raw):
         """Crash-safe exclusive evidence; a partial write never means approval."""
-        target = self.state / ('bootstrap-containment-' + decision['id'])
+        target = self.state / (self.audit_prefix + decision['id'])
         with private_directory(target):
             require(set(p.name for p in target.iterdir()) <= {'original.sqlite3', 'approval.json'},
                     'containment-audit-conflict')
@@ -149,7 +150,7 @@ class BootstrapContainment:
                 if completed:
                     # A retry can finish reporting an already committed containment.
                     # It never replays either the bootstrap or the SQLite update.
-                    target = self.state / ('bootstrap-containment-' + decision['id'])
+                    target = self.state / (self.audit_prefix + decision['id'])
                     require(target.is_dir() and not target.is_symlink(), 'containment-original-evidence-required')
                     with private_directory(target):
                         for name in ('original.sqlite3', 'approval.json'):
