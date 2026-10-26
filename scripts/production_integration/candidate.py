@@ -113,11 +113,15 @@ class CandidatePreflight:
             begin_observation()
             contracts = self.contracts.collect()
         now = self.clock()
+        # Bootstrap nests an empty-host observation inside the host-contract
+        # observation. Each source still enforces its own five-second bound;
+        # the aggregate must allow both windows without relaxing other scopes.
+        observation_limit = 10 if scope == 'first-bootstrap' else 5
         if (start is None or type(contracts) is not HostContracts or
             self.attestor.verify(contracts, identity) != contracts or
             (contracts.host, contracts.daemon) != identity or
             not all(type(t) in (int, float) and math.isfinite(t) for t in (start, now, contracts.captured_at)) or
-            not start <= contracts.captured_at <= now or now - start > 5):
+            not start <= contracts.captured_at <= now or now - start > observation_limit):
             raise DockerError('production-host-contract-unverified')
         from scripts.planning_inputs import parse_snapshot
         extra = []
@@ -188,7 +192,7 @@ class CandidatePreflight:
             plan_doc = plan.document
         else:
             raise DockerError('production-operation-scope-invalid')
-        if identity != self.engine.identity() or self.clock() - start > 5:
+        if identity != self.engine.identity() or self.clock() - start > observation_limit:
             raise DockerError('production-preflight-state-changed')
         candidate = OperationCandidate(*identity, self.manager_sha, self.producer_sha, self.image,
                                        blob_digest(manifest), blob_digest(policy), hashed(plan_doc), hashed(gateway),
