@@ -174,6 +174,87 @@ def test_slow_immutable_checks_precede_real_composite_observation_window(clocked
     assert port.verify(sample, (sample.host, sample.daemon)) is sample
 
 
+@pytest.fixture
+def clocked_preflight(clocked_reader, monkeypatch):
+    from scripts.production_integration import host_policy
+    from scripts.production_integration.candidate import CandidatePreflight
+    port, state = clocked_reader
+    monkeypatch.setattr(host_policy, 'PATHS', ())
+    monkeypatch.setattr(host_policy, 'discover', phase.discover)
+    host = host_policy.PolicyHostContracts(port.installation, port.engine, port.local,
+        SimpleNamespace(read=lambda lease: {'database': 'absent', 'recovery': 'unestablished'}),
+        port.policy, prerequisites=port.prerequisites, contents=lambda: state.contents, clock=lambda: state.time)
+    def content():
+        port.installation.verify()
+        return SimpleNamespace(git_revision='b'*40), b'manifest', b'policy'
+    preflight = CandidatePreflight(manager_sha='b'*40, producer_sha='c'*40,
+        image='ghcr.io/danilfaritovich/project-router@sha256:'+'d'*64,
+        content_reader=content, engine=port.engine, contracts=host, attestor=host,
+        bootstrap_reader=port, bootstrap_attestor=port,
+        proxy=BootstrapNetworkContract('172.30.240.0/24', '172.30.240.1'),
+        private_subnet='172.30.241.0/24', caddy=SimpleNamespace(render=lambda: SimpleNamespace(model={'caddy': 'test'})),
+        clock=lambda: state.time)
+    return preflight, port, state
+
+
+def test_full_bootstrap_preflight_excludes_all_slow_seals(clocked_preflight):
+    preflight, port, state = clocked_preflight
+    prepared = preflight.prepare_locked('first-bootstrap', object())
+    assert prepared.candidate.scope == 'first-bootstrap'
+    assert len(state.verifications) == 7
+    assert state.reads[0] == 57
+    assert state.time - state.reads[0] == 3.25
+    assert port.last is not None
+
+
+@pytest.mark.parametrize('discovery_seconds, accepted', [(0.9375, True), (0.95, False)])
+def test_full_bootstrap_sources_share_one_five_second_window(clocked_preflight, discovery_seconds, accepted):
+    preflight, _, state = clocked_preflight
+    state.discovery_seconds = discovery_seconds
+    if accepted:
+        assert preflight.prepare_locked('first-bootstrap', object()).candidate.scope == 'first-bootstrap'
+        assert state.time - state.reads[0] == 5
+    else:
+        with pytest.raises(DockerError, match='host-contract-unverified'):
+            preflight.prepare_locked('first-bootstrap', object())
+
+
+@pytest.mark.parametrize('failed_check', range(1, 8))
+def test_full_bootstrap_seal_failure_precedes_all_mutable_reads(clocked_preflight, failed_check):
+    preflight, _, state = clocked_preflight
+    state.fail_verification = failed_check
+    with pytest.raises(DockerError, match='synthetic-seal-content-changed'):
+        preflight.prepare_locked('first-bootstrap', object())
+    assert not state.reads
+
+
+def test_full_bootstrap_rechecks_revoked_authority_after_source_seal(clocked_preflight):
+    preflight, port, state = clocked_preflight
+    original = port.prerequisites.verify
+    def approve(policy, identity):
+        if len(state.verifications) == 6:
+            raise DockerError('synthetic-review-revoked')
+        return original(policy, identity)
+    port.prerequisites.verify = approve
+    with pytest.raises(DockerError, match='synthetic-review-revoked'):
+        preflight.prepare_locked('first-bootstrap', object())
+    assert not state.reads
+
+
+@pytest.mark.parametrize('notification', ['missing', 'repeated'])
+def test_host_contract_window_must_begin_exactly_once(clocked_preflight, notification):
+    preflight, _, state = clocked_preflight
+    def collect(*, before_observation):
+        if notification == 'repeated':
+            before_observation()
+            before_observation()
+        return state.host
+    preflight.contracts.local = SimpleNamespace(collect=collect)
+    with pytest.raises(DockerError, match='observation-window-unbound'):
+        preflight.prepare_locked('first-bootstrap', object())
+    assert preflight.contracts.last is None
+
+
 @pytest.mark.parametrize('failed_check', [1, 2, 3])
 def test_each_integrity_failure_stops_before_mutable_reads(clocked_reader, failed_check):
     port, state = clocked_reader

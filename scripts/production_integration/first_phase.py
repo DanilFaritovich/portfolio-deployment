@@ -48,7 +48,7 @@ class EmptyHostReader:
         self.policy, self.prerequisites, self.contents, self.clock = policy, prerequisites, contents, clock
         self.last = None
 
-    def collect(self):
+    def collect(self, *, before_observation=None):
         self.last = None
         self.installation.verify()
         identity = self.engine.identity()
@@ -67,6 +67,8 @@ class EmptyHostReader:
             # expiry are checked immediately before mutable observation begins.
             require(self.prerequisites.verify(p, identity) == p,
                     'production-bootstrap-prerequisites-unverified')
+            if before_observation is not None:
+                before_observation()
             start = self.clock()
         host = self.local.collect(before_observation=begin_observation)
         require(start is not None, 'production-bootstrap-observation-window-unbound')

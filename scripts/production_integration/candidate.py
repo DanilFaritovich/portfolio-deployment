@@ -84,12 +84,36 @@ class CandidatePreflight:
             from scripts.production_integration.release_transport import IMAGE_REPOSITORY
             image_evidence = verify_oci_bytes(self.image, IMAGE_REPOSITORY,
                                               self.image_registry().collect(self.image))
-        start = self.clock()
+        # The reader re-admits the registry and returns exact sealed content.
+        # Seal verification and admission precede the mutable observation window.
+        desired, manifest, policy = self.content_reader()
+        if desired.git_revision != self.manager_sha or type(manifest) is not bytes or type(policy) is not bytes or not manifest or not policy:
+            raise DockerError('production-manager-content-unverified')
+        start = None
+        sample = None
+        def begin_observation():
+            nonlocal start
+            if start is not None:
+                raise DockerError('production-preflight-observation-window-unbound')
+            start = self.clock()
+        def begin_host_observation():
+            nonlocal sample
+            if scope == 'first-bootstrap':
+                if self.bootstrap_reader is None or self.caddy is None:
+                    raise DockerError('production-bootstrap-dependencies-unavailable')
+                # Nest the source preparation callbacks so every seal/authority
+                # check finishes before either source reads mutable state.
+                sample = self.bootstrap_reader.collect(before_observation=begin_observation)
+            else:
+                begin_observation()
         identity = self.engine.identity()
-        contracts = (self.contracts.collect_under_lease(lease) if hasattr(self.contracts, 'collect_under_lease')
-                     else self.contracts.collect())
+        if hasattr(self.contracts, 'collect_under_lease'):
+            contracts = self.contracts.collect_under_lease(lease, before_observation=begin_host_observation)
+        else:
+            begin_observation()
+            contracts = self.contracts.collect()
         now = self.clock()
-        if (type(contracts) is not HostContracts or
+        if (start is None or type(contracts) is not HostContracts or
             self.attestor.verify(contracts, identity) != contracts or
             (contracts.host, contracts.daemon) != identity or
             not all(type(t) in (int, float) and math.isfinite(t) for t in (start, now, contracts.captured_at)) or
@@ -102,11 +126,6 @@ class CandidatePreflight:
             if not isinstance(doc, dict) or not doc:
                 raise DockerError('production-host-contract-incomplete')
             extra.append(doc)
-        # The reader re-admits the registry, checks installed manager revision and
-        # returns exact raw selected manifest/policy bytes from the sealed release.
-        desired, manifest, policy = self.content_reader()
-        if desired.git_revision != self.manager_sha or type(manifest) is not bytes or type(policy) is not bytes or not manifest or not policy:
-            raise DockerError('production-manager-content-unverified')
         bootstrap = None
         if scope == 'prepare-project-router-image':
             plan_doc = {'operation': scope, 'image': self.image, 'platform': 'linux/amd64'}
@@ -116,7 +135,8 @@ class CandidatePreflight:
         elif scope == 'first-bootstrap':
             if self.bootstrap_reader is None or self.caddy is None:
                 raise DockerError('production-bootstrap-dependencies-unavailable')
-            sample = self.bootstrap_reader.collect()
+            if sample is None:
+                sample = self.bootstrap_reader.collect()
             bootstrap = plan_bootstrap(sample, expected_identity=identity, proxy=self.proxy,
                                        private_subnet=self.private_subnet, now=self.clock(),
                                        attestor=self.bootstrap_attestor)

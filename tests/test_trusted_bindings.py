@@ -187,7 +187,10 @@ def integrated(setup, verifier, monkeypatch):
     s.policy = HostPolicy(*engine.identity(), hashed(network_facts(s.facts, docker)), hashed(asdict(docker)),
         hashed(s.contents), 2**30, 1000, 'test-restore', 'test-console', 'test-ipam', 'test-budget', 'retain-and-investigate')
     s.authority = SimpleNamespace(verify=lambda policy, identity:policy)
-    host = PolicyHostContracts(s.executor.installation, engine, SimpleNamespace(collect=lambda:s.facts),
+    def collect_host(*, before_observation):
+        before_observation()
+        return s.facts
+    host = PolicyHostContracts(s.executor.installation, engine, SimpleNamespace(collect=collect_host),
         ReadOnlyJournalSource(), s.policy, prerequisites=s.authority, contents=lambda:s.contents, clock=lambda:0)
     s.host = host
     s.preflight.contracts = s.preflight.attestor = host
@@ -314,8 +317,10 @@ def test_signed_bootstrap_then_separate_rollout_or_partial_fence(integrated, sig
     assert empty_docker == DockerObservation((), (), True)
     s.host.policy = replace(s.policy, network_hash=hashed(network_facts(s.facts, empty_docker)),
                             resources_hash=hashed(asdict(empty_docker)))
-    s.preflight.bootstrap_reader = SimpleNamespace(collect=lambda: BootstrapInput(*s.engine.identity(), 0,
-        True, discover(s.engine, ()), (), 'absent', 'absent', ()))
+    def collect_bootstrap(*, before_observation):
+        before_observation()
+        return BootstrapInput(*s.engine.identity(), 0, True, discover(s.engine, ()), (), 'absent', 'absent', ())
+    s.preflight.bootstrap_reader = SimpleNamespace(collect=collect_bootstrap)
     s.preflight.bootstrap_attestor = SimpleNamespace(verify=lambda sample, identity:sample)
     s.preflight.proxy = BootstrapNetworkContract('172.30.0.0/24', '172.30.0.1')
     s.preflight.private_subnet = '172.31.0.0/24'
