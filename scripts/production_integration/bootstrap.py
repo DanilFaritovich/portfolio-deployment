@@ -103,6 +103,7 @@ def plan_bootstrap(sample, *, expected_identity, proxy, private_subnet, now, att
         blockers.add('bootstrap-public-listener-conflict')
     if blockers:
         return BootstrapProposal((), tuple(sorted(blockers)), 'unavailable')
+    operations.insert(0, 'prepare-exact-caddy-image')
     operations.extend(('initialize-private-journal-and-storage', 'create-application-private-network',
                        'officially-validate-empty-caddy-candidate', 'create-managed-caddy-with-empty-config'))
     release = ('deploy-application-without-public-route', 'verify-application-readiness',

@@ -48,7 +48,7 @@ class EmptyHostReader:
         self.policy, self.prerequisites, self.contents, self.clock = policy, prerequisites, contents, clock
         self.last = None
 
-    def collect(self):
+    def collect(self, *, before_observation=None):
         self.last = None
         self.installation.verify()
         identity = self.engine.identity()
@@ -67,6 +67,8 @@ class EmptyHostReader:
             # expiry are checked immediately before mutable observation begins.
             require(self.prerequisites.verify(p, identity) == p,
                     'production-bootstrap-prerequisites-unverified')
+            if before_observation is not None:
+                before_observation()
             start = self.clock()
         host = self.local.collect(before_observation=begin_observation)
         require(start is not None, 'production-bootstrap-observation-window-unbound')
@@ -136,9 +138,30 @@ class BootstrapResources:
         require(self.runtime_acceptance is not None and
                 self.runtime_acceptance.verify(runtime, evidence, self.engine.identity()) is evidence,
                 'production-bootstrap-runtime-acceptance-unverified')
-        bind_caddy_engine(runtime, evidence, self.engine.inspect('image', runtime.image))
         self.prepared, self.evidence, self.runtime = prepared, evidence, runtime
         return prepared
+
+    def prepare_image(self, prepared, runtime, grant):
+        """Explicit first signed bootstrap action; journal intent already exists."""
+        import tempfile
+        from scripts.docker_adapter import run_bounded
+        from scripts.production_integration.image_preparation import cached_image
+        grant.require()
+        require(self.prepared is prepared and self.runtime == runtime and self.evidence is not None and
+                grant.candidate == prepared.candidate and self.evidence.reference == runtime.image,
+                'production-bootstrap-image-grant-mismatch')
+        self.installation.verify()
+        identity = (prepared.candidate.host, prepared.candidate.daemon)
+        require(self.engine.identity() == identity, 'production-bootstrap-image-host-changed')
+        if not cached_image(self.engine, runtime.image, self.evidence):
+            grant.require()
+            with tempfile.TemporaryDirectory(prefix='pd-caddy-cache-') as directory:
+                run_bounded(['/usr/bin/docker', '--host', 'unix:///run/docker.sock', 'image', 'pull',
+                             '--platform', 'linux/amd64', runtime.image], timeout=120, cwd=directory)
+        for _ in range(2):
+            grant.require()
+            require(self.engine.identity() == identity, 'production-bootstrap-image-host-changed')
+            bind_caddy_engine(runtime, self.evidence, self.engine.inspect('image', runtime.image))
 
     def _check_created(self, prepared, runtime):
         identity = self.engine.identity()

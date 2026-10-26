@@ -115,10 +115,10 @@ class PolicyHostContracts:
     def collect(self):
         raise DockerError('production-host-contract-canonical-lease-required')
 
-    def collect_under_lease(self, lease):
+    def collect_under_lease(self, lease, *, before_observation=None):
         self.last = None
         self.installation.verify()
-        start = self.clock()
+        start = None
         p = self.policy
         require(type(p) is HostPolicy and self.prerequisites is not None and
                 all(type(v) is str and v for v in (p.backup_restore, p.console_recovery,
@@ -130,8 +130,15 @@ class PolicyHostContracts:
         require(identity == (p.host, p.daemon), 'production-host-policy-identity-mismatch')
         # Authority verifies policy/evidence origin, validity, revocation and exact
         # host binding; no local file or reference string can implement this alone.
-        require(self.prerequisites.verify(p, identity) == p, 'production-host-prerequisites-unverified')
-        host = self.local.collect()
+        def begin_observation():
+            nonlocal start
+            require(start is None, 'production-host-observation-window-unbound')
+            require(self.prerequisites.verify(p, identity) == p, 'production-host-prerequisites-unverified')
+            if before_observation is not None:
+                before_observation()
+            start = self.clock()
+        host = self.local.collect(before_observation=begin_observation)
+        require(start is not None, 'production-host-observation-window-unbound')
         docker = discover(self.engine, ())
         require(host.identity == identity and docker.complete, 'production-host-inventory-incomplete')
         validate_network_inventory(docker)

@@ -48,6 +48,57 @@ Pending first-exchange recovery additionally binds the exact recorded new tree
 and requires fresh administrative review for its installed SHA plus the existing
 separate operator recovery signature. No SQLite file is initialized by this gate.
 
+An independent administrative path repairs a never-bootstrapped installation
+after its first successful Manager update. It does not relax the ordinary CD
+gate above. The independently reviewed `installation/cd_setup.py` now supports
+`replace-capsule` and `restore-capsule` decisions. Replacement binds the exact kit,
+machine, current capsule manifest, installed Manager inventory and standing policy;
+it verifies both complete trees and unchanged external pins, policy, SSH keys,
+forced command and sudoers. Under the existing host flock it retains the old
+capsule and uses a directory exchange with durable intent/receipt. A separate
+fresh restoration decision resolves interrupted staging/exchange without replay.
+An older installed helper must itself be reviewed and installed through the
+administrative channel before using this capability.
+
+The capsule's `operator-prebootstrap` launcher role is root-channel only, absent
+from both delegated SSH keys and sudoers. `scripts/cd/administrative.py` reads
+root-private `/var/lib/portfolio-deployment-bootstrap/prebootstrap-update.json`
+and `prebootstrap-manager.zip`. The decision binds `machine_id`, `daemon`,
+`from_sha`, `to_sha`, `inventory_sha256`, `capsule_sha256`, `policy_id`,
+`bundle_sha256`, a unique `id`, version 1 and a maximum one-hour validity window.
+It requires absent journal/establishment marker, fresh administrative empty-host
+review, complete live empty-host evidence and all existing source, provenance,
+frozen-boundary and Manager lineage checks. `prepare` returns the existing exact
+Manager-upgrade candidate. `execute` additionally requires an operator SSHSIG
+approval lasting at most five minutes; delegated automation signatures fail.
+It reuses `ManagerUpdater` staging, whole-tree rollback and canonical locking.
+Administrative intent is recorded before execution; unfinished receipts fence
+ordinary delivery. `recover` requires a new exact root decision, the selected
+administrative `record_id` and a fresh signature over its original candidate.
+It restores or confirms recorded state, retaining original receipts, and never
+replays the upgrade. Lost journal history remains blocked even in this path.
+
+The installation sequence is therefore: review the final protected-main release
+and exact capsule kit; independently install/review the administrative helper;
+publish a short-lived capsule replacement decision and invoke that helper;
+review fresh host facts and publish the exact prebootstrap-update decision;
+invoke the capsule launcher as root with `operator-prebootstrap` and canonical
+`{"op":"prepare"}` on stdin; review/sign its candidate and invoke the same entry
+with `{"op":"execute","candidate":...,"envelope":...}`. The envelope is the
+base64 operator SSHSIG approval. After verified Manager installation, publish a
+fresh phase review bound to its SHA and use Production Bootstrap `prepare`, then
+separately approved `execute`. No operator private key is sent to Actions.
+
+The signed first-bootstrap plan now explicitly prepares the exact verified Caddy
+image before network/container creation. Its existing journal authorization and
+mutation intent precede any pull. Fresh Caddy provenance/runtime acceptance is
+required before mutation; a bounded complete cache inventory distinguishes absence
+from inspection failure. Pull uses only the verified linux/amd64 digest, followed
+by two Engine bindings to its registry config/digest/platform. Existing cached
+images are verified without pulling. No bootstrap preparation pulls an image.
+These administrative delivery and cache paths have offline acceptance coverage;
+their production installation/execution remains separately authorized and unrun.
+
 Application CD projects only image/release claims into the sealed template and
 reruns complete existing admission. Verified current/target contracts feed the
 existing observation ports. `update-project-router` accepts only a present
