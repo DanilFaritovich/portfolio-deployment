@@ -45,16 +45,18 @@ class ProductionStateReader:
     claimed across independent processes.
     """
     def __init__(self, desired_reader, docker, runtime, gateway, readiness, resolve_image,
-                 proxy_contract, *, clock=time.monotonic, source_trust=None):
+                 proxy_contract, *, clock=time.monotonic, source_trust=None, max_age=5):
         self.desired_reader, self.docker = desired_reader, docker
         self.ports = {'runtime': runtime, 'gateway': gateway, 'readiness': readiness}
         self.resolve_image, self.proxy_contract, self.clock = resolve_image, proxy_contract, clock
         self.source_trust = source_trust
+        from scripts.production_integration.observation_window import observation_window
+        self.max_age = observation_window(max_age)
 
     def provider(self):
         from scripts.production_integration.runtime_sources import RuntimeSource
         provider = ProductionStateProvider if type(self.ports['runtime']) is RuntimeSource else CompositeStateProvider
-        return provider(self, clock=self.clock)
+        return provider(self, clock=self.clock, max_age=self.max_age)
 
     def __call__(self, *, before_observation=None):
         from scripts.production_integration.runtime import validate_proxy
@@ -81,7 +83,7 @@ class ProductionStateReader:
         for name, result in results.items():
             require(isinstance(result, SourceResult) and bool(result.identity) and
                     result.round_id == round_id and result.complete is True and result.verified is True and
-                    result.error is None and start <= result.captured_at <= now and now - result.captured_at <= 5,
+                    result.error is None and start <= result.captured_at <= now and now - result.captured_at <= self.max_age,
                     'production-source-incomplete-or-unverified')
             self.source_trust.verify(name, identity, self.ports[name], result)
         observed = load_observed_state(results['runtime'].payload)

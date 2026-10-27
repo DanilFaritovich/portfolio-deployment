@@ -14,6 +14,7 @@ from scripts.production_integration.gateway_read import GatewaySnapshot
 from scripts.production_integration.admin_socket import UnixActiveChannel
 from scripts.production_integration.installation import protected
 from scripts.production_integration.observations import require
+from scripts.production_integration.observation_window import DEFAULT_OBSERVATION_SECONDS, observation_window
 
 LIMIT = 1024 * 1024
 BINARY = '/opt/portfolio-deployment/tools/caddy'
@@ -58,9 +59,11 @@ class ActiveConfigTransport:
     The channel must GET /config/ via its fixed authenticated local transport.
     UnixActiveChannel reaches the dedicated bind mount without an image helper.
     """
-    def __init__(self, engine, channel, runtime, adapter, routes_reader, *, clock=time.monotonic):
+    def __init__(self, engine, channel, runtime, adapter, routes_reader, *, clock=time.monotonic,
+                 max_age=DEFAULT_OBSERVATION_SECONDS):
         self.engine, self.channel, self.runtime, self.adapter = engine, channel, runtime, adapter
         self.routes_reader, self.clock, self.last = routes_reader, clock, None
+        self.max_age = observation_window(max_age)
 
     def read_active(self, *, before_observation=None):
         self.last = None
@@ -86,22 +89,32 @@ class ActiveConfigTransport:
                 require(len(matches) == 1, 'production-active-config-foreign-or-ambiguous')
                 second = active_json(self.channel.read_active(before.container_id, timeout=1, limit=LIMIT))
             after = self.runtime.inspect(self.channel)
-            require(first == second and before == after and identity == self.engine.identity() and self.clock() - start <= 5,
+            require(first == second and before == after and identity == self.engine.identity() and self.clock() - start <= self.max_age,
                     'production-active-config-changed')
             captured = self.clock()
-        require(0 <= self.clock() - captured <= 5, 'production-active-config-changed')
+        require(0 <= self.clock() - captured <= self.max_age, 'production-active-config-changed')
         result = replace(before, routes=matches[0], active_caddyfile=content(matches[0]))
         self.last = (result, identity, captured)
         return result
 
     def verify(self, transport, image, version, sample):
         require(transport is self and self.last is not None and sample is self.last[0] and
-                self.engine.identity() == self.last[1] and 0 <= self.clock() - self.last[2] <= 5 and sample.image_config_id == image.image_id and
+                self.engine.identity() == self.last[1] and 0 <= self.clock() - self.last[2] <= self.max_age and sample.image_config_id == image.image_id and
                 sample.version == version, 'production-active-config-proof-unbound')
         return sample
 
     def verify_current(self, sample):
-        require(self.last is not None and sample is self.last[0] and
-                0 <= self.clock() - self.last[2] <= 5 and self.engine.identity() == self.last[1] and
-                self.runtime.inspect(self.channel) == replace(sample, routes=(), active_caddyfile=''),
+        require(self.last is not None and sample is self.last[0],
+                'production-active-config-evidence-expired-or-changed')
+        # The old snapshot is a comparison baseline, never refreshed authority.
+        # Validation/reload may outlive it: obtain a new bounded runtime read,
+        # with full opening/closing seals, and compare every identity field.
+        opening = getattr(self.runtime, 'observation', nullcontext)
+        with opening():
+            start = self.clock()
+            require(self.engine.identity() == self.last[1] and
+                    self.runtime.inspect(self.channel) == replace(sample, routes=(), active_caddyfile='') and
+                    self.engine.identity() == self.last[1],
+                    'production-active-config-evidence-expired-or-changed')
+        require(0 <= self.clock() - start <= self.max_age,
                 'production-active-config-evidence-expired-or-changed')

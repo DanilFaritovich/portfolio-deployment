@@ -19,6 +19,7 @@ from scripts.production_integration.docker import ProductionDockerAdapter
 from scripts.production_integration.installation import protected
 from scripts.production_integration.locking import require_production_lease
 from scripts.production_integration.storage import validate_storage_directory
+from scripts.production_integration.observation_window import DEFAULT_OBSERVATION_SECONDS, observation_window
 
 PATHS = tuple('/srv/portfolio/' + n for n in ('locks', 'state', 'journal', 'requests', 'caddy-config',
                                           'caddy-lkg', 'certificates', 'caddy-data', 'caddy-admin', 'temporary'))
@@ -61,8 +62,9 @@ def installed_engine(installation, contract):
 
 
 class LocalHostSources:
-    def __init__(self, installation, engine, *, clock=time.monotonic):
+    def __init__(self, installation, engine, *, clock=time.monotonic, max_age=DEFAULT_OBSERVATION_SECONDS):
         self.installation, self.engine, self.clock = installation, engine, clock
+        self.max_age = observation_window(max_age)
 
     def collect(self, *, before_observation=None):
         """Notify a composite reader after seal verification, before mutable IO.
@@ -89,7 +91,7 @@ class LocalHostSources:
             pins = dict(self.installation.files)
             if argv[0] not in pins:
                 raise DockerError('production-host-source-tool-unpinned')
-            remaining = 5 - (self.clock() - start)
+            remaining = self.max_age - (self.clock() - start)
             if remaining <= 0:
                 raise DockerError('production-host-source-deadline')
             raw = run_bounded(list(argv), timeout=min(2, remaining))
@@ -127,7 +129,7 @@ class LocalHostSources:
                             'mode': stat.S_IMODE(info.st_mode), 'device': info.st_dev, 'inode': info.st_ino,
                             'availableBytes': capacity.f_bavail * capacity.f_frsize,
                             'availableInodes': capacity.f_favail})
-        if self.engine.identity() != before or self.clock() - start > 5:
+        if self.engine.identity() != before or self.clock() - start > self.max_age:
             raise DockerError('production-host-source-changed-or-expired')
         return LocalHostFacts(before, self.clock(), network, tuple(storage))
 
