@@ -107,7 +107,14 @@ class CandidatePreflight:
             else:
                 begin_observation()
         identity = self.engine.identity()
-        if hasattr(self.contracts, 'collect_under_lease'):
+        joint_state = None
+        from scripts.production_integration.observations import ProductionStateProvider
+        if (scope in ('first-project-router-rollout', 'update-project-router') and
+            type(self.provider) is ProductionStateProvider and hasattr(self.contracts, 'collect_under_lease')):
+            contracts, joint_state = self.provider.refresh_with_host(lambda prepare:
+                self.contracts.collect_under_lease(lease, before_observation=begin_host_observation,
+                                                  prepare_observation=prepare))
+        elif hasattr(self.contracts, 'collect_under_lease'):
             contracts = self.contracts.collect_under_lease(lease, before_observation=begin_host_observation)
         else:
             begin_observation()
@@ -158,7 +165,7 @@ class CandidatePreflight:
         elif scope in ('first-project-router-rollout', 'update-project-router'):
             if self.provider is None or contracts.bootstrap_verified is not True:
                 raise DockerError('production-verified-bootstrap-required')
-            fresh, observed, docker = self.provider.refresh()
+            fresh, observed, docker = joint_state if joint_state is not None else self.provider.refresh()
             if fresh != desired or len(desired.applications) != 1 or desired.applications[0].id != 'project-router':
                 raise DockerError('production-desired-scope-mismatch')
             app = desired.applications[0]
@@ -193,7 +200,11 @@ class CandidatePreflight:
         else:
             raise DockerError('production-operation-scope-invalid')
         if identity != self.engine.identity() or self.clock() - start > observation_limit:
+            if joint_state is not None:
+                self.provider.sample = None
             raise DockerError('production-preflight-state-changed')
+        if joint_state is not None:
+            self.provider.assert_current()
         candidate = OperationCandidate(*identity, self.manager_sha, self.producer_sha, self.image,
                                        blob_digest(manifest), blob_digest(policy), hashed(plan_doc), hashed(gateway),
                                        hashed(runtime), hashed(extra[0]), hashed(extra[1]), hashed(extra[2]), scope)

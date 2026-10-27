@@ -289,6 +289,124 @@ def test_local_source_proof_cannot_be_replaced_or_altered(integrated):
     with pytest.raises(DockerError): attestor.verify(binding, port, result)
 
 
+@pytest.fixture
+def clocked_joint_rollout(integrated, monkeypatch):
+    from threading import Event
+    from scripts.production_integration import observations
+    s = integrated
+    timing = SimpleNamespace(now=0.0, host_seconds=4.5, state_seconds=2.0, host_active=False, discoveries=0)
+    started, done = Event(), Event()
+    clock = lambda: timing.now
+    s.preflight.clock = s.host.clock = s.provider.clock = s.provider.reader.clock = clock
+    for port in s.ports.values():
+        port.clock = clock
+    s.ports['gateway'].port.transport.clock = clock
+    capture, read, discover = s.inventory.capture, s.ports['gateway'].port.read, observations.discover
+    def inventory():
+        timing.now += 7
+        return capture()
+    def gateway(*args, **kwargs):
+        timing.now += 14
+        return read(*args, **kwargs)
+    def host(*, before_observation):
+        timing.host_active = True
+        started.clear()
+        done.clear()
+        before_observation()
+        captured = timing.now
+        started.set()
+        assert done.wait(2), 'source reader did not finish while host lease was held'
+        timing.now = max(timing.now, captured + timing.host_seconds)
+        timing.host_active = False
+        return replace(s.facts, captured_at=captured)
+    def engine(*args, **kwargs):
+        result = discover(*args, **kwargs)
+        timing.discoveries += 1
+        if timing.discoveries % 2 == 0:
+            if timing.host_active:
+                assert started.wait(2), 'host observation did not begin after source preparation'
+            timing.now += timing.state_seconds
+            done.set()
+        return result
+    monkeypatch.setattr(s.inventory, 'capture', inventory)
+    monkeypatch.setattr(s.ports['gateway'].port, 'read', gateway)
+    monkeypatch.setattr(s.host.local, 'collect', host)
+    monkeypatch.setattr(observations, 'discover', engine)
+    return s, timing
+
+
+@pytest.mark.parametrize('execute', [False, True])
+def test_rollout_preflight_excludes_slow_source_preparation_from_joint_window(clocked_joint_rollout, signer, execute):
+    s, timing = clocked_joint_rollout
+    c, envelope = signed(s, signer)
+    assert c.scope == 'first-project-router-rollout'
+    assert timing.now >= 21  # Costly preparation is real; no clock/timestamp reset.
+    assert not s.world.calls
+    assert all(0 <= timing.now - source.captured_at <= 5 for source in s.provider.sample.sources)
+    if execute:
+        result = s.executor.run(c, envelope)
+        assert result.status == 'succeeded', result
+        assert s.world.calls == [('up', 'portfolio-project-router', 'web'), ('gateway',)]
+        with s.lock() as lease, Journal(s.directory, lease) as journal:
+            assert journal.last_good('project-router', 'web')['run'] == '1'*32
+        calls = list(s.world.calls)
+        assert s.executor.run(c, envelope).status == 'blocked'
+        assert s.world.calls == calls
+
+
+@pytest.mark.parametrize('source', ['host', 'state'])
+def test_joint_observation_keeps_both_five_second_limits(clocked_joint_rollout, source):
+    s, timing = clocked_joint_rollout
+    setattr(timing, source + '_seconds', 6)
+    with pytest.raises(DockerError):
+        s.prepare()
+    assert s.provider.sample is None
+    assert not s.world.calls
+
+
+def test_joint_window_rejects_slow_final_plan_without_retimestamping(clocked_joint_rollout, monkeypatch):
+    from scripts.production_integration import candidate
+    s, timing = clocked_joint_rollout
+    original = candidate.build_gateway_candidate
+    def plan(*args, **kwargs):
+        result = original(*args, **kwargs)
+        timing.now += 0.6
+        return result
+    monkeypatch.setattr(candidate, 'build_gateway_candidate', plan)
+    with pytest.raises(DockerError, match='preflight-state-changed'):
+        s.prepare()
+    assert s.provider.sample is None
+    assert not s.world.calls
+
+
+@pytest.mark.parametrize('failure', ['host-prepare', 'source-prepare', 'authority-after-barrier'])
+def test_joint_failure_joins_reader_before_releasing_lease(integrated, monkeypatch, failure):
+    from threading import enumerate as threads
+    s = integrated
+    def rejected(*args, **kwargs):
+        raise DockerError('synthetic-joint-rejection')
+    if failure == 'host-prepare':
+        monkeypatch.setattr(s.host.installation, 'verify', rejected)
+    elif failure == 'source-prepare':
+        s.engine.failure = 'denied'
+    else:
+        original = s.ports['gateway'].port.read
+        prepared = []
+        def gateway(*args, **kwargs):
+            prepared.append(True)
+            return original(*args, **kwargs)
+        def authority(*args):
+            assert prepared  # Recheck happens after preparation and barrier, not before waiting.
+            rejected()
+        monkeypatch.setattr(s.ports['gateway'].port, 'read', gateway)
+        monkeypatch.setattr(s.host.prerequisites, 'verify', authority)
+    with pytest.raises(DockerError):
+        s.prepare()
+    assert s.host.last is None and s.provider.sample is None
+    assert not s.world.calls
+    assert not any(thread.name.startswith('production-host-read') for thread in threads())
+
+
 @pytest.mark.parametrize('present', [False, True])
 @pytest.mark.parametrize('failure', [None, 'slow-probe', 'late-engine', 'racing'])
 def test_dependent_sources_collect_one_fresh_corroborated_round(integrated, monkeypatch, present, failure):
