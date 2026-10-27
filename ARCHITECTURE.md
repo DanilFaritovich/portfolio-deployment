@@ -374,7 +374,13 @@ Stage B2 adds [trusted installation components](docs/production-installation.md#
 verified offline: complete repeated Engine discovery matched to independently
 admitted current/historical contracts, local SourceTrust proofs bound to exact
 source objects/payloads/rounds, and readiness over an exact private network ID,
-membership and IPAM checked before/after numeric HTTP. PolicyHostContracts separates
+membership and IPAM checked before/after numeric HTTP. Installed dependent sources
+collect once per refresh: runtime inventory selects historical contracts, then the
+reader's independent opening Engine discovery precedes ACTIVE gateway collection
+and fresh readiness probes against that inventory. Runtime assembly and independent
+closing Engine discovery follow. Exact source proofs and original capture times
+retain the five-second freshness bound; no SourceResult is reused across refreshes.
+PolicyHostContracts separates
 LocalHostSources facts, independently approved HostPolicy and mandatory external
 backup/console/allocation/budget/containment authority. ReadOnlyJournalSource uses
 the executor's existing lease via CandidatePreflight.prepare_locked, with no nested
