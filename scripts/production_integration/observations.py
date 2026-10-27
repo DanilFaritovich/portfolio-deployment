@@ -60,7 +60,19 @@ class ProductionStateReader:
         identity = self.docker.identity()
         require(self.source_trust is not None, 'production-source-trust-unconfigured')
         desired = self.desired_reader()  # re-admission, not a cached desired object
-        results = {name: port.collect(round_id) for name, port in self.ports.items()}
+        desired_refs = {c['image'] for a in desired.applications for c in a.spec['components']}
+        # Installed dependent sources share only the inventory collected in this
+        # call. The Engine corroboration remains independent of their payloads.
+        from scripts.production_integration.runtime_sources import RuntimeSource
+        runtime = self.ports['runtime']
+        before = None
+        if type(runtime) is RuntimeSource:
+            require(runtime.gateway is self.ports['gateway'] and runtime.readiness is self.ports['readiness'],
+                    'production-source-round-unbound')
+            results, before = runtime.collect_round(round_id, lambda refs: discover(
+                self.docker, desired_refs | refs, resolve_image=self.resolve_image))
+        else:
+            results = {name: port.collect(round_id) for name, port in self.ports.items()}
         now = self.clock()
         for name, result in results.items():
             require(isinstance(result, SourceResult) and bool(result.identity) and
@@ -71,12 +83,13 @@ class ProductionStateReader:
         observed = load_observed_state(results['runtime'].payload)
         require(observed.document['scope'] == {'kind': 'registry', 'complete': True, 'trusted': True},
                 'production-runtime-scope-incomplete')
-        refs = {c['image'] for a in desired.applications for c in a.spec['components']}
+        refs = set(desired_refs)
         for app in observed.document['applications']:
             for c in app['components']:
                 if c['imageIdentity']:
                     refs.add(c['imageIdentity']['pullReference'])
-        before = discover(self.docker, refs, resolve_image=self.resolve_image)
+        if before is None:
+            before = discover(self.docker, refs, resolve_image=self.resolve_image)
         require(before.complete, 'production-docker-discovery-incomplete')
         validate_proxy(before, self.proxy_contract)
         require({i.reference for i in before.images} == refs and all(i.verified for i in before.images),

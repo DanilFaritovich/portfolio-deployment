@@ -125,6 +125,10 @@ class ReadinessSource(LocalSource):
 
     def collect(self, round_id):
         identity, _, selected = self.inventory.capture()
+        return self.collect_selected(round_id, identity, selected)
+
+    def collect_selected(self, round_id, identity, selected):
+        """Probe fresh health using this round's independently corroborated inventory."""
         health = {}
         for app, components in selected:
             for component, resource, _ in components:
@@ -143,9 +147,23 @@ class RuntimeSource(LocalSource):
         self.inventory, self.gateway, self.readiness = inventory, gateway, readiness
 
     def collect(self, round_id):
+        results, _ = self.collect_round(round_id, lambda refs: None)
+        return results['runtime']
+
+    def collect_round(self, round_id, before_sources):
+        """One live round, no retained SourceResults or timestamp renewal.
+
+        The reader brackets the dependent sources with its own Engine inventory.
+        The initial runtime inventory selects historical contracts; health probes
+        run after ACTIVE collection, without repeating that expensive inventory.
+        """
         identity, _, selected = self.inventory.capture()
-        routes = {r.application: r for r in self.gateway.collect(round_id).payload}
-        health = self.readiness.collect(round_id).payload
+        refs = {image.reference for _, components in selected for _, _, image in components}
+        before = before_sources(refs)
+        gateway = self.gateway.collect(round_id)
+        readiness = self.readiness.collect_selected(round_id, identity, selected)
+        routes = {r.application: r for r in gateway.payload}
+        health = readiness.payload
         applications = []
         for app, components in selected:
             owner = {'manager': 'portfolio-deployment', 'application': app.id}
@@ -169,7 +187,7 @@ class RuntimeSource(LocalSource):
         doc = {'apiVersion': 'portfolio.observed/v1', 'scope': {'kind': 'registry', 'complete': True, 'trusted': True},
                'applications': applications}
         load_observed_state(doc)  # existing bounded closed schema
-        return self.result(round_id, doc)
+        return {'runtime': self.result(round_id, doc), 'gateway': gateway, 'readiness': readiness}, before
 
 
 class LocalSourceAttestor:
