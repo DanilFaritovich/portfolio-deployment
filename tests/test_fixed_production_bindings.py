@@ -1,5 +1,7 @@
 """Finite wiring tests with controlled authorities; never production approvals."""
 import hashlib
+import json
+from copy import deepcopy
 from types import SimpleNamespace
 import socket
 
@@ -12,6 +14,9 @@ from scripts.production_integration.public_postconditions import PublicPolicy, P
 from scripts.production_integration.public_witness import SignedPublicWitness
 from scripts.production_integration.release_transport import GitHubRead
 from scripts.production_integration.release_source import WorkflowCheck
+from scripts.production_integration.artifacts import EngineBindingError
+from scripts.production_integration.release_transport import IMAGE_REPOSITORY
+from test_production_integration import artifact_fixture
 
 
 @pytest.mark.parametrize('phase', ['empty-host', 'rollout'])
@@ -70,6 +75,29 @@ def test_both_recipes_use_real_adapters_with_only_controlled_evidence(tmp_path, 
         assert 'context' in rollout['image_registry'].keywords
         assert 'infrastructure' not in rollout and 'private_network_id' not in rollout
         assert 'active_pins' not in rollout  # supplied only by reviewed phase transition
+        # Exercise the default production resolver: GHCR returns raw OCI bytes,
+        # while Engine binding requires authenticated ImageEvidence.
+        for index in (False, True):
+            fixture_ref, blobs, _, _, config_id, manifest_id = artifact_fixture(index)
+            reference = IMAGE_REPOSITORY + '@' + fixture_ref.split('@')[1]
+            def collect(self, requested):
+                assert self.repository == IMAGE_REPOSITORY and requested == reference
+                return blobs
+            monkeypatch.setattr(fixed.GHCRRead, 'collect', collect)
+            digest = reference.split('@')[1]
+            inspected = {'Id': digest, 'RepoDigests': [reference], 'Os': 'linux', 'Architecture': 'amd64',
+                'Config': {'User': '101:101'}, 'Descriptor': {'digest': digest, 'size': len(blobs[digest]),
+                    'mediaType': 'application/vnd.oci.image.index.v1+json' if index else
+                                 'application/vnd.oci.image.manifest.v1+json'}}
+            evidence = rollout['resolve_image'](reference, inspected)
+            assert evidence.reference == reference and evidence.image_id == config_id
+            assert evidence.manifest_digest == manifest_id and evidence.platform == 'linux/amd64'
+            assert evidence.verified is True and json.loads(evidence.defaults_json) == inspected['Config']
+            foreign = deepcopy(inspected)
+            foreign['Config']['User'] = '0:0'
+            with pytest.raises(EngineBindingError): rollout['resolve_image'](reference, foreign)
+            blobs[config_id] = b'{}'
+            with pytest.raises(DockerError): rollout['resolve_image'](reference, inspected)
 
 
 def test_missing_owner_policy_stays_closed_before_any_io(monkeypatch):
