@@ -364,6 +364,55 @@ def test_joint_observation_keeps_both_five_second_limits(clocked_joint_rollout, 
     assert not s.world.calls
 
 
+@pytest.mark.parametrize('execute', [False, True])
+def test_active_window_waits_for_post_barrier_host_authority(clocked_joint_rollout, monkeypatch, signer, execute):
+    from threading import Event
+    s, timing = clocked_joint_rollout
+    completed, inspected = Event(), Event()
+    transport = s.ports['gateway'].port.transport
+    inspect = transport.runtime.inspect
+    def authority(policy, identity):
+        # Real authority rehashes the sealed inventory after release. Make its
+        # cost visible without allowing it to consume ACTIVE's mutable window.
+        inspected.wait(0.1)
+        timing.now += 8
+        completed.set()
+        return policy
+    def runtime(channel):
+        inspected.set()
+        assert completed.wait(1), 'host authority did not finish'
+        return inspect(channel)
+    monkeypatch.setattr(s.authority, 'verify', authority)
+    monkeypatch.setattr(transport.runtime, 'inspect', runtime)
+    candidate, envelope = signed(s, signer)
+    assert candidate.scope == 'first-project-router-rollout'
+    assert timing.now >= 29
+    assert all(0 <= timing.now - source.captured_at <= 5 for source in s.provider.sample.sources)
+    assert not s.world.calls
+    if execute:
+        result = s.executor.run(candidate, envelope)
+        assert result.status == 'succeeded', result
+        with s.lock() as lease, Journal(s.directory, lease) as journal:
+            assert journal.last_good('project-router', 'web')['run'] == '1'*32
+        calls = list(s.world.calls)
+        assert s.executor.run(candidate, envelope).status == 'blocked'
+        assert s.world.calls == calls
+
+
+def test_post_barrier_authority_failure_precedes_active_mutable_read(integrated, monkeypatch):
+    s = integrated
+    def revoked(*args):
+        raise DockerError('synthetic-authority-revoked')
+    def unexpected(*args):
+        pytest.fail('ACTIVE mutable read began before authority was accepted')
+    monkeypatch.setattr(s.authority, 'verify', revoked)
+    monkeypatch.setattr(s.ports['gateway'].port.transport.runtime, 'inspect', unexpected)
+    with pytest.raises(DockerError, match='synthetic-authority-revoked'):
+        s.prepare()
+    assert s.host.last is None and s.provider.sample is None
+    assert not s.world.calls
+
+
 def test_joint_window_rejects_slow_final_plan_without_retimestamping(clocked_joint_rollout, monkeypatch):
     from scripts.production_integration import candidate
     s, timing = clocked_joint_rollout

@@ -164,8 +164,9 @@ class ProductionStateReader:
 class ProductionStateProvider(CompositeStateProvider):
     """Overlap fresh host reads with the final live source round under one lease.
 
-    Both ports finish preparation/seals before the barrier. Host authority is
-    rechecked after it; ACTIVE keeps its full closing seal and peer checks.
+    Both ports prepare before the barrier. After release, ACTIVE waits for the
+    full host authority recheck and observation start before its mutable reads.
+    ACTIVE keeps its full closing seal and peer checks.
     No capture time or freshness limit is changed. The worker is joined before
     returning or releasing the caller's lock, including source failure paths.
     """
@@ -179,15 +180,18 @@ class ProductionStateProvider(CompositeStateProvider):
         from concurrent.futures import ThreadPoolExecutor
         from threading import Event
         self.sample = None
-        ready, release, abort = Event(), Event(), Event()
+        ready, release, observing, abort = Event(), Event(), Event(), Event()
         def prepare_host():
             ready.set()
             require(release.wait(120) and not abort.is_set(), 'production-joint-observation-aborted')
+        def host_observing():
+            require(release.is_set() and not abort.is_set(), 'production-joint-observation-unbound')
+            observing.set()
         with ThreadPoolExecutor(max_workers=1, thread_name_prefix='production-host-read') as worker:
-            host = worker.submit(collect_host, prepare_host)
-            def wait_host():
+            host = worker.submit(collect_host, prepare_host, host_observing)
+            def wait_host(event):
                 deadline = time.monotonic() + 120
-                while not ready.wait(0.05):
+                while not event.wait(0.05):
                     if host.done():
                         host.result()  # Preserve the actual host preparation failure.
                         require(False, 'production-joint-observation-unbound')
@@ -195,8 +199,12 @@ class ProductionStateProvider(CompositeStateProvider):
             def begin_sources():
                 require(ready.is_set() and not abort.is_set(), 'production-joint-observation-unbound')
                 release.set()
+                # Recheck phase authority after release, including its complete
+                # seal scan, before ACTIVE starts its mutable observation clock.
+                # Host signals only after its own candidate clock has started.
+                wait_host(observing)
             try:
-                wait_host()  # Recovery fences and host seals precede source IO.
+                wait_host(ready)  # Recovery fences and host seals precede source IO.
                 joint = CompositeStateProvider(lambda: self.reader(before_observation=begin_sources),
                                                clock=self.clock, max_age=self.max_age)
                 state = joint.refresh()
