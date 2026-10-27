@@ -4,7 +4,7 @@ import math
 from scripts.docker_adapter import DockerError
 
 DEFAULT_OBSERVATION_SECONDS = 5
-ROLLOUT_OBSERVATION_SECONDS = 15
+ROLLOUT_OBSERVATION_SECONDS = 30
 
 
 def observation_window(value):
