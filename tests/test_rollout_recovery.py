@@ -183,7 +183,7 @@ def recovery_decision():
         "journal_sha256": "c" * 64,
         "observation_sha256": "sha256:" + "d" * 64,
         "not_before": 990,
-        "expires": 1100,
+        "expires": 1890,
     }
 
 
@@ -203,7 +203,7 @@ def test_valid_operator_signature(identities, recovery_decision):
     result = verify_recovery_decision(
         envelope,
         keys={"operator": identities["operator"][1]},
-        now=1000,
+        now=1500,
     )
 
     assert result == recovery_decision
@@ -219,7 +219,7 @@ def test_valid_operator_signature(identities, recovery_decision):
     ("observation_sha256", "invalid"),
     ("not_before", 1001),
     ("expires", 1000),
-    ("expires", 1300),
+    ("expires", 1891),
 ])
 def test_invalid_signed_decision_is_rejected(
     identities, recovery_decision, field, value
@@ -458,6 +458,8 @@ def test_prepare_binds_exact_journal_and_live_observation(
 
     prepared = w.operation.prepare()
     decision = prepared["decision"]
+
+    assert decision["expires"] - decision["not_before"] == 900
 
     assert prepared["status"] == "prepared"
     assert prepared["executorStarted"] is False

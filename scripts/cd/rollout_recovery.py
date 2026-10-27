@@ -136,6 +136,7 @@ def eligible(journal, run, expected_image, app):
 
 
 RECOVERY_NAMESPACE = "portfolio-first-rollout-recovery-v1"
+RECOVERY_DECISION_SECONDS = 15 * 60
 
 RECOVERY_FIELDS = {
     "version",
@@ -216,7 +217,7 @@ def verify_recovery_decision(envelope, *, keys, now=None):
         )
         and 0 <= decision["not_before"] <= current
         < decision["expires"]
-        and 0 < decision["expires"] - decision["not_before"] <= 300,
+        and 0 < decision["expires"] - decision["not_before"] <= RECOVERY_DECISION_SECONDS,
         "rollout-recovery-decision-expired",
     )
 
@@ -537,7 +538,7 @@ class RolloutRecovery(BootstrapContainment):
             **facts,
             "id": uuid.uuid4().hex,
             "not_before": now - 5,
-            "expires": now + 295,
+            "expires": now + RECOVERY_DECISION_SECONDS - 5,
         }
 
         require(
