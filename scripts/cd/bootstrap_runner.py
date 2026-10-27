@@ -13,7 +13,7 @@ import sys
 import tempfile
 import threading
 
-from scripts.cd.runner import Client, require_policy_id, report_failure
+from scripts.cd.runner import Client, OBSERVER_JOIN_TIMEOUT, require_policy_id, report_failure
 from scripts.production_integration.observations import require
 from scripts.production_integration.operator_approval import closed_json
 
@@ -73,7 +73,7 @@ def main():
         finally:
             stop.set()
             if thread:
-                thread.join(timeout=30)
+                thread.join(timeout=OBSERVER_JOIN_TIMEOUT)
         output = Path(sys.argv[1])
         output.mkdir(parents=True, exist_ok=True)
         (output / 'bootstrap-result.json').write_text(json.dumps(result))

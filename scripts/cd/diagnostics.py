@@ -11,6 +11,23 @@ PUBLIC_FAILURES = {
     'production-storage-content-changed': 'protected storage changed during verification; preserve the journal and inspect before recovery',
     'production-bootstrap-postconditions-changed-or-expired': 'bootstrap postconditions changed or exceeded their observation window; preserve state; do not replay',
     'production-bootstrap-recovery-baseline-mismatch': 'retained Docker resources differ from the independently reviewed empty-host baseline; recovery remains blocked',
+    'production-approval-stale-or-binding-invalid': 'operator approval expired or does not bind the exact candidate',
+    'production-operator-approval-invalid': 'operator approval signature or document is invalid',
+    'production-exact-candidate-changed': 'fresh preflight produced a different candidate; review a new candidate',
+    'production-release-unverified': 'the production release proof did not verify',
+    'production-release-api-timeout': 'the release evidence API timed out',
+    'production-release-api-timeout-or-unavailable': 'the release evidence API timed out or was unavailable',
+    'production-release-budget-exhausted': 'the release evidence collection budget expired',
+    'production-active-config-changed': 'the active gateway observation changed or exceeded its bounded window',
+    'production-active-config-evidence-expired-or-changed': 'the active gateway evidence expired or changed',
+    'production-host-source-changed-or-expired': 'the host observation changed or expired',
+    'production-host-source-deadline': 'the host observation exceeded its deadline',
+    'production-joint-observation-timeout': 'the coordinated observation exceeded its deadline',
+    'production-joint-source-expired': 'a coordinated source observation expired',
+    'production-preflight-state-changed': 'state changed during preflight',
+    'production-plan-preflight-blocked': 'the deployment plan did not pass preflight',
+    'production-gateway-preflight-blocked': 'the gateway candidate did not pass preflight',
+    'production-execution-dependency-unavailable': 'an execution dependency failed before the outcome could be established; inspect receipts',
 }
 
 
