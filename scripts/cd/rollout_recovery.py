@@ -1084,6 +1084,35 @@ def build_recovery_state_reader(
     return provider, probes
 
 
+def verify_original_release(candidate, fixed, *, github, registry, crypto):
+    """Reverify the original rollout contract, including both signed sources.
+
+    The initial image predates automatic CD's content-attestation contract.
+    Its original sealed bindings and candidate remain the release authority;
+    the signed recovery policy independently pins the public HTML digest.
+    """
+    from scripts.production_integration.artifacts import SourceRequest
+    from scripts.production_integration.release import MANAGER, PRODUCER, ORIGIN, ReleaseVerifier
+    from scripts.production_integration.release_collector import AuthenticatedReleaseCollector
+    from scripts.production_integration.release_source import WorkflowCheck
+
+    require(candidate.scope == 'first-project-router-rollout'
+            and candidate.producer_sha == fixed.producer_sha == fixed.signer_sha
+            and candidate.image == fixed.image,
+            'rollout-recovery-original-release-unbound')
+    checks = (*fixed.producer_checks,
+        WorkflowCheck(MANAGER, 'Offline checks', 15368, '.github/workflows/offline.yml'))
+    builder = 'https://github.com/' + PRODUCER + '/.github/workflows/publish.yml@' + fixed.signer_sha
+    collector = AuthenticatedReleaseCollector(candidate, github=github, registry=registry, crypto=crypto,
+        checks=checks, signer_sha=fixed.signer_sha, builder=builder,
+        slsa_builder=fixed.slsa_builder, publication_check=fixed.publication_check)
+    return ReleaseVerifier(candidate,
+        required_checks=[(c.repository, c.name, c.app_id) for c in checks],
+        allowed_builders=[builder], collector=collector).verify(
+            SourceRequest(PRODUCER, candidate.producer_sha, candidate.manager_sha,
+                          candidate.image, ORIGIN, MANAGER))
+
+
 def installed_recovery(installation, standing, fixed):
     """Bind the capsule's sealed policy to read-only production adapters.
 
@@ -1096,7 +1125,7 @@ def installed_recovery(installation, standing, fixed):
     from scripts.cd.application import CHALLENGE, STATE, release_ports
     from scripts.cd.bootstrap_containment import digest
     from scripts.cd.host import StandingReview
-    from scripts.cd.release import ImageRelease, ImageReleaseVerifier, ProjectedContent
+    from scripts.cd.release import ImageRelease, ProjectedContent
     from scripts.production_integration.artifacts import bind_engine_image, verify_oci_bytes
     from scripts.production_integration.caddy_release import CaddyReleaseCollector
     from scripts.production_integration.fixed_bindings import FixedPolicy, GH, ROOT, TOKEN
@@ -1127,7 +1156,7 @@ def installed_recovery(installation, standing, fixed):
         require_production_lease(lease)
         if sources is None:
             github, registry, crypto, context = release_ports(fixed)
-            ImageReleaseVerifier(standing, github, registry, crypto).verify(release)
+            verify_original_release(candidate, fixed, github=github, registry=registry, crypto=crypto)
             blobs = verify_oci_bytes(release.image, IMAGE_REPOSITORY, registry.collect(release.image))
             caddy = CaddyRuntime(fixed.caddy_image, fixed.caddy_version, RuntimePaths(
                 *(f'/srv/portfolio/{p}' for p in ('state', 'locks', 'journal', 'caddy-config',
