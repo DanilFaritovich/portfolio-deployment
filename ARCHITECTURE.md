@@ -382,9 +382,11 @@ closing Engine discovery follow. Exact source proofs and original capture times
 retain the five-second freshness bound; no SourceResult is reused across refreshes.
 Rollout preflight prepares host and ACTIVE sources before a shared barrier, then
 overlaps fresh host reads with the final ACTIVE/runtime/Engine observations under
-the same host lease. Host phase authority is rechecked after the barrier; all seal
-and peer checks remain. The single temporary reader is joined on success/failure
-before the lease can end. Both the final five-second candidate window and original
+the same host lease. Host phase authority is rechecked after the barrier; ACTIVE
+waits for that complete seal/authority check and the host observation clock before
+starting its own mutable window. All seal and peer checks remain. The single
+temporary reader is joined on success/failure before the lease can end. Both the
+final five-second candidate window and original
 source capture ages are checked after collection; planning cannot renew them.
 PolicyHostContracts separates
 LocalHostSources facts, independently approved HostPolicy and mandatory external
