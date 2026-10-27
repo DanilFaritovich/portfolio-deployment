@@ -206,6 +206,34 @@ required. Closed diagnostic codes preserve journal/authority failures through
 Actions without exposing raw exceptions. Offline tests do not establish that this
 recovery or the first application rollout has been performed in production.
 
+The independent capsule also exposes root-only `operator-first-rollout-recovery`
+for one first ProjectRouter run left `recovery-required / gateway-unverified`
+after its component reached `succeeded / readiness-verified`. It accepts only
+canonical `prepare` or `execute` requests; requests cannot select adapters or
+policy. Sealed capsule bindings and the operator-signed standing policy must
+provide complete reviewed runtime IDs/infrastructure in `host_contract`; an
+empty contract blocks recovery. Fresh provenance, Engine/runtime, ACTIVE and
+internal readiness checks precede a new public challenge and independent signed
+HTTPS witness. Public acceptance runs outside the timed runtime observation.
+A bounded recovery-only rendezvous renews the same challenge until a fresh
+matching receipt is delivered, then runs the unchanged DNS/TLS/content and
+cryptographic public gate. Receipt metadata only wakes the waiter; signature,
+subject and freshness verification remain mandatory before journal acceptance.
+Initial-release provenance reuses the original rollout's authenticated release
+collector and sealed source/check/builder bindings, including original manifest
+and admission hashes. It does not apply automatic CD's later workflow/content
+attestation contract to a historical image; public HTML remains independently
+pinned by the operator-signed initial release and verified by the HTTPS witness.
+A maximum fifteen-minute `portfolio-first-rollout-recovery-v1` operator decision
+binds the exact journal, inventories, policy and observed release. Execution
+retains the original journal/approval, repeats verification under host flock,
+then atomically promotes the original run/authorization and application LKG.
+Original component events and consumed nonce remain unchanged. No executor,
+Docker mutation, Caddy activation or replay is involved; subsequent execution
+fails closed after completion. Delegated keys/sudoers gain no recovery role.
+Capsule installation and runtime-policy review remain independent administrative
+steps; offline acceptance does not establish production recovery.
+
 Capsules include the same three immutable Caddy producer inputs as Manager
 bundles; export fails if any is absent. ACTIVE observation uses a single-use
 verified read scope: complete seal hashing before and after the scope, unchanged
