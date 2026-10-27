@@ -123,7 +123,7 @@ class PolicyHostContracts:
     def collect(self):
         raise DockerError('production-host-contract-canonical-lease-required')
 
-    def collect_under_lease(self, lease, *, before_observation=None):
+    def collect_under_lease(self, lease, *, before_observation=None, prepare_observation=None):
         self.last = None
         self.installation.verify()
         start = None
@@ -141,6 +141,11 @@ class PolicyHostContracts:
         def begin_observation():
             nonlocal start
             require(start is None, 'production-host-observation-window-unbound')
+            if prepare_observation is not None:
+                pending = self.journal.read(lease)
+                require(not pending.get('incomplete') and not pending.get('authorizations'),
+                        'production-host-recovery-required')
+                prepare_observation()
             require(self.prerequisites.verify(p, identity) == p, 'production-host-prerequisites-unverified')
             if before_observation is not None:
                 before_observation()

@@ -27,10 +27,11 @@ class ManagedGatewayReadPort:
         self.expected_version = expected_version
         self.attestor = attestor
 
-    def read(self):
+    def read(self, *, before_observation=None):
         if self.attestor is None:
             raise DockerError('production-gateway-authenticated-attestor-unavailable')
-        sample = self.transport.read_active()
+        sample = (self.transport.read_active() if before_observation is None else
+                  self.transport.read_active(before_observation=before_observation))
         if self.attestor.verify(self.transport, self.image, self.expected_version, sample) != sample:
             raise DockerError('production-gateway-channel-or-runtime-unverified')
         if (not isinstance(sample, GatewaySnapshot) or self.image.verified is not True or

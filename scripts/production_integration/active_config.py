@@ -62,7 +62,7 @@ class ActiveConfigTransport:
         self.engine, self.channel, self.runtime, self.adapter = engine, channel, runtime, adapter
         self.routes_reader, self.clock, self.last = routes_reader, clock, None
 
-    def read_active(self):
+    def read_active(self, *, before_observation=None):
         self.last = None
         # Consider empty and admitted full route sets; do not infer from disk/LKG.
         options = ((), route_set(self.routes_reader()))
@@ -70,6 +70,8 @@ class ActiveConfigTransport:
         expected = [(routes, active_json(self.adapter.adapt(routes))) for routes in options]
         opening = getattr(self.runtime, 'observation', nullcontext)
         with opening():
+            if before_observation is not None:
+                before_observation()
             start, identity = self.clock(), self.engine.identity()
             before = self.runtime.inspect(self.channel)
             require(type(before) is GatewaySnapshot and isinstance(before.container_id, str) and

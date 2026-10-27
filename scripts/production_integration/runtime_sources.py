@@ -109,8 +109,9 @@ class GatewaySource(LocalSource):
         super().__init__('installed-active-gateway-v1', engine, **kwargs)
         self.port, self.postconditions = port, postconditions
 
-    def collect(self, round_id):
-        routes = self.port.read()
+    def collect(self, round_id, *, before_observation=None):
+        routes = (self.port.read() if before_observation is None else
+                  self.port.read(before_observation=before_observation))
         if routes:
             require(self.postconditions is not None and
                     self.postconditions.verify(routes, self.engine.identity()) == routes,
@@ -150,7 +151,7 @@ class RuntimeSource(LocalSource):
         results, _ = self.collect_round(round_id, lambda refs: None)
         return results['runtime']
 
-    def collect_round(self, round_id, before_sources):
+    def collect_round(self, round_id, before_sources, *, before_observation=None):
         """One live round, no retained SourceResults or timestamp renewal.
 
         The reader brackets the dependent sources with its own Engine inventory.
@@ -160,7 +161,8 @@ class RuntimeSource(LocalSource):
         identity, _, selected = self.inventory.capture()
         refs = {image.reference for _, components in selected for _, _, image in components}
         before = before_sources(refs)
-        gateway = self.gateway.collect(round_id)
+        gateway = (self.gateway.collect(round_id) if before_observation is None else
+                   self.gateway.collect(round_id, before_observation=before_observation))
         readiness = self.readiness.collect_selected(round_id, identity, selected)
         routes = {r.application: r for r in gateway.payload}
         health = readiness.payload
