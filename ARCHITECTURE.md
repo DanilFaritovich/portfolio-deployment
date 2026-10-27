@@ -215,6 +215,11 @@ provide complete reviewed runtime IDs/infrastructure in `host_contract`; an
 empty contract blocks recovery. Fresh provenance, Engine/runtime, ACTIVE and
 internal readiness checks precede a new public challenge and independent signed
 HTTPS witness. Public acceptance runs outside the timed runtime observation.
+Initial-release provenance reuses the original rollout's authenticated release
+collector and sealed source/check/builder bindings, including original manifest
+and admission hashes. It does not apply automatic CD's later workflow/content
+attestation contract to a historical image; public HTML remains independently
+pinned by the operator-signed initial release and verified by the HTTPS witness.
 A maximum five-minute `portfolio-first-rollout-recovery-v1` operator decision
 binds the exact journal, inventories, policy and observed release. Execution
 retains the original journal/approval, repeats verification under host flock,
