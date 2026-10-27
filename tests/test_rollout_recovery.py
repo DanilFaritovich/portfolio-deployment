@@ -1018,6 +1018,8 @@ def test_recovery_reader_uses_real_read_only_source_types(
     assert type(ports["runtime"]) is RuntimeSource
     assert type(ports["gateway"]) is GatewaySource
     assert type(ports["readiness"]) is ReadinessSource
+    from scripts.cd.application import ActiveRoutes
+    assert type(ports["gateway"].postconditions) is ActiveRoutes
     assert provider.reader.source_trust.attestor is not None
     assert probes.network_id == "c" * 64
 
@@ -1158,3 +1160,80 @@ def test_recovery_docker_port_rejects_mutation(
         match="stage-09-4-operation-authorization-unavailable",
     ):
         provider.reader.docker.up(None, "web")
+
+
+@pytest.mark.parametrize('document', [
+    {'op': 'prepare', 'policy': {}},
+    {'op': 'execute', 'envelope': {}},
+    {'op': 'execute', 'envelope': 'not-base64'},
+    {'op': 'reset'},
+])
+def test_root_entry_rejects_request_before_installed_wiring(monkeypatch, document):
+    import io
+    import json
+    import sys
+    from scripts.cd import bridge, rollout_recovery
+
+    monkeypatch.setattr('os.geteuid', lambda: 0)
+    from scripts.production_integration.operator_approval import canonical
+    monkeypatch.setattr(sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(canonical(document))))
+    def unexpected():
+        pytest.fail('invalid request reached installed wiring')
+    monkeypatch.setattr(bridge, 'installation', unexpected)
+    with pytest.raises((DockerError, ValueError)):
+        rollout_recovery.main()
+
+
+def test_root_entry_uses_signed_recovery_and_retains_history(recovery_world, identities, tmp_path, monkeypatch, capsys):
+    import base64
+    import io
+    import json
+    import os
+    import sys
+    from scripts.cd import application, bridge, rollout_recovery
+    from scripts.cd.signatures import sign
+
+    w = recovery_world
+    w.operation.keys = {'operator': identities['operator'][1]}
+    w.operation.state = tmp_path / 'audit'
+    w.operation.state.mkdir(mode=0o700)
+    decision = w.operation.prepare()['decision']
+    envelope = sign(decision, principal='operator', key=identities['operator'][0],
+                    namespace=rollout_recovery.RECOVERY_NAMESPACE)
+    original = journal_bytes(w.world.directory)
+    real_geteuid = os.geteuid
+    monkeypatch.setattr('os.geteuid', lambda: 0)
+    monkeypatch.setattr(bridge, 'installation', lambda: w.installation)
+    monkeypatch.setattr(application, 'installed_policy', lambda installed: w.policy)
+    fixed = object()
+    monkeypatch.setitem(sys.modules, 'cd_bindings', SimpleNamespace(POLICY=fixed))
+    def installed(installed, standing, policy):
+        assert installed is w.installation and standing is w.policy and policy is fixed
+        # Only the entry gate is root-simulated; fixture files belong to this user.
+        monkeypatch.setattr(os, 'geteuid', real_geteuid)
+        return w.operation
+    monkeypatch.setattr(rollout_recovery, 'installed_recovery', installed)
+    request = {'op': 'execute', 'envelope': base64.b64encode(envelope).decode()}
+    from scripts.production_integration.operator_approval import canonical
+    monkeypatch.setattr(sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(canonical(request))))
+    assert rollout_recovery.main() == 0
+    assert json.loads(capsys.readouterr().out)['status'] == 'succeeded'
+    assert (w.operation.state / ('first-rollout-recovery-' + decision['id']) / 'original.sqlite3').read_bytes() == original
+    with w.world.lock() as lease, Journal(w.world.directory, lease) as journal:
+        assert journal.last_good('project-router', 'web')['run'] == decision['run']
+        assert not journal.incomplete() and not journal.authorization_recovery()
+
+
+def test_public_challenge_is_published_after_runtime_verification(failed_rollout):
+    world, candidate = failed_rollout
+    clock = Clock()
+    order = []
+    class Public(OfflinePublic):
+        def verify(self, routes, identity):
+            assert order == ['challenge']
+            order.append('public')
+            return super().verify(routes, identity)
+    observe_live_release(candidate, world.world.app, world.world.provider, Probes(), POLICY,
+        public_postconditions=Public(), before_public=lambda: order.append('challenge'),
+        clock=clock.now, sleep=clock.sleep)
+    assert order == ['challenge', 'public']

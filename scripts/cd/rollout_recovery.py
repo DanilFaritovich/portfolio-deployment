@@ -1,7 +1,4 @@
-"""Read-only eligibility gate for first ProjectRouter rollout recovery.
-
-This module grants no production authority and never modifies the journal.
-"""
+"""Root-only signed acceptance of an already running first ProjectRouter rollout."""
 import json
 import math
 from pathlib import Path
@@ -227,7 +224,7 @@ def verify_recovery_decision(envelope, *, keys, now=None):
 
 
 def observe_live_release(candidate, app, provider, probes, policy, *,
-                         public_postconditions=None, **timing):
+                         public_postconditions=None, before_public=None, **timing):
     """Verify an existing release without changing Docker, Caddy or SQLite.
 
     Production callers must supply the installed, sealed content reader,
@@ -374,6 +371,8 @@ def observe_live_release(candidate, app, provider, probes, policy, *,
     from scripts.reconciliation import DesiredState
 
     routes = desired_routes(DesiredState(candidate.manager_sha, (app,)))
+    if before_public is not None:
+        before_public()
     require(
         len(routes) == 1
         and public_postconditions.verify(
@@ -400,7 +399,7 @@ class RolloutRecovery(BootstrapContainment):
     """Operator-reviewed recovery of an already-running first rollout.
 
     Production wiring must provide installed, sealed readers and trusted
-    observation sources. No execution or journal mutation is available here.
+    observation sources. Only execute may atomically promote verified journal state.
     """
 
     def __init__(
@@ -1039,10 +1038,14 @@ def build_recovery_state_reader(
         network_id=pins["private_id"],
     )
 
+    from scripts.cd.application import ActiveRoutes
+
     gateway_source = GatewaySource(
         engine,
         gateway,
-        postconditions=public_postconditions,
+        # Public acceptance runs once, after the stable runtime/readiness round.
+        # Waiting on the external observer inside this round exhausts freshness.
+        postconditions=ActiveRoutes(standing_review.standing),
     )
     readiness_source = ReadinessSource(
         inventory, {"project-router": probes}
@@ -1079,3 +1082,126 @@ def build_recovery_state_reader(
     ).provider()
 
     return provider, probes
+
+
+def installed_recovery(installation, standing, fixed):
+    """Bind the capsule's sealed policy to read-only production adapters.
+
+    No executor is constructed. Immutable provenance is checked once per
+    invocation, before timed runtime observations. Requests supply no bindings.
+    """
+    from dataclasses import asdict
+
+    from scripts.cd.administrative import CAPSULE, private
+    from scripts.cd.application import CHALLENGE, STATE, release_ports
+    from scripts.cd.bootstrap_containment import digest
+    from scripts.cd.host import StandingReview
+    from scripts.cd.release import ImageRelease, ImageReleaseVerifier, ProjectedContent
+    from scripts.production_integration.artifacts import bind_engine_image, verify_oci_bytes
+    from scripts.production_integration.caddy_release import CaddyReleaseCollector
+    from scripts.production_integration.fixed_bindings import FixedPolicy, GH, ROOT, TOKEN
+    from scripts.production_integration.gateway_write import durable_replace
+    from scripts.production_integration.locking import production_host_lock, require_production_lease
+    from scripts.production_integration.operator_approval import TRUST, canonical, trust_keys
+    from scripts.production_integration.release import MANAGER
+    from scripts.production_integration.release_crypto import AttestationVerifier
+    from scripts.production_integration.release_source import WorkflowCheck
+    from scripts.production_integration.release_transport import GHCRRead, HTTPSRead, IMAGE_REPOSITORY
+    from scripts.production_integration.runtime import CaddyRuntime, RuntimePaths
+    from scripts.readiness import ReadinessPolicy
+
+    require(type(fixed) is FixedPolicy, 'rollout-recovery-fixed-policy-required')
+    installation.verify()
+    pins = dict(installation.files)
+    require(pins.get(GH) == fixed.gh_sha256
+            and pins.get(ROOT) == fixed.sigstore_root_sha256
+            and pins.get(fixed.public.ca_file) == fixed.public.ca_sha256,
+            'rollout-recovery-external-trust-unbound')
+    review = StandingReview(installation, standing)
+    release = ImageRelease(**standing.document['application']['initial_release']).validate()
+    content = ProjectedContent(installation, standing, release)
+    sources = None
+
+    def observe(candidate, app, lease):
+        nonlocal sources
+        require_production_lease(lease)
+        if sources is None:
+            github, registry, crypto, context = release_ports(fixed)
+            ImageReleaseVerifier(standing, github, registry, crypto).verify(release)
+            blobs = verify_oci_bytes(release.image, IMAGE_REPOSITORY, registry.collect(release.image))
+            caddy = CaddyRuntime(fixed.caddy_image, fixed.caddy_version, RuntimePaths(
+                *(f'/srv/portfolio/{p}' for p in ('state', 'locks', 'journal', 'caddy-config',
+                                                 'certificates', 'caddy-data')),
+                fixed.certificate_budget_bytes))
+            token = private(TOKEN, 4096).decode('ascii').strip()
+            caddy_registry = GHCRRead(HTTPSRead(context=context),
+                repository='ghcr.io/danilfaritovich/portfolio-caddy',
+                registry_auth=(fixed.ghcr_user, token))
+            caddy_image = CaddyReleaseCollector(github=github, registry=caddy_registry,
+                crypto=AttestationVerifier(GH, fixed.gh_sha256, ROOT,
+                    fixed.sigstore_root_sha256, repository=MANAGER),
+                checks=(WorkflowCheck(MANAGER, 'Offline checks', 15368, '.github/workflows/offline.yml'),),
+                publication_check=WorkflowCheck(MANAGER, 'Publish trusted Caddy / Publish', 15368,
+                    '.github/workflows/caddy-image.yml')).collect(caddy, fixed.caddy_source_sha)
+            public = recovery_public_acceptance(candidate, app, standing=standing,
+                installation=installation, installed_public=fixed.public)
+            provider, probes = build_recovery_state_reader(installation=installation,
+                standing_review=review, candidate=candidate, app=app, caddy=caddy,
+                caddy_image=caddy_image, proxy_subnet=fixed.proxy_subnet,
+                proxy_gateway=fixed.proxy_gateway, private_subnet=fixed.private_subnet,
+                resolve_image=lambda reference, inspected: bind_engine_image(blobs, inspected),
+                public_postconditions=public)
+            sources = provider, probes, public
+        provider, probes, public = sources
+        # The observer receives a challenge, never an assertion of success.
+        # It independently checks DNS/TLS/content before signing a short-lived receipt.
+        import base64
+        from scripts.gateway import desired_routes
+        from scripts.reconciliation import DesiredState
+        routes = desired_routes(DesiredState(candidate.manager_sha, (app,)))
+        def challenge():
+            installation.verify()
+            standing.current()
+            with Path(fixed.public.ca_file).open('rb') as stream:
+                ca = stream.read(1024 * 1024 + 1)
+            require(0 < len(ca) <= 1024 * 1024 and digest(ca) == fixed.public.ca_sha256,
+                    'rollout-recovery-ca-changed')
+            durable_replace(STATE, CHALLENGE.name, canonical({
+                'policy': asdict(public.policy), 'routes': [asdict(r) for r in routes],
+                'ca': base64.b64encode(ca).decode(),
+                'created': int(time.time()), 'policy_id': standing.identity}))
+        return observe_live_release(candidate, app, provider, probes, ReadinessPolicy(),
+                                    public_postconditions=public, before_public=challenge)
+
+    return RolloutRecovery(installation=installation, policy=standing,
+        lock=production_host_lock, application_reader=lambda: content()[0].applications[0],
+        observe=observe, inventories=lambda: {
+            'inventory_sha256': digest(private(Path('/opt/portfolio-deployment/installation.json'), 2*1024*1024)),
+            'capsule_sha256': digest(private(CAPSULE / 'capsule.json', 2*1024*1024))},
+        directory=Path('/srv/portfolio/journal'), state=STATE,
+        keys=trust_keys(private(TRUST, 8192)))
+
+
+def main():
+    import base64
+    import os
+    import sys
+
+    from scripts.cd.application import installed_policy
+    from scripts.cd.bridge import installation
+    from scripts.production_integration.operator_approval import canonical, closed_json
+
+    require(os.geteuid() == 0, 'rollout-recovery-root-required')
+    request = closed_json(sys.stdin.buffer.read(131073), 131072)
+    require(request == {'op': 'prepare'} or
+            (type(request) is dict and set(request) == {'op', 'envelope'}
+             and request['op'] == 'execute' and type(request['envelope']) is str),
+            'rollout-recovery-operation-invalid')
+    envelope = (base64.b64decode(request['envelope'], validate=True)
+                if request['op'] == 'execute' else None)
+    import cd_bindings
+    installed = installation()
+    operation = installed_recovery(installed, installed_policy(installed), cd_bindings.POLICY)
+    result = operation.prepare() if envelope is None else operation.execute(envelope)
+    print(canonical(result).decode())
+    return 0

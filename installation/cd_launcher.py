@@ -11,7 +11,7 @@ ROOT = Path('/usr/local/lib/portfolio-deployment-cd')
 
 
 def main():
-    if (os.geteuid() != 0 or len(sys.argv) != 2 or sys.argv[1] not in ('automation', 'observer', 'operator-recovery', 'operator-prebootstrap', 'operator-bootstrap-containment', 'operator-bootstrap-verification-recovery') or
+    if (os.geteuid() != 0 or len(sys.argv) != 2 or sys.argv[1] not in ('automation', 'observer', 'operator-recovery', 'operator-prebootstrap', 'operator-bootstrap-containment', 'operator-bootstrap-verification-recovery', 'operator-first-rollout-recovery') or
         not sys.flags.isolated or not sys.flags.no_site or not sys.dont_write_bytecode):
         return 2
     for path in (*reversed(ROOT.parents), ROOT):
@@ -71,6 +71,10 @@ def main():
         return main()
     if sys.argv[1] == 'operator-bootstrap-verification-recovery':
         from scripts.cd.bootstrap_recovery import main
+        return main()
+    if sys.argv[1] == 'operator-first-rollout-recovery':
+        # Independent root channel only; never delegated to automation/observer.
+        from scripts.cd.rollout_recovery import main
         return main()
     from scripts.cd.bridge import main as bridge
     return bridge(sys.argv[1])
