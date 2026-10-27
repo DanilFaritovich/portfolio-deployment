@@ -111,9 +111,13 @@ class CandidatePreflight:
         from scripts.production_integration.observations import ProductionStateProvider
         if (scope in ('first-project-router-rollout', 'update-project-router') and
             type(self.provider) is ProductionStateProvider and hasattr(self.contracts, 'collect_under_lease')):
-            contracts, joint_state = self.provider.refresh_with_host(lambda prepare:
-                self.contracts.collect_under_lease(lease, before_observation=begin_host_observation,
-                                                  prepare_observation=prepare))
+            def collect_host(prepare, observing):
+                def begin():
+                    begin_host_observation()
+                    observing()
+                return self.contracts.collect_under_lease(lease, before_observation=begin,
+                                                          prepare_observation=prepare)
+            contracts, joint_state = self.provider.refresh_with_host(collect_host)
         elif hasattr(self.contracts, 'collect_under_lease'):
             contracts = self.contracts.collect_under_lease(lease, before_observation=begin_host_observation)
         else:
