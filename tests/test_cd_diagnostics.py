@@ -116,6 +116,35 @@ def test_bridge_unknown_failures_still_fail_closed_and_redacted(monkeypatch, cap
     assert json.loads(capsys.readouterr().out) == {'status': 'blocked', 'reason': 'cd-trusted-intake-failed'}
 
 
+@pytest.mark.parametrize('code', [
+    'production-approval-stale-or-binding-invalid',
+    'production-exact-candidate-changed',
+    'production-active-config-changed',
+    'production-release-budget-exhausted',
+    'production-execution-dependency-unavailable',
+])
+def test_bootstrap_failure_code_crosses_helper_bridge_and_client_without_private_data(
+        client, monkeypatch, capsys, code):
+    import io
+    from scripts.cd import bootstrap, bridge
+
+    helper = {'status': 'blocked', 'reasons': [code], 'private': 'PRIVATE-SENTINEL'}
+    monkeypatch.setattr(bootstrap.subprocess, 'run', lambda *a, **k: SimpleNamespace(
+        returncode=2, stdout=json.dumps(helper).encode(), stderr=b'PRIVATE-SENTINEL'))
+    monkeypatch.setattr(bridge.sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(b'{"op":"test"}\n')))
+    monkeypatch.setattr(bridge, 'handle', lambda *a: bootstrap.checked_process(['/fixed/helper']))
+    assert bridge.main('automation') == 2
+    response = capsys.readouterr().out
+    assert json.loads(response)['diagnostic'] == code
+    monkeypatch.setattr(runner.subprocess, 'run', lambda *a, **k: SimpleNamespace(
+        returncode=2, stdout=response.encode(), stderr=b'PRIVATE-SENTINEL'))
+    with pytest.raises(DockerError, match=code) as caught:
+        client.call({'op': 'bootstrap-execute'})
+    runner.report_failure(caught.value)
+    output = capsys.readouterr().out
+    assert code in output and 'PRIVATE-SENTINEL' not in output
+
+
 @pytest.mark.parametrize('raw,reason', [(b'', 'cd-ssh-result-unavailable'),
     (b'PRIVATE-SENTINEL invalid JSON','cd-ssh-result-invalid'),
     (b'[]','cd-ssh-result-invalid'),(b'x'*131073,'cd-ssh-result-unavailable')])
