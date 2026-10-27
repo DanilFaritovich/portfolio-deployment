@@ -224,7 +224,7 @@ collector and sealed source/check/builder bindings, including original manifest
 and admission hashes. It does not apply automatic CD's later workflow/content
 attestation contract to a historical image; public HTML remains independently
 pinned by the operator-signed initial release and verified by the HTTPS witness.
-A maximum five-minute `portfolio-first-rollout-recovery-v1` operator decision
+A maximum fifteen-minute `portfolio-first-rollout-recovery-v1` operator decision
 binds the exact journal, inventories, policy and observed release. Execution
 retains the original journal/approval, repeats verification under host flock,
 then atomically promotes the original run/authorization and application LKG.
