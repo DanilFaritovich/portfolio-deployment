@@ -289,6 +289,62 @@ def test_local_source_proof_cannot_be_replaced_or_altered(integrated):
     with pytest.raises(DockerError): attestor.verify(binding, port, result)
 
 
+@pytest.mark.parametrize('present', [False, True])
+@pytest.mark.parametrize('failure', [None, 'slow-probe', 'late-engine', 'racing'])
+def test_dependent_sources_collect_one_fresh_corroborated_round(integrated, monkeypatch, present, failure):
+    from scripts.production_integration import observations
+    s = integrated
+    s.world.present = s.world.route = present
+    now, calls = [0.0], []
+    clock = lambda: now[0]
+    s.provider.clock = s.provider.reader.clock = clock
+    for port in s.ports.values():
+        port.clock = clock
+    capture = s.inventory.capture
+    read = s.ports['gateway'].port.read
+    probe = s.probes.probe
+    discover = observations.discover
+    def inventory():
+        calls.append('inventory')
+        now[0] += 7
+        return capture()
+    def gateway():
+        calls.append('gateway')
+        now[0] += 14
+        return read()
+    def health(*args, **kwargs):
+        calls.append('probe')
+        now[0] += 6 if failure == 'slow-probe' else 0.1
+        return probe(*args, **kwargs)
+    def engine(*args, **kwargs):
+        calls.append('engine')
+        now[0] += 6 if failure == 'late-engine' else 2
+        result = discover(*args, **kwargs)
+        if failure == 'racing' and calls.count('engine') == 2:
+            result = replace(result, resources=result.resources[1:])
+        return result
+    monkeypatch.setattr(s.inventory, 'capture', inventory)
+    monkeypatch.setattr(s.ports['gateway'].port, 'read', gateway)
+    monkeypatch.setattr(s.probes, 'probe', health)
+    monkeypatch.setattr(observations, 'discover', engine)
+    if failure and (failure != 'slow-probe' or present):
+        with pytest.raises(DockerError):
+            s.provider.refresh()
+        assert s.provider.sample is None
+        assert not s.world.calls
+        return
+    rounds = []
+    for _ in range(2):
+        calls.clear()
+        _, observed, _ = s.provider.refresh()
+        assert bool(observed.document['applications']) == present
+        assert calls == ['inventory', 'engine', 'gateway', *(['probe'] if present else []), 'engine']
+        evidence = s.provider.sample.sources
+        assert all(0 <= now[0] - item.captured_at <= 5 for item in evidence)
+        rounds.append(evidence[0].round_id)
+    assert rounds[0] != rounds[1]  # each refresh obtains new live sources
+
+
 @pytest.mark.parametrize('raw', [b'', b'[]', b'{"a":1,"a":2}', b'x'*(1048576+1)])
 def test_active_config_parser_closed(raw):
     with pytest.raises(DockerError): active_json(raw)
