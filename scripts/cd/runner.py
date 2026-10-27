@@ -25,6 +25,12 @@ from scripts.production_integration.candidate import hashed
 from scripts.cd.diagnostics import PUBLIC_FAILURES, remote_code
 
 
+# Includes the independently sealed capsule and Manager inventory scans before
+# the observer handles a request. It is distinct from public proof freshness.
+OBSERVER_RPC_TIMEOUT = 30
+OBSERVER_JOIN_TIMEOUT = 90
+
+
 DIAGNOSTICS = {
     **PUBLIC_FAILURES,
     'cd-ssh-port-invalid': 'configure CD_PORT as a decimal SSH port between 1 and 65535',
@@ -136,7 +142,9 @@ class Client:
     def observer(self, stop, observed=None):
         while not stop.wait(.25):
             try:
-                challenge = self.call({'op': 'observe'}, role='observer', timeout=10)
+                challenge = self.call({'op': 'observe'}, role='observer', timeout=OBSERVER_RPC_TIMEOUT)
+                if stop.is_set():
+                    return
                 require(challenge['policy_id'] == os.environ['CD_POLICY_ID'] and
                         0 <= time.time() - challenge['created'] <= 15, 'cd-observer-policy-mismatch')
                 document = challenge['policy']
@@ -150,12 +158,16 @@ class Client:
                     path = Path(temporary) / 'ca.pem'
                     path.write_bytes(ca)
                     subject = PublicPostconditions(replace(public, ca_file=str(path)), external=None).probe(routes, public.identity)
+                if stop.is_set():
+                    return
                 subject['policy'] = hashed(asdict(public))
                 now = int(time.time())
                 signed = json.loads(sign({'subject': subject, 'observed_at': now, 'expires': now + 30},
                     principal=os.environ['CD_OBSERVER_PRINCIPAL'], key=self.keys['observer'], namespace=OBSERVER_NAMESPACE))
                 signed.pop('principal')
-                result = self.call({'op': 'witness', 'receipt': signed}, role='observer', timeout=10)
+                if stop.is_set():
+                    return
+                result = self.call({'op': 'witness', 'receipt': signed}, role='observer', timeout=OBSERVER_RPC_TIMEOUT)
                 if result.get('status') == 'observed' and observed is not None:
                     observed.set()
             except Exception:
@@ -225,7 +237,7 @@ def main():
         finally:
             stop.set()
             if thread is not None:
-                thread.join(timeout=30)
+                thread.join(timeout=OBSERVER_JOIN_TIMEOUT)
         print(json.dumps(result))
 
 

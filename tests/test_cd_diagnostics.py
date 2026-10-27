@@ -68,6 +68,84 @@ def test_valid_prepared_response_is_preserved(client,monkeypatch):
     assert client.call({'op':'manager-prepare'})==document
 
 
+@pytest.mark.parametrize('delay', [11.757, 29, 31])
+def test_observer_rpc_allows_sealed_intake_but_still_times_out(client, monkeypatch, delay):
+    import hashlib
+    import threading
+    from dataclasses import asdict
+    stop, observed = threading.Event(), threading.Event()
+    now, calls, receipts = [1000.0], [], []
+    ca = b'reviewed-ca'
+    policy = runner.PublicPolicy(('a'*32, 'daemon'), ('8.8.8.8',), (), '1.1.1.1',
+        '/reviewed/ca.pem', hashlib.sha256(ca).hexdigest(), 'b'*64)
+    monkeypatch.setenv('CD_POLICY_ID', 'sha256:'+'c'*64)
+    monkeypatch.setenv('CD_OBSERVER_PRINCIPAL', 'observer')
+    monkeypatch.setattr(runner.time, 'time', lambda: now[0])
+    monkeypatch.setattr(runner, 'PublicPostconditions', lambda *a, **k: SimpleNamespace(
+        probe=lambda *a: {'independent': 'probe'}))
+    def sign(payload, **kwargs):
+        receipts.append(payload)
+        return json.dumps({'payload': payload, 'signature': 'test-only', 'principal': 'observer'}).encode()
+    monkeypatch.setattr(runner, 'sign', sign)
+    def run(*args, **kwargs):
+        request = json.loads(kwargs['input'])
+        calls.append((request['op'], kwargs['timeout']))
+        now[0] += delay
+        if delay > kwargs['timeout']:
+            stop.set()
+            raise subprocess.TimeoutExpired('ssh', kwargs['timeout'])
+        if request['op'] == 'observe':
+            document = {'policy': asdict(policy), 'routes': [], 'created': int(now[0]),
+                'ca': base64.b64encode(ca).decode(), 'policy_id': 'sha256:'+'c'*64}
+        else:
+            assert request['op'] == 'witness'
+            payload = request['receipt']['payload']
+            assert payload['expires']-payload['observed_at'] == 30
+            assert now[0] < payload['expires']
+            document = {'status': 'observed'}
+            stop.set()
+        return SimpleNamespace(returncode=0, stdout=json.dumps(document).encode(), stderr=b'')
+    monkeypatch.setattr(runner.subprocess, 'run', run)
+    client.observer(stop, observed)
+    assert calls == ([('observe', 30)] if delay > 30 else [('observe', 30), ('witness', 30)])
+    assert observed.is_set() is (delay <= 30)
+    assert bool(receipts) is (delay <= 30)
+
+
+@pytest.mark.parametrize('cancel_at', ['observe', 'probe', 'sign'])
+def test_observer_stops_between_bounded_stages(client, monkeypatch, cancel_at):
+    import hashlib
+    import threading
+    from dataclasses import asdict
+    stop, calls = threading.Event(), []
+    ca = b'reviewed-ca'
+    policy = runner.PublicPolicy(('a'*32, 'daemon'), ('8.8.8.8',), (), '1.1.1.1',
+        '/reviewed/ca.pem', hashlib.sha256(ca).hexdigest(), 'b'*64)
+    monkeypatch.setenv('CD_POLICY_ID', 'sha256:'+'c'*64)
+    monkeypatch.setenv('CD_OBSERVER_PRINCIPAL', 'observer')
+    def stage(name):
+        calls.append(name)
+        if name == cancel_at:
+            stop.set()
+    def call(request, **kwargs):
+        if request != {'op': 'observe'}:
+            pytest.fail('cancelled observer attempted another RPC')
+        stage('observe')
+        return {'policy': asdict(policy), 'routes': [], 'created': int(runner.time.time()),
+            'ca': base64.b64encode(ca).decode(), 'policy_id': 'sha256:'+'c'*64}
+    def probe(*args):
+        stage('probe')
+        return {'independent': 'probe'}
+    def sign(*args, **kwargs):
+        stage('sign')
+        return b'{"principal":"observer"}'
+    monkeypatch.setattr(client, 'call', call)
+    monkeypatch.setattr(runner, 'PublicPostconditions', lambda *a, **k: SimpleNamespace(probe=probe))
+    monkeypatch.setattr(runner, 'sign', sign)
+    client.observer(stop)
+    assert calls == ['observe', 'probe', 'sign'][:['observe', 'probe', 'sign'].index(cancel_at)+1]
+
+
 @pytest.mark.parametrize('status', ['blocked', 'recovery-required'])
 def test_reviewed_remote_diagnostic_survives_transport_without_private_text(client, monkeypatch, capsys, status):
     document = {'status': status, 'reason': 'cd-trusted-intake-failed',
@@ -294,7 +372,7 @@ def test_public_operations_keep_observer_and_always_stop_worker(client,monkeypat
             events.append('started')
             if kind=='observe-initial':self.observed.set()
         def join(self,*,timeout):
-            assert self.stop.is_set() and timeout==30
+            assert self.stop.is_set() and timeout==90
             events.append('joined')
     monkeypatch.setattr(runner.threading,'Thread',Worker)
     calls=[]
@@ -310,3 +388,39 @@ def test_public_operations_keep_observer_and_always_stop_worker(client,monkeypat
     output=capsys.readouterr().out
     if failed:assert 'cd-remote-intake-blocked' in output
     else:assert json.loads(output)=={'status':'observed' if kind=='observe-initial' else 'succeeded'}
+
+
+@pytest.mark.parametrize('failed', [False, True])
+def test_bootstrap_waits_for_observer_with_matching_shutdown_budget(client, monkeypatch, tmp_path, failed):
+    from scripts import caddy_producer
+    env = {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'workflow_dispatch',
+        'GITHUB_REPOSITORY': 'DanilFaritovich/portfolio-deployment', 'GITHUB_REF': 'refs/heads/main',
+        'REF_PROTECTED': 'true', 'BOOTSTRAP_MANAGER_SHA': 'a'*40,
+        'BOOTSTRAP_ACTION': 'execute', 'BOOTSTRAP_SCOPE': 'first-project-router-rollout',
+        'CD_POLICY_ID': 'sha256:'+'b'*64}
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(bootstrap_runner.sys, 'argv', ['bootstrap_runner', str(tmp_path/'result')])
+    monkeypatch.setattr(caddy_producer, 'wait_for_offline', lambda *a: None)
+    monkeypatch.setattr(bootstrap_runner, 'Client', lambda *a, **k: client)
+    joined = []
+    class Worker:
+        def __init__(self, *, target, args, daemon):
+            self.stop, = args
+        def start(self):
+            pass
+        def join(self, *, timeout):
+            assert self.stop.is_set()
+            joined.append(timeout)
+    monkeypatch.setattr(bootstrap_runner.threading, 'Thread', Worker)
+    def dispatch(*args):
+        if failed:
+            raise DockerError('cd-remote-intake-blocked')
+        return {'status': 'succeeded'}
+    monkeypatch.setattr(bootstrap_runner, 'dispatch', dispatch)
+    if failed:
+        with pytest.raises(DockerError, match='cd-remote-intake-blocked'):
+            bootstrap_runner.main()
+    else:
+        bootstrap_runner.main()
+    assert joined == [90]
