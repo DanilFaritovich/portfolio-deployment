@@ -10,7 +10,7 @@ from pathlib import Path
 import stat
 
 from scripts.production_integration.administrative_review import AdministrativePhaseReview
-from scripts.production_integration.artifacts import bind_engine_image
+from scripts.production_integration.artifacts import bind_engine_image, verify_oci_bytes
 from scripts.production_integration.bootstrap import BootstrapNetworkContract
 from scripts.production_integration.caddy_release import CaddyReleaseCollector
 from scripts.production_integration.candidate import InstalledContentReader
@@ -26,7 +26,7 @@ from scripts.production_integration.public_witness import SignedPublicWitness
 from scripts.production_integration.release import PRODUCER, MANAGER
 from scripts.production_integration.release_crypto import AttestationVerifier
 from scripts.production_integration.release_source import WorkflowCheck
-from scripts.production_integration.release_transport import GitHubRead, GHCRRead, HTTPSRead
+from scripts.production_integration.release_transport import GitHubRead, GHCRRead, HTTPSRead, IMAGE_REPOSITORY
 from scripts.production_integration.runtime import CaddyRuntime, RuntimePaths
 
 TOKEN = Path('/etc/portfolio-deployment/github-read-token')
@@ -124,8 +124,10 @@ def build_fixed(installation, policy, *, review=None, content_reader=None, contr
     contracts = InstalledContentReader(installation)()[0].applications if contracts is None else contracts
     require({a.id for a in contracts} == {'project-router'}, 'production-fixed-catalog-invalid')
     def resolve_image(reference, inspected):
-        return (bind_engine_image(registry.collect(reference), inspected) if image_resolver is None else
-                image_resolver(reference, inspected))
+        if image_resolver is not None:
+            return image_resolver(reference, inspected)
+        evidence = verify_oci_bytes(reference, IMAGE_REPOSITORY, registry.collect(reference))
+        return bind_engine_image(evidence, inspected)
     rollout = dict(common, contracts=contracts, resolve_image=resolve_image, bootstrap_proxy=proxy,
         caddy_image=evidence, gateway_postconditions=(PublicPostconditions(policy.public,
             external=SignedPublicWitness(installation, policy.observer_key)) if gateway_postconditions is None else gateway_postconditions),
