@@ -200,7 +200,9 @@ def test_active_expired_evidence_and_changed_config():
     port.verify_current(result)
     tick[0] = 6
     with pytest.raises(DockerError): port.verify(port, image, result.version, result)
-    with pytest.raises(DockerError): port.verify_current(result)
+    port.verify_current(result)  # Fresh runtime read compares the old baseline.
+    assert port.last[2] == 0  # Revalidation never renews an expired source proof.
+    with pytest.raises(DockerError): port.verify(port, image, result.version, result)
     tick[0] = 0
     reads[:] = [b'{"admin":{}}', b'{"admin":{"foreign":true}}']
     with pytest.raises(DockerError, match='changed'): port.read_active()

@@ -29,6 +29,7 @@ from scripts.production_integration.release_transport import GHCRRead, HTTPSRead
 from scripts.production_integration.runtime_sources import (RuntimeInventory, RuntimeSource, GatewaySource,
                                                             ReadinessSource, LocalSourceAttestor)
 from scripts.production_integration.trust import SourceBinding, SourceTrust
+from scripts.production_integration.observation_window import ROLLOUT_OBSERVATION_SECONDS
 
 
 def project_router_image_registry(*, context=None):
@@ -74,7 +75,8 @@ def build(installation, *, engine_contract, host_policy, prerequisites, contract
         raise DockerError('production-fixed-composition-authority-incomplete')
     content_reader = InstalledContentReader(installation) if content_reader is None else content_reader
     gateway_transport = ActiveConfigTransport(engine, active_channel, gateway_runtime,
-        InstalledConfigAdapter(installation), lambda: desired_routes(content_reader()[0]))
+        InstalledConfigAdapter(installation), lambda: desired_routes(content_reader()[0]),
+        max_age=ROLLOUT_OBSERVATION_SECONDS)
     gateway = ManagedGatewayReadPort(gateway_transport, image_evidence=caddy_image,
                                      expected_version=caddy.version, attestor=gateway_transport)
     inventory = RuntimeInventory(engine, contracts, resolve_image, infrastructure)
@@ -91,13 +93,17 @@ def build(installation, *, engine_contract, host_policy, prerequisites, contract
     trust = SourceTrust(tuple(SourceBinding(name, engine_contract.host_id, engine_contract.daemon_id, port.identity)
                               for name, port in ports.items()), LocalSourceAttestor(ports))
     provider = ProductionStateReader(lambda: content_reader()[0], engine, runtime, gateway_source, readiness,
-                                    resolve_image, proxy, source_trust=trust).provider()
-    host = PolicyHostContracts(installation, engine, LocalHostSources(installation, engine),
-                              ReadOnlyJournalSource(), host_policy, prerequisites=prerequisites, facts_policy=facts_policy)
+                                    resolve_image, proxy, source_trust=trust,
+                                    max_age=ROLLOUT_OBSERVATION_SECONDS).provider()
+    host = PolicyHostContracts(installation, engine, LocalHostSources(installation, engine,
+                              max_age=ROLLOUT_OBSERVATION_SECONDS),
+                              ReadOnlyJournalSource(), host_policy, prerequisites=prerequisites,
+                              facts_policy=facts_policy, max_age=ROLLOUT_OBSERVATION_SECONDS)
     preflight = CandidatePreflight(manager_sha=installation.manager_sha, producer_sha=producer_sha, image=image,
         content_reader=content_reader, engine=engine, contracts=host, attestor=host, provider=provider,
         bootstrap_reader=bootstrap_reader, bootstrap_attestor=bootstrap_attestor, proxy=bootstrap_proxy,
-        private_subnet=private_subnet, caddy=caddy, image_registry=image_registry)
+        private_subnet=private_subnet, caddy=caddy, image_registry=image_registry,
+        max_age=ROLLOUT_OBSERVATION_SECONDS)
     checks = tuple(checks)
     def release(candidate):
         collector = AuthenticatedReleaseCollector(candidate, github=github, registry=registry, crypto=crypto,
