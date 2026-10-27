@@ -1,0 +1,4 @@
+# Extra tooling for the parallel Offline CI job; not a Manager runtime dependency.
+-r requirements-dev.txt
+pytest-xdist==3.8.0
+execnet==2.1.2

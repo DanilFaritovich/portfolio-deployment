@@ -116,9 +116,14 @@ class ProtectedSource:
         branch = api('/branches/main')
         head = branch['commit']['sha']
         require(branch['name'] == 'main' and re.fullmatch(r'[0-9a-f]{40}', head) is not None)
-        comparison = api('/compare/' + sha + '...' + head)
-        require(comparison['status'] in ('ahead', 'identical') and
-                comparison['merge_base_commit']['sha'] == sha and comparison['base_commit']['sha'] == sha,
+        # Reverse the comparison: an admitted ancestor has no commits/files to
+        # enumerate relative to main. Forward comparisons grow with every release
+        # and can exceed the bounded transport even for unchanged trusted images.
+        # Pin the base to the observed main SHA and the merge base to the subject;
+        # together these prove the same ancestry without downloading its diff.
+        comparison = api('/compare/' + head + '...' + sha)
+        require(comparison['status'] == ('identical' if sha == head else 'behind') and
+                comparison['merge_base_commit']['sha'] == sha and comparison['base_commit']['sha'] == head,
                 'production-release-sha-not-on-main')
         self.policy(repo, {(c.name, c.app_id) for c in checks})
         runs = bounded_items(api('/actions/runs?head_sha=' + sha + '&per_page=100'), 'workflow_runs')

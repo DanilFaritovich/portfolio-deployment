@@ -34,11 +34,13 @@ jobs:
         with:
           python-version: '3.12.12'
           cache: pip
-          cache-dependency-path: requirements-dev.txt
+          cache-dependency-path: |
+            requirements-dev.txt
+            requirements-offline-ci.txt
       - name: Provision pinned tools
         shell: bash
         run: |
-          python -m pip install --quiet -r requirements-dev.txt
+          python -m pip install --quiet -r requirements-offline-ci.txt
           mkdir -p "$RUNNER_TEMP/actionlint"
           curl --fail --silent --show-error --location --retry 3 \
             https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz \
@@ -49,6 +51,8 @@ jobs:
       - name: Validate workflows offline
         run: make workflow-check
       - name: Check repository offline
+        env:
+          PYTEST_ADDOPTS: '-n 2 --dist loadfile --max-worker-restart 0'
         run: make check PYTHON=python
       - name: Require live source App integration before main
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
