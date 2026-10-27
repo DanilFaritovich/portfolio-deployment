@@ -483,8 +483,11 @@ def test_make_offline_with_network_and_ssh_guards(config,tmp_path):
     wrapper=tmp_path/'guard.py'
     wrapper.write_text('''import sys, subprocess, socket, runpy
 sys.path.insert(0, %r)
-def forbidden(*a, **k): raise AssertionError("network forbidden")
-socket.socket = forbidden
+SocketType = socket.socket
+class NetworkForbiddenSocket(SocketType):
+    def __new__(cls, *a, **k):
+        raise AssertionError("network forbidden")
+socket.socket = NetworkForbiddenSocket
 original = subprocess.Popen
 def guarded(argv, *a, **k):
     assert argv[0] == "/usr/bin/ssh-keygen" and argv[1] == "-F", "SSH forbidden"
