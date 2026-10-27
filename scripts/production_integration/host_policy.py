@@ -114,10 +114,12 @@ def validate_network_inventory(docker):
 
 class PolicyHostContracts:
     def __init__(self, installation, engine, local, journal, policy, *, prerequisites=None,
-                 contents=storage_contents, clock=time.monotonic, facts_policy=None):
+                 contents=storage_contents, clock=time.monotonic, facts_policy=None, max_age=5):
         self.installation, self.engine, self.local, self.journal = installation, engine, local, journal
         self.policy, self.prerequisites, self.contents, self.clock = policy, prerequisites, contents, clock
         self.facts_policy = facts_policy
+        from scripts.production_integration.observation_window import observation_window
+        self.max_age = observation_window(max_age)
         self.last = None
 
     def collect(self):
@@ -182,7 +184,7 @@ class PolicyHostContracts:
             require(authorization is None, 'production-host-bootstrap-ambiguous')
         require(discover(self.engine, ()) == docker and self.contents() == contents and
                 identity == self.engine.identity() and start <= host.captured_at <= self.clock() and
-                self.clock() - start <= 5, 'production-host-facts-changed-or-expired')
+                self.clock() - start <= self.max_age, 'production-host-facts-changed-or-expired')
         # Stable policy/identities and measured state bind candidate identity;
         # volatile capacity/capture counters are threshold checks, not state hashes.
         result = HostContracts(*identity, self.clock(), encode({'policy': p.identity, 'facts': network}),

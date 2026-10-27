@@ -57,13 +57,15 @@ class CandidatePreflight:
     def __init__(self, *, manager_sha, producer_sha, image, content_reader, engine,
                  contracts, attestor=None, provider=None, bootstrap_reader=None,
                  bootstrap_attestor=None, proxy=None, private_subnet=None,
-                 caddy=None, image_registry=None, clock=time.monotonic):
+                 caddy=None, image_registry=None, clock=time.monotonic, max_age=5):
         self.manager_sha, self.producer_sha, self.image = manager_sha, producer_sha, image
         self.content_reader, self.engine = content_reader, engine
         self.contracts, self.attestor, self.provider = contracts, attestor, provider
         self.bootstrap_reader, self.bootstrap_attestor = bootstrap_reader, bootstrap_attestor
         self.proxy, self.private_subnet, self.caddy, self.clock = proxy, private_subnet, caddy, clock
         self.image_registry = image_registry
+        from scripts.production_integration.observation_window import observation_window
+        self.max_age = observation_window(max_age)
 
     def prepare(self, scope):
         return self._prepare(scope, None)
@@ -127,7 +129,7 @@ class CandidatePreflight:
         # Bootstrap nests an empty-host observation inside the host-contract
         # observation. Each source still enforces its own five-second bound;
         # the aggregate must allow both windows without relaxing other scopes.
-        observation_limit = 10 if scope == 'first-bootstrap' else 5
+        observation_limit = 10 if scope == 'first-bootstrap' else self.max_age
         if (start is None or type(contracts) is not HostContracts or
             self.attestor.verify(contracts, identity) != contracts or
             (contracts.host, contracts.daemon) != identity or

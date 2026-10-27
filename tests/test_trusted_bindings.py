@@ -622,6 +622,11 @@ def test_fixed_composition_wires_existing_ports_and_stays_inert(fixed_compositio
     assert type(executor) is ProductionExecutor and type(executor.verifier) is SSHSIGVerifier
     assert isinstance(executor.preflight.provider.reader, ProductionStateReader)
     assert isinstance(executor.preflight.contracts, PolicyHostContracts)
+    from scripts.production_integration.observation_window import ROLLOUT_OBSERVATION_SECONDS
+    host, provider = executor.preflight.contracts, executor.preflight.provider
+    transport = provider.reader.ports['gateway'].port.transport
+    assert {executor.preflight.max_age, host.max_age, host.local.max_age,
+            provider.max_age, provider.reader.max_age, transport.max_age} == {ROLLOUT_OBSERVATION_SECONDS}
     assert executor.preflight.provider.reader.source_trust.attestor.ports['runtime'] is executor.preflight.provider.reader.ports['runtime']
     with pytest.raises(DockerError): composition.build(installation, **{**arguments, 'prerequisites': None})
     # Exact checked-in entry points still cannot build an executor/admin approval.
@@ -719,7 +724,7 @@ def composed_image(integrated, fixed_composition, monkeypatch):
     installation = s.executor.verifier.installation
     monkeypatch.setattr(composition, 'installed_engine', lambda *a:s.engine)
     monkeypatch.setattr(composition, 'InstalledContentReader', lambda *a:s.preflight.content_reader)
-    monkeypatch.setattr(composition, 'LocalHostSources', lambda *a:None)
+    monkeypatch.setattr(composition, 'LocalHostSources', lambda *a, **kw:None)
     monkeypatch.setattr(composition, 'PolicyHostContracts', lambda *a, **kw:s.host)
     s.cache_calls, s.cache_present, s.cache_failure = [], False, None
     class RegistryTransport:

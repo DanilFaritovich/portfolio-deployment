@@ -212,7 +212,7 @@ verified read scope: complete seal hashing before and after the scope, unchanged
 file identities (including nanosecond ctime/mtime) on every runtime inspection,
 and no authority retained after exit. Two peer-authenticated GETs share a bound
 runtime snapshot, which is inspected again before returning. Official config
-adaptation and opening seal verification precede the five-second mutable window;
+adaptation and opening seal verification precede the bounded mutable window;
 closing seal verification does not refresh the observation timestamp. Socket I/O
 retains its one-second deadline. The two bootstrap postcondition rounds have a
 sixty-second aggregate bound, including their complete seal checks.
@@ -310,9 +310,14 @@ compares file identity and nanosecond modification/change times, excluding acces
 time changes caused by reading. LocalHostSources notifies the composite reader
 after integrity verification and before its first mutable read. The empty-host
 reader rechecks authority at that boundary and starts its observation clock.
-Each local source retains its five-second bound. The first-bootstrap candidate
-composes its two nested source windows within ten seconds; other candidate scopes
-retain five seconds. Stable observation and identity rechecks remain mandatory.
+Standalone and first-bootstrap local sources retain their five-second bound.
+The first-bootstrap candidate composes its two nested source windows within ten
+seconds; other candidate scopes
+retain their configured observation bound. Reviewed rollout composition uses one
+15-second bound for host facts, ACTIVE reads/proofs, source freshness, composite
+state and final candidate planning/revalidation. Requests and environment cannot
+select this budget. Per-command/socket, readiness and public-probe deadlines stay
+separate. Stable observation and identity rechecks remain mandatory.
 The finite sealed phase recipe permits review of actual storage inodes after
 provisioning and actual
 runtime IDs after successful journaled bootstrap, then reuses full composition's
@@ -379,14 +384,14 @@ collect once per refresh: runtime inventory selects historical contracts, then t
 reader's independent opening Engine discovery precedes ACTIVE gateway collection
 and fresh readiness probes against that inventory. Runtime assembly and independent
 closing Engine discovery follow. Exact source proofs and original capture times
-retain the five-second freshness bound; no SourceResult is reused across refreshes.
+retain the configured freshness bound; no SourceResult is reused across refreshes.
 Rollout preflight prepares host and ACTIVE sources before a shared barrier, then
 overlaps fresh host reads with the final ACTIVE/runtime/Engine observations under
 the same host lease. Host phase authority is rechecked after the barrier; ACTIVE
 waits for that complete seal/authority check and the host observation clock before
 starting its own mutable window. All seal and peer checks remain. The single
 temporary reader is joined on success/failure before the lease can end. Both the
-final five-second candidate window and original
+final configured candidate window and original
 source capture ages are checked after collection; planning cannot renew them.
 PolicyHostContracts separates
 LocalHostSources facts, independently approved HostPolicy and mandatory external
@@ -416,8 +421,12 @@ without automatic creation, to `/run/portfolio-caddy-admin`. Caddy listens at
 root ownership/modes, socket type/link count/inode, peer host PID/UID/GID and
 before/after pinned Engine image/container/effective runtime/mount/network checks
 bind each read. Bodies are capped at 1MiB, HTTP headers at 16KiB, GETs at one second;
-two matching ACTIVE reads must equal sealed official adaptation within five seconds.
-Proof reuse expires after five seconds. There is no request-selected address or
+two matching ACTIVE reads must equal sealed official adaptation within the configured
+observation window (15 seconds in rollout composition, five by default elsewhere).
+Source-proof reuse expires at that same bound. Gateway runtime revalidation obtains
+a fresh independently bounded read with full opening/closing seals and compares the
+old runtime baseline; slow validation/reload never renews the old ACTIVE proof.
+There is no request-selected address or
 Admin API client. The separate granted reload port uses the sealed host Caddy
 binary at the corresponding host UDS address, exact private candidate bytes,
 existing CAS/LKG/journal and conservative unknown-outcome fencing. The image,
