@@ -181,3 +181,16 @@ def test_v2_policy_signed_substitutions_fail(field):
     elif field == 'extra': predicate['builderPolicy']['extra'] = True
     else: predicate['builderPolicy'][field] = 'attacker-policy'
     with pytest.raises(DockerError, match='caddy-release-inputs-mismatch'): collector.collect(runtime, sha)
+
+
+@pytest.mark.parametrize('workflow,job', [('caddy-image.yml', 'build'), ('caddy-publish.yml', 'publish')])
+def test_locked_buildx_provisioned_before_toolchain_check(workflow, job):
+    lock = json.loads((ROOT / 'images/caddy/inputs.lock.json').read_text())
+    steps = yaml.safe_load((ROOT / '.github/workflows' / workflow).read_text())['jobs'][job]['steps']
+    setup = next(s for s in steps if s.get('uses', '').startswith('docker/setup-buildx-action@'))
+    assert setup['uses'] == 'docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069'
+    assert setup['with'] == {'version': 'v' + lock['buildxVersion'], 'driver': 'docker',
+                             'name': 'default', 'cleanup': False}
+    check = next(s for s in steps if s.get('run') == 'python -m scripts.caddy_producer toolchain-check')
+    assert steps.index(setup) < steps.index(check)
+    assert not any(s.get('if') or s.get('continue-on-error') for s in (setup, check))
