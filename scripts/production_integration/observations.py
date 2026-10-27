@@ -52,9 +52,11 @@ class ProductionStateReader:
         self.source_trust = source_trust
 
     def provider(self):
-        return CompositeStateProvider(self, clock=self.clock)
+        from scripts.production_integration.runtime_sources import RuntimeSource
+        provider = ProductionStateProvider if type(self.ports['runtime']) is RuntimeSource else CompositeStateProvider
+        return provider(self, clock=self.clock)
 
-    def __call__(self):
+    def __call__(self, *, before_observation=None):
         from scripts.production_integration.runtime import validate_proxy
         start, round_id = self.clock(), uuid.uuid4().hex
         identity = self.docker.identity()
@@ -70,8 +72,10 @@ class ProductionStateReader:
             require(runtime.gateway is self.ports['gateway'] and runtime.readiness is self.ports['readiness'],
                     'production-source-round-unbound')
             results, before = runtime.collect_round(round_id, lambda refs: discover(
-                self.docker, desired_refs | refs, resolve_image=self.resolve_image))
+                self.docker, desired_refs | refs, resolve_image=self.resolve_image),
+                before_observation=before_observation)
         else:
+            require(before_observation is None, 'production-source-coordination-unavailable')
             results = {name: port.collect(round_id) for name, port in self.ports.items()}
         now = self.clock()
         for name, result in results.items():
@@ -155,3 +159,55 @@ class ProductionStateReader:
         return CompositeSample(desired, observed, before,
                                (*evidence, SourceEvidence('docker', round_id, self.clock(), True, True)),
                                gateway_verified=all(c['health'] == 'healthy' for a in observed.document['applications'] for c in a['components']))
+
+
+class ProductionStateProvider(CompositeStateProvider):
+    """Overlap fresh host reads with the final live source round under one lease.
+
+    Both ports finish preparation/seals before the barrier. Host authority is
+    rechecked after it; ACTIVE keeps its full closing seal and peer checks.
+    No capture time or freshness limit is changed. The worker is joined before
+    returning or releasing the caller's lock, including source failure paths.
+    """
+    def assert_current(self):
+        now = self.clock()
+        if self.sample is None or any(not 0 <= now - s.captured_at <= self.max_age for s in self.sample.sources):
+            self.sample = None
+            require(False, 'production-joint-source-expired')
+
+    def refresh_with_host(self, collect_host):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event
+        self.sample = None
+        ready, release, abort = Event(), Event(), Event()
+        def prepare_host():
+            ready.set()
+            require(release.wait(120) and not abort.is_set(), 'production-joint-observation-aborted')
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix='production-host-read') as worker:
+            host = worker.submit(collect_host, prepare_host)
+            def wait_host():
+                deadline = time.monotonic() + 120
+                while not ready.wait(0.05):
+                    if host.done():
+                        host.result()  # Preserve the actual host preparation failure.
+                        require(False, 'production-joint-observation-unbound')
+                    require(time.monotonic() < deadline, 'production-joint-observation-timeout')
+            def begin_sources():
+                require(ready.is_set() and not abort.is_set(), 'production-joint-observation-unbound')
+                release.set()
+            try:
+                wait_host()  # Recovery fences and host seals precede source IO.
+                joint = CompositeStateProvider(lambda: self.reader(before_observation=begin_sources),
+                                               clock=self.clock, max_age=self.max_age)
+                state = joint.refresh()
+                contracts = host.result(timeout=30)
+                require(release.is_set(), 'production-joint-observation-unbound')
+                self.sample = joint.sample
+                self.assert_current()
+                return contracts, state
+            except BaseException:
+                self.sample = None
+                raise
+            finally:
+                abort.set()
+                release.set()
