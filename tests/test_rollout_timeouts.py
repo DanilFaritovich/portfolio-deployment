@@ -78,7 +78,7 @@ def test_operator_approval_expiring_during_revalidation_never_mutates(rollout, s
     assert not s.world.calls
 
 
-@pytest.mark.parametrize('read,closing,valid', [(7.36, 3, True), (7, 8, True), (7, 8.01, False)])
+@pytest.mark.parametrize('read,closing,valid', [(19.42, 3, True), (7, 23, True), (7, 23.01, False)])
 def test_runtime_revalidation_bounds_new_reads_without_renewing_old_proof(integrated, monkeypatch, read, closing, valid):
     s = integrated
     port = s.ports['gateway'].port.transport
@@ -220,12 +220,12 @@ def test_every_production_window_rejects_over_budget_before_mutation(rollout, mo
         build = candidate.build_gateway_candidate
         def late(*args, **kwargs):
             result = build(*args, **kwargs)
-            timing.now += 16
+            timing.now += ROLLOUT_OBSERVATION_SECONDS + 1
             return result
         monkeypatch.setattr(candidate, 'build_gateway_candidate', late)
     else:
         name = {'host':'host_seconds', 'active':'active_seconds', 'seal':'seal_seconds', 'engine':'state_seconds'}[slow]
-        setattr(timing, name, 16)
+        setattr(timing, name, ROLLOUT_OBSERVATION_SECONDS + 1)
     with pytest.raises(DockerError):
         s.prepare()
     assert not s.world.calls and s.provider.sample is None
