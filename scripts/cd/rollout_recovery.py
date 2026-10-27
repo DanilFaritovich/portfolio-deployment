@@ -381,6 +381,10 @@ def observe_live_release(candidate, app, provider, probes, policy, *,
         "rollout-recovery-public-unverified",
     )
 
+    # A bounded observer rendezvous may outlive a runtime sample. Recollect
+    # after public acceptance and reject replacement, route or health drift.
+    require(inspect() == pinned_id, "rollout-recovery-container-changed")
+
     # Stable evidence for a future operator-signed decision.
     # No timestamps, journal writes, or claimed release success.
     return {
@@ -1084,6 +1088,45 @@ def build_recovery_state_reader(
     return provider, probes
 
 
+def await_public_witness(publish, subject, *, receipt=None, timeout=90,
+                         clock=time.monotonic, wall=time.time, sleep=time.sleep):
+    """Bounded rendezvous, followed by the unchanged cryptographic public gate.
+
+    Sealed SSH intake can take longer than the public probe budget. Renew the
+    identical challenge while the independent observer probes/signs/delivers.
+    Receipt metadata only ends this wait; it never establishes acceptance.
+    """
+    from scripts.docker_adapter import DockerError
+    from scripts.production_integration.installation import protected
+    from scripts.production_integration.operator_approval import closed_json
+    from scripts.production_integration.public_witness import RECEIPT
+
+    path = RECEIPT if receipt is None else Path(receipt)
+    require(type(timeout) in (int, float) and 0 < timeout <= 90,
+            'rollout-recovery-witness-wait-invalid')
+    started, deadline = int(wall()), clock() + timeout
+    while clock() < deadline:
+        publish()
+        try:
+            protected(path)
+            with path.open('rb') as stream:
+                document = closed_json(stream.read(16385), 16384)
+            payload = document.get('payload', {})
+            if (type(payload) is dict and payload.get('subject') == subject
+                and type(payload.get('observed_at')) is int
+                and started <= payload['observed_at'] <= wall()
+                and wall() - payload['observed_at'] <= 30
+                and type(payload.get('expires')) is int
+                and wall() < payload['expires'] <= payload['observed_at'] + 30):
+                require(clock() < deadline, 'rollout-recovery-witness-delivery-timeout')
+                return
+        except DockerError as error:
+            if error.code != 'production-installation-not-provisioned':
+                raise
+        sleep(min(0.5, max(0, deadline - clock())))
+    require(False, 'rollout-recovery-witness-delivery-timeout')
+
+
 def verify_original_release(candidate, fixed, *, github, registry, crypto):
     """Reverify the original rollout contract, including both signed sources.
 
@@ -1187,6 +1230,8 @@ def installed_recovery(installation, standing, fixed):
         import base64
         from scripts.gateway import desired_routes
         from scripts.reconciliation import DesiredState
+        from scripts.production_integration.candidate import hashed
+        from scripts.production_integration.public_postconditions import ORIGIN, PATH
         routes = desired_routes(DesiredState(candidate.manager_sha, (app,)))
         def challenge():
             installation.verify()
@@ -1199,8 +1244,11 @@ def installed_recovery(installation, standing, fixed):
                 'policy': asdict(public.policy), 'routes': [asdict(r) for r in routes],
                 'ca': base64.b64encode(ca).decode(),
                 'created': int(time.time()), 'policy_id': standing.identity}))
+        subject = {'origin': ORIGIN, 'path': PATH, 'identity': list(public.policy.identity),
+                   'routes': [asdict(r) for r in routes], 'policy': hashed(asdict(public.policy))}
         return observe_live_release(candidate, app, provider, probes, ReadinessPolicy(),
-                                    public_postconditions=public, before_public=challenge)
+            public_postconditions=public,
+            before_public=lambda: await_public_witness(challenge, subject))
 
     return RolloutRecovery(installation=installation, policy=standing,
         lock=production_host_lock, application_reader=lambda: content()[0].applications[0],

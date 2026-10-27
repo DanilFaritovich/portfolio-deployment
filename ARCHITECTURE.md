@@ -215,6 +215,10 @@ provide complete reviewed runtime IDs/infrastructure in `host_contract`; an
 empty contract blocks recovery. Fresh provenance, Engine/runtime, ACTIVE and
 internal readiness checks precede a new public challenge and independent signed
 HTTPS witness. Public acceptance runs outside the timed runtime observation.
+A bounded recovery-only rendezvous renews the same challenge until a fresh
+matching receipt is delivered, then runs the unchanged DNS/TLS/content and
+cryptographic public gate. Receipt metadata only wakes the waiter; signature,
+subject and freshness verification remain mandatory before journal acceptance.
 Initial-release provenance reuses the original rollout's authenticated release
 collector and sealed source/check/builder bindings, including original manifest
 and admission hashes. It does not apply automatic CD's later workflow/content

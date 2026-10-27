@@ -20,3 +20,21 @@ def test_original_rollout_release_is_verified_without_future_cd_attestation():
     assert proof.request == request and not proof.blockers
     assert crypto.called and len(crypto.expectations) == 2
     assert crypto.expectations[1]['expectedPredicate']['runId'] == '100'
+
+
+def test_public_rendezvous_renews_challenge_until_matching_fresh_receipt(tmp_path, monkeypatch):
+    from scripts.cd.rollout_recovery import await_public_witness
+    from scripts.production_integration.operator_approval import canonical
+    monkeypatch.setattr('scripts.production_integration.installation.protected', lambda path: None)
+    receipt = tmp_path / 'receipt.json'
+    elapsed, publications = [0.0], []
+    subject = {'policy': 'exact-reviewed-subject'}
+    def publish():
+        publications.append(elapsed[0])
+        payload = {'subject': subject, 'observed_at': 99 if len(publications) < 3 else 101, 'expires': 130}
+        receipt.write_bytes(canonical({'payload': payload, 'signature': 'not-authority-for-this-wait'}))
+    def sleep(seconds):
+        elapsed[0] += seconds
+    assert await_public_witness(publish, subject, receipt=receipt,
+        clock=lambda: elapsed[0], wall=lambda: 100 + elapsed[0], sleep=sleep) is None
+    assert publications == [0.0, 0.5, 1.0]
