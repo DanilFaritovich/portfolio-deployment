@@ -210,7 +210,7 @@ class ProductionStateProvider(CompositeStateProvider):
                 joint = CompositeStateProvider(lambda: self.reader(before_observation=begin_sources),
                                                clock=self.clock, max_age=self.max_age)
                 state = joint.refresh()
-                contracts = host.result(timeout=30)
+                contracts = host.result(timeout=max(30, 2 * self.max_age))
                 require(release.is_set(), 'production-joint-observation-unbound')
                 self.sample = joint.sample
                 self.assert_current()
