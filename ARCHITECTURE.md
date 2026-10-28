@@ -122,6 +122,15 @@ writing journal/LKG or recreating containers. A delayed success transition keeps
 the existing rollback path available until public HTTPS and the separate SSHSIG
 witness pass. The gateway remains unchanged during image-only updates.
 
+Application observers use the read-only `observe-wait` intake to wait for a fresh
+public challenge before verifying the installed Manager/policy. This keeps
+repeated sealed inventory scans out of timed preflight observations. Waiting is
+bounded and the client cancels/reaps its SSH child when delivery ends; existing
+challenge freshness, policy and witness checks remain mandatory. The independent
+capsule and pinned Actions client must be reviewed and updated together before
+using this protocol. Installed application failures retain only allowlisted
+public diagnostic codes in the canonical bridge response.
+
 Offline checks include `make cd-check`. Explicit `make cd-integration` requires
 `CD_TEST_ENDPOINT`, `CD_TEST_IMAGES`, a new `CD_TEST_EVIDENCE` directory and
 `CD_TEST_AUTHORIZE=disposable-cd-integration`. Its fixture-only local Engine
