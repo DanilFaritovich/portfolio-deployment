@@ -137,7 +137,10 @@ class ReadinessSource(LocalSource):
                 good = probe.running is True and (type(probe.http_status) is int and
                     200 <= probe.http_status < 300 and probe.redirected is False
                     if component['type'] != 'worker' else probe.health == 'healthy')
-                health[resource.identifier] = 'healthy' if good else 'unknown'
+                known = (probe.running is False or probe.running is True and (
+                    probe.health in ('healthy', 'unhealthy', 'starting') if component['type'] == 'worker' else
+                    type(probe.http_status) is int and 100 <= probe.http_status <= 599))
+                health[resource.identifier] = 'healthy' if good else ('degraded' if known else 'unknown')
         require(identity == self.engine.identity(), 'production-readiness-engine-changed')
         return self.result(round_id, health)
 
@@ -158,8 +161,10 @@ class RuntimeSource(LocalSource):
         The initial runtime inventory selects historical contracts; health probes
         run after ACTIVE collection, without repeating that expensive inventory.
         """
-        identity, _, selected = self.inventory.capture()
-        refs = {image.reference for _, components in selected for _, _, image in components}
+        identity, inventory, selected = self.inventory.capture()
+        # Retain admitted historical image evidence for rollback after the new
+        # container has replaced the old one; running references alone lose LKG.
+        refs = {image.reference for image in inventory.images}
         before = before_sources(refs)
         gateway = (self.gateway.collect(round_id) if before_observation is None else
                    self.gateway.collect(round_id, before_observation=before_observation))
