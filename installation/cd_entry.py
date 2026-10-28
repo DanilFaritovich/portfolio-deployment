@@ -22,25 +22,13 @@ def main():
     document = json.loads((root / 'installation.json').read_bytes())
     installation = SealedInstallation(document['manager_sha'], tuple(map(tuple, document['files'])))
     installation.verify()
-    return run_application(installation)
-
-
-def run_application(installation):
-    # Called only after the sealed inventory passed verification. Public codes
-    # are allowlisted; arbitrary exceptions and private data stay off Actions.
-    from scripts.cd.diagnostics import blocked
-    from scripts.production_integration.operator_approval import canonical
-    try:
-        from scripts.cd.application import main as application
-        return application(installation)
-    except Exception as error:
-        print(canonical(blocked(error, 'cd-installed-entry-failed')).decode())
-        return 2
+    from scripts.cd.application import main as application
+    return application(installation)
 
 
 if __name__ == '__main__':
     try:
         sys.exit(main())
     except Exception:
-        print('{"reason":"cd-installed-entry-failed","status":"blocked"}')
+        print('{"status":"blocked","reason":"cd-installed-entry-failed"}')
         sys.exit(2)

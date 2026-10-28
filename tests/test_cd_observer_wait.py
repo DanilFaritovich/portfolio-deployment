@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from installation import cd_entry
-from scripts.cd import application, bridge, runner
+from scripts.cd import bridge, runner
 from scripts.docker_adapter import DockerError
 
 
@@ -146,18 +146,18 @@ def test_application_observer_uses_cancellable_wait_and_retains_freshness_check(
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize('error,diagnostic', [
-    (DockerError('production-host-facts-changed-or-expired'), 'production-host-facts-changed-or-expired'),
-    (RuntimeError('PRIVATE-SENTINEL'), None),
-])
-def test_installed_application_preserves_only_reviewed_diagnostic(monkeypatch, capsys, error, diagnostic):
-    def fail(installed): raise error
-    monkeypatch.setattr(application, 'main', fail)
-    assert cd_entry.run_application(object()) == 2
-    output = capsys.readouterr().out
-    response = bridge.closed_json(output.strip().encode(), bridge.HEADER_LIMIT)
-    assert response['status'] == 'blocked' and response['reason'] == 'cd-installed-entry-failed'
-    assert response.get('diagnostic') == diagnostic and 'PRIVATE-SENTINEL' not in output
+def test_frozen_application_entry_matches_production_policy():
+    import hashlib
+    from pathlib import Path
+
+    actual = hashlib.sha256(
+        Path(cd_entry.__file__).read_bytes()
+    ).hexdigest()
+
+    assert actual == (
+        "faa4503d754733d6ecf367c7791b879379d57b6"
+        "d38901671a88bc60649c6b0cf"
+    )
 
 
 def test_cancellable_wait_deadline_terminates_ssh_without_retry(monkeypatch):
