@@ -1,19 +1,24 @@
-# Preliminary implementation roadmap
+# Implementation roadmap and historical milestones
 
-This sequence may change after architecture review. Stages 01–04 are implemented
-offline; Stage 05 adds a constrained engine foundation and opt-in local smoke.
-Stage 06 adds offline readiness, SQLite journal/LKG and constrained recovery.
-Stage 07 passed **15/15 real local VM E2E scenarios** in session `4963fe050c4567f2`
-on 2026-10-21; all six GHCR fixture digests were published and anonymously verified.
-The Stage 07 implementation passed **779 offline tests**. Stage 08 adds offline
-PR CI, the Caddy retained-route regression fix and a manual successful-session VM
-completion procedure; its final offline check passed **785 tests**. Stage 09.1 adds offline production contracts/security; Stage 09.2 adds an offline-tested read-only diagnostics interface; Stage 09.3 adds offline-tested production integration ports (1055 tests);
-Stage 09.4B.3 implements the offline-tested production execution mechanism;
-production installation/first rollout and Stages 09.5–09.6 remain **Planned**;
-the separate Stage 05 smoke was not run.
+Current production milestone (2026-10-28): full server deployment and first
+ProjectRouter rollout are complete per operator. Manager Production CD has a
+successful executed deployment step. See [status, evidence and main history](production-status.md).
+The latest reviewed automatic ProjectRouter CD attempt failed before later
+Manager fixes; later automatic image update and live rollback acceptance need
+separate evidence. Minimal CD is implemented; the earlier digest-update-PR design
+below is historical, not the current trigger contract.
+
+Stages 01–08 retain their original offline/VM acceptance milestones. Stage 07
+passed 15/15 real VM E2E scenarios; its accepted implementation passed 779 offline
+tests. Stage 08's original check passed 785 tests. These counts are historical,
+not the size of today's suite. The separate Stage 05 local smoke was not run.
 Each stage needs its own scoped task, validation evidence and review. This roadmap
 does not authorize production actions, merges, release tags or changes to other
 repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
+
+The table retains original stage-local results unless an updated production
+milestone is stated. Earlier "no VDS"/"blocked" entries describe that task's
+acceptance boundary, not a present-day prohibition or current server state.
 
 | Stage | Deliverable | Status / acceptance boundary |
 | --- | --- | --- |
@@ -29,17 +34,18 @@ repositories. See [ARCHITECTURE.md](../ARCHITECTURE.md).
 | Stage 09.2 — Production VDS Read-only Diagnostics | Existing inventory/trust adapter, bounded SSH probes, private report, three Make commands | Implemented/tested offline; no real SSH/VDS inspection or mutations |
 | Stage 09.3 — Production Docker & Caddy Integration | Runtime security, Engine read adapter, complete-source composition, OCI/source gates, managed gateway contracts and same-engine rehearsal | Implemented/tested offline: 1055 tests; production writes and unconfigured live transports remain blocked; no VDS deployment |
 | Stage 09.4A — Production Deployment Preparation | Stable Compose plugin >= 2 and capability policy, explicit source trust, canonical lock/storage, bootstrap and candidate/evidence interfaces, execution ADR | Implemented and checked offline: 1120 tests; privileged mechanism, authenticated collectors and real-image runtime evidence remain blocked; no production writes |
-| Stage 09.4B — First Authorized ProjectRouter Rollout | Review/install actual production wiring and separately approve bootstrap and exact rollout candidate | Planned; protected-main evidence, approved privileged mechanism, trusted fresh observations, isolated runtime acceptance, DNS/TLS/storage/recovery and operator approval required |
-| Stage 09.4B.3 — Production Execution & Authorization | Host-local one-shot mechanism, exact candidates, consumed authorization ledger, same engine/lock/lifecycle and installation handoff | Implemented/tested offline; installation, independent operator verifier/attestors and production operations remain blocked |
-| Stage 09.4B.4 — Installation & Production Integration | Exact install bundles, independent manager source review, administrative initial installer, local read sources and separately approved GHCR cache preparation in the existing executor | Implemented/tested offline; independent administrative channel, production bindings/attestors, fresh source evidence, Caddy provenance and actual host operations remain blocked |
-| Stage 09.4B.7 — Trusted Caddy Image Producer | Authenticated locked release/rootfs, PR build, protected-main GHCR publication, signed provenance and separate Caddy verification | Implemented/tested offline; upstream signatures verified; first main publication and exact-image acceptance pending; no production deployment |
-| Stage 09.5 — Update, Rollback & Release Acceptance | Controlled production update/rollback and operational acceptance | Planned; separate task/operation authorization; no automatic merge/tag |
-| Stage 09.6 — Automated Continuous Deployment | Protected producer-main publish proposes a manager digest-update PR; policy-gated CD follows review | Planned after safe manual rollout/rollback acceptance; no automatic CD implemented in 09.3 |
+| Stage 09.4B — First Authorized ProjectRouter Rollout | Review/install actual production wiring and separately approve bootstrap and exact rollout candidate | Complete per operator (2026-10-28); original production/recovery receipts remain private |
+| Stage 09.4B.3 — Production Execution & Authorization | Host-local one-shot mechanism, exact candidates, consumed authorization ledger, same engine/lock/lifecycle and installation handoff | Implemented; operator confirms completed installation and first rollout; future operations retain signature/source/state gates |
+| Stage 09.4B.4 — Installation & Production Integration | Exact install bundles, independent manager source review, administrative initial installer, local read sources and separately approved GHCR cache preparation in the existing executor | Implemented; initial installation complete per operator; future administrative operations require separate authority |
+| Stage 09.4B.7 — Trusted Caddy Image Producer | Authenticated locked release/rootfs, PR build, protected-main GHCR publication, signed provenance and separate Caddy verification | Implemented; signed main publication and isolated runtime acceptance established; gateway deployment complete per operator |
+| Stage 09.5 — Update, Rollback & Release Acceptance | Controlled production update/rollback and operational acceptance | Update/rollback mechanisms implemented; Manager CD run successful; additional application update and live rollback acceptance need separate evidence |
+| Stage 09.6 — Automated Continuous Deployment | Protected producer CI calls pinned shared CD under signed policy; Manager main release triggers Manager CD | Implemented; Manager live CD successful; latest reviewed automatic ProjectRouter CD failed, subsequent success evidence pending |
 
 Stage 02 defines the [v1 application and admission contracts](manifest-v1.md),
 accepts immutable OCI manifest/index digests with explicit `linux/amd64`, and
 provides a bounded Python/PyYAML/jsonschema validator with offline pytest fixtures.
-The real registry is empty pending a confirmed origin-bound artifact. Stage 09.1
+The real registry now contains the enabled ProjectRouter manifest with a
+verified origin-bound artifact. Stage 09.1
 admission reserves ProjectRouter identity/source/image/hostname and runtime contract. Validator tooling does not choose the future controller language.
 
 Stage 03 implements [offline reconciliation planning](reconciliation-planning.md):
@@ -113,20 +119,19 @@ preflight/plan remain blocked previews. Actual protected-main source verificatio
 origin/provenance evidence, trusted host/runtime transports and write authorization
 remain explicit Stage 09.4 gates. No server inspection or deployment was performed.
 
-Stage 09.6 — **Automated Continuous Deployment (Planned)** — follows accepted safe
-manual rollout/rollback. A successful CI/publish for a protected producer `main`
-revision should propose an immutable digest-update PR in this manager. Only after
-an approved policy and required exact-source/artifact/state checks may it activate
-CD. This stage does not implement triggers, polling, dispatch, webhook activation
-or automatic deployment and does not override Stage 09.1 manual production policy.
+Stage 09.6 now has a concrete minimal CD implementation in `scripts/cd/`,
+`installation/` and the production workflows. ProjectRouter invokes a pinned
+shared workflow after successful main-push CI; Manager delivery follows its
+successful trusted release. The former proposal to create digest-update PRs is
+not the current automatic application path. See [current delivery flow](production-status.md#what-happens-after-a-projectrouter-update).
 
 Stage 09.4 is now explicitly split into [09.4A preparation](production-preparation.md)
 and **09.4B — First Authorized ProjectRouter Rollout**. Preparation reuses the
 existing executor/lifecycle and introduces no production apply or automatic CD.
 The [execution ADR](adr/0001-production-execution.md) defines the infrastructure
 handoff. Operator-reported 2026-10-22 diagnostics are not fresh trusted planner
-state. GitHub metadata still reports both main branches unprotected; producer main
-lacks the audited deployment code. Missing evidence/mechanisms stay blocked.
+state. Those preparation-time source/branch observations are historical; they are not
+current GitHub Settings or producer code observations.
 Stages 09.5 and 09.6 retain their independent acceptance/authorization boundaries.
 
 ## Universal application acceptance
@@ -136,8 +141,8 @@ ID-selected workflow and a shared runner, using manifest `release` metadata and
 independent admission `acceptance` constraints. HTTP/worker, multiple components,
 readiness-gated dependencies, restart, runtime security and explicitly disposable
 test volumes are covered offline. See [how to add applications](application-acceptance.md).
-ProjectRouter remains disabled outside the active registry with its exact v1.0.0
-identity and signed build-origin contract. Real universal acceptance was not run;
+ProjectRouter is now enabled in the registry with its signed build-origin
+contract. Universal isolated acceptance passed in run 39837965499;
 Stage 09.4B production admission/authorization and later stages remain separate.
 
 ## Stage 09.4B.1 — Caddy runtime acceptance
