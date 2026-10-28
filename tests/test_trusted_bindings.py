@@ -867,3 +867,46 @@ def test_installed_registry_factory_is_fixed_fresh_and_bounded():
     assert first.transport is not second.transport and first.transport.remaining == 64
     with pytest.raises(DockerError, match='production-release-image-rejected'):
         first.collect('ghcr.io/danilfaritovich/portfolio-caddy@sha256:' + 'f'*64)
+
+
+@pytest.mark.parametrize('infrastructure_drift', [False, True])
+def test_cd_standing_review_accepts_json_infrastructure_and_rejects_drift(
+        integrated, tmp_path, monkeypatch, infrastructure_drift):
+    from scripts.cd import host
+    s = integrated
+    s.world.present = True
+    _, observed, _ = s.inventory.capture()
+    caddy = tmp_path / 'Caddyfile'
+    caddy.write_bytes(b'# synthetic gateway configuration')
+    contents = tuple({'path': path, 'uid': 0, 'gid': 0, 'mode': 0o700,
+                      'device': 1, 'inode': number}
+                     for number, path in enumerate(PATHS, 1))
+    document = {'host': s.policy.host, 'daemon': s.policy.daemon, 'host_contract': {
+        'host_policy': asdict(s.policy), 'kernel_sha256': hashed(s.facts.network),
+        'storage_roots': {r['path']: {k: r[k] for k in ('uid', 'gid', 'mode', 'device', 'inode')}
+                          for r in contents},
+        'caddyfile_sha256': host.pin(caddy.read_bytes()),
+        'caddy_runtime_hash': 'a'*64, 'caddy_evidence_hash': 'b'*64,
+        'rollout': {'infrastructure': tuple(s.inventory.infrastructure)},
+    }}
+    # A signed policy is decoded from JSON, so infrastructure entries are lists.
+    document = json.loads(json.dumps(document))
+    assert document['host_contract']['rollout']['infrastructure']
+    assert all(isinstance(r, list) for r in document['host_contract']['rollout']['infrastructure'])
+    if infrastructure_drift:
+        document['host_contract']['rollout']['infrastructure'][0][1] = 'f'*64
+    standing = SimpleNamespace(document=document)
+    standing.current = lambda: standing
+    review = host.StandingReview(s.executor.installation, standing)
+    review.engine = s.engine
+    review.resolve_image = s.inventory.resolve_image
+    review.catalog = (s.world.app,)
+    def gateway_path(path):
+        assert path == '/srv/portfolio/caddy-config/Caddyfile'
+        return caddy
+    monkeypatch.setattr(host, 'Path', gateway_path)
+    if infrastructure_drift:
+        with pytest.raises(DockerError, match='^production-runtime-approved-infrastructure-missing-or-changed$'):
+            review.validate_facts(s.policy, s.facts, observed, {}, contents)
+    else:
+        review.validate_facts(s.policy, s.facts, observed, {}, contents)

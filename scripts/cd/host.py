@@ -75,6 +75,7 @@ class StandingReview:
                       r.facts['labels'].get(LABEL + '.application') == 'project-router'}
         selected = tuple(a for a in self.catalog if {c['image'] for c in a.spec['components']} <= references)
         require(bool(selected), 'cd-application-baseline-required')
-        inventory = RuntimeInventory(self.engine, selected, self.resolve_image, d['rollout']['infrastructure'])
+        infrastructure = tuple(tuple(r) for r in d['rollout']['infrastructure'])
+        inventory = RuntimeInventory(self.engine, selected, self.resolve_image, infrastructure)
         _, observed, _ = inventory.capture()
         require(observed.resources == docker.resources, 'cd-host-runtime-round-changed')
