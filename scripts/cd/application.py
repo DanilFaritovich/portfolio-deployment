@@ -9,7 +9,7 @@ import time
 from scripts.cd.host import StandingReview
 from scripts.cd.policy import AutomationVerifier, pin, read_policy
 from scripts.cd.release import ImageRelease, ImageReleaseVerifier, ProjectedContent, require_forward_release
-from scripts.production_integration.artifacts import bind_engine_image
+from scripts.production_integration.artifacts import bind_engine_image, verify_oci_bytes
 from scripts.production_integration.authorization import OperationCandidate
 from scripts.production_integration.candidate import hashed
 from scripts.production_integration.fixed_bindings import (FixedPolicy, TOKEN, ROOT, GH, build_fixed)
@@ -24,7 +24,7 @@ from scripts.production_integration.public_postconditions import PublicPostcondi
 from scripts.production_integration.public_witness import SignedPublicWitness
 from scripts.production_integration.release_crypto import AttestationVerifier
 from scripts.production_integration.release_source import WorkflowCheck
-from scripts.production_integration.release_transport import GitHubRead, GHCRRead, HTTPSRead
+from scripts.production_integration.release_transport import GitHubRead, GHCRRead, HTTPSRead, IMAGE_REPOSITORY
 from scripts.gateway import desired_routes
 
 STATE = Path('/var/lib/portfolio-deployment-cd')
@@ -106,13 +106,14 @@ def compose(installation, standing, fixed, release):
     # Immutable OCI bytes are authenticated before the five-second mutable-host
     # observation window. Rebind EVERY fresh Engine inspection to these exact
     # digests; repeated remote registry reads cannot make immutable bytes fresher.
-    immutable_blobs={r.image:GHCRRead(HTTPSRead(context=context)).collect(r.image) for r in (previous,release)}
+    immutable_images = {r.image: verify_oci_bytes(r.image, IMAGE_REPOSITORY,
+        GHCRRead(HTTPSRead(context=context)).collect(r.image)) for r in (previous, release)}
     review = StandingReview(installation, standing)
     engine = installed_engine(installation, EngineContract('unix:///run/docker.sock',
         standing.document['daemon'], standing.document['host'], True))
     def resolve_image(reference, inspected):
-        require(reference in immutable_blobs,'cd-image-outside-verified-catalog')
-        return bind_engine_image(immutable_blobs[reference], inspected)
+        require(reference in immutable_images,'cd-image-outside-verified-catalog')
+        return bind_engine_image(immutable_images[reference], inspected)
     review.engine, review.resolve_image, review.catalog = engine, resolve_image, catalog
     public = PublicAcceptance(installation, standing, fixed, (previous, release), desired)
     selected = replace(fixed, producer_sha=release.source_sha, image=release.image,
