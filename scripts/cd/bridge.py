@@ -28,6 +28,7 @@ from scripts.production_integration.fixed_bindings import GH, ROOT as SIGSTORE_R
 CAPSULE = Path('/usr/local/lib/portfolio-deployment-cd')
 HEADER_LIMIT = 131072
 OBSERVER_LIMIT = 2 * 1024 * 1024  # includes a <=1MiB explicitly pinned CA bundle
+OBSERVER_WAIT_SECONDS = 1200
 PUBLIC_DIRECTORY = Path('/var/lib/portfolio-deployment-public')
 
 
@@ -69,6 +70,23 @@ def updater(installed, policy):
     manager = ManagerUpdater(policy=policy, installation=installed, bundle_verifier=manager_verifier(policy),
         lock=production_host_lock, quiescent=quiescent, health=manager_health)
     return manager
+
+
+def wait_for_challenge(not_before):
+    # Read only the root-owned challenge while preflight collects host facts.
+    # Installation/policy verification still runs before returning any evidence.
+    require(type(not_before) is int and not_before > 0, 'cd-observer-wait-invalid')
+    deadline = time.monotonic() + OBSERVER_WAIT_SECONDS
+    path = STATE / 'challenge.json'
+    while time.monotonic() < deadline:
+        if path.exists():
+            protected(path)
+            challenge = closed_json(path.read_bytes(), OBSERVER_LIMIT)
+            created = challenge.get('created')
+            if type(created) is int and created >= not_before and 0 <= time.time() - created <= 15:
+                return
+        time.sleep(.25)
+    require(False, 'cd-observer-wait-timeout')
 
 
 def observe(policy):
@@ -133,9 +151,14 @@ def handle(role, request, stream):
     if role == 'automation' and request['op'] == 'bootstrap-install':
         from scripts.cd.bootstrap import install
         return install(request, stream)
+    if role == 'observer' and request['op'] == 'observe-wait':
+        require(set(request) == {'op', 'not_before'}, 'cd-observer-scope-forbidden')
+        wait_for_challenge(request['not_before'])
     installed = installation()
     policy = installed_policy(installed)
     if role == 'observer':
+        if request['op'] == 'observe-wait':
+            return observe(policy)
         require(set(request) in ({'op'}, {'op', 'receipt'}) and request['op'] in ('observe', 'witness'),
                 'cd-observer-scope-forbidden')
         return observe(policy) if request['op'] == 'observe' else witness(policy, request['receipt'])

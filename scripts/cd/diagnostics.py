@@ -2,6 +2,7 @@
 from scripts.docker_adapter import DockerError
 
 PUBLIC_FAILURES = {
+    'production-host-facts-changed-or-expired': 'host facts changed or exceeded the observation window; inspect observer contention before retrying',
     'cd-journal-recovery-required': 'an unfinished journal operation blocks Manager updates; use separately reviewed operator recovery; do not replay bootstrap',
     'cd-journal-history-lost': 'established journal history is missing; preserve state and inspect through the operator channel',
     'cd-policy-expired': 'the operator-signed standing policy expired; an administrator must review its renewal',
