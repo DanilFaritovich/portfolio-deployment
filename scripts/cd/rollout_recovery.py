@@ -226,6 +226,20 @@ def verify_recovery_decision(envelope, *, keys, now=None):
 
 def observe_live_release(candidate, app, provider, probes, policy, *,
                          public_postconditions=None, before_public=None, **timing):
+    return _observe_release(candidate, app, provider, probes, policy,
+        scope="first-project-router-rollout", public_postconditions=public_postconditions,
+        before_public=before_public, **timing)
+
+
+def observe_updated_release(candidate, app, provider, probes, policy, *,
+                            public_postconditions=None, before_public=None, **timing):
+    return _observe_release(candidate, app, provider, probes, policy,
+        scope="update-project-router", public_postconditions=public_postconditions,
+        before_public=before_public, **timing)
+
+
+def _observe_release(candidate, app, provider, probes, policy, *, scope,
+                     public_postconditions=None, before_public=None, **timing):
     """Verify an existing release without changing Docker, Caddy or SQLite.
 
     Production callers must supply the installed, sealed content reader,
@@ -244,7 +258,7 @@ def observe_live_release(candidate, app, provider, probes, policy, *,
     )
     candidate.validate()
     require(
-        candidate.scope == "first-project-router-rollout"
+        candidate.scope == scope
         and app.id == "project-router"
         and len(app.spec["components"]) == 1
         and app.spec["components"][0]["name"] == "web"
@@ -388,7 +402,7 @@ def observe_live_release(candidate, app, provider, probes, policy, *,
 
     # Stable evidence for a future operator-signed decision.
     # No timestamps, journal writes, or claimed release success.
-    return {
+    result = {
         "application": app.id,
         "component": "web",
         "revision": candidate.manager_sha,
@@ -398,6 +412,9 @@ def observe_live_release(candidate, app, provider, probes, policy, *,
         "route": app.spec["ingress"],
         "readiness": "verified",
     }
+    if scope == "update-project-router":
+        result.update(probes=evidence.probes, consecutive=evidence.consecutive)
+    return result
 
 
 class RolloutRecovery(BootstrapContainment):
@@ -706,7 +723,7 @@ class RolloutRecovery(BootstrapContainment):
 
 
 def recovery_public_acceptance(
-    candidate, app, *, standing, installation, installed_public
+    candidate, app, *, standing, installation, installed_public, update_release=None
 ):
     """Build public acceptance from signed release and sealed CA pins.
 
@@ -737,10 +754,12 @@ def recovery_public_acceptance(
 
     release = ImageRelease(
         **document["application"]["initial_release"]
-    ).validate()
+    ).validate() if update_release is None else update_release.validate()
+    require(type(release) is ImageRelease, "update-recovery-release-required")
+    scope = "first-project-router-rollout" if update_release is None else "update-project-router"
 
     require(
-        candidate.scope == "first-project-router-rollout"
+        candidate.scope == scope
         and candidate.host == document["host"]
         and candidate.daemon == document["daemon"]
         and candidate.manager_sha == installation.manager_sha
@@ -779,7 +798,7 @@ def recovery_public_acceptance(
     )
 
 
-def recovery_runtime_pins(candidate, app, standing_review):
+def recovery_runtime_pins(candidate, app, standing_review, *, update_release=None):
     """Accept runtime IDs only from independently signed standing policy.
 
     This returns configuration for future read-only source construction.
@@ -797,10 +816,12 @@ def recovery_runtime_pins(candidate, app, standing_review):
     signed = review.standing.current().document
     release = ImageRelease(
         **signed["application"]["initial_release"]
-    ).validate()
+    ).validate() if update_release is None else update_release.validate()
+    require(type(release) is ImageRelease, "update-recovery-release-required")
+    scope = "first-project-router-rollout" if update_release is None else "update-project-router"
 
     require(
-        candidate.scope == "first-project-router-rollout"
+        candidate.scope == scope
         and (candidate.host, candidate.daemon)
         == (review.policy.host, review.policy.daemon)
         == (signed["host"], signed["daemon"])
@@ -891,7 +912,7 @@ def recovery_runtime_pins(candidate, app, standing_review):
 def build_recovery_state_reader(
     *, installation, standing_review, candidate, app,
     caddy, caddy_image, proxy_subnet, proxy_gateway,
-    private_subnet, resolve_image, public_postconditions,
+    private_subnet, resolve_image, public_postconditions, update_release=None,
 ):
     """Construct read-only production sources, never an executor.
 
@@ -940,12 +961,12 @@ def build_recovery_state_reader(
     )
 
     pins = recovery_runtime_pins(
-        candidate, app, standing_review
+        candidate, app, standing_review, update_release=update_release
     )
     signed = standing_review.standing.current().document
     release = ImageRelease(
         **signed["application"]["initial_release"]
-    ).validate()
+    ).validate() if update_release is None else update_release.validate()
 
     require(
         standing_review.verify(

@@ -61,6 +61,36 @@ def test_bounded_internal_probe_pins_id_path_and_network():
     assert http.calls == [(('172.31.0.2', 8080, '/en/'), {'timeout': 2, 'follow_redirects': False})]
 
 
+@pytest.mark.parametrize('change', [None, 'container', 'network'])
+def test_unavailable_http_still_closes_runtime_and_network_checks(change):
+    docker, http = Docker(), Http()
+    def unavailable(*args, **kwargs):
+        if change == 'container':
+            docker.raw['Image'] = 'sha256:' + 'd' * 64
+        if change == 'network':
+            docker.network['Containers'] = {}
+        raise DockerError('production-http-read-unavailable')
+    http.get = unavailable
+    probe = ProductionProbes(docker, http, 'router', '172.31.0.0/24', network_id=NETWORK_ID)
+    if change:
+        with pytest.raises(DockerError, match='production-probe-(runtime-changed|network-unverified)'):
+            probe.probe(COMPONENT, ID, timeout=2, follow_redirects=False)
+    else:
+        result = probe.probe(COMPONENT, ID, timeout=2, follow_redirects=False)
+        assert result.running is True and result.http_status is None and docker.calls == 2
+
+
+@pytest.mark.parametrize('error', ['production-http-endpoint-not-approved', 'production-probe-result-invalid'])
+def test_http_contract_errors_are_not_transient(error):
+    docker, http = Docker(), Http()
+    def invalid(*args, **kwargs):
+        raise DockerError(error)
+    http.get = invalid
+    with pytest.raises(DockerError, match=error):
+        ProductionProbes(docker, http, 'router', '172.31.0.0/24', network_id=NETWORK_ID).probe(
+            COMPONENT, ID, timeout=2, follow_redirects=False)
+
+
 @pytest.mark.parametrize('case', ['owner', 'id', 'ports', 'network', 'stopped', 'timeout', 'redirect', 'replacement'])
 def test_probe_rejects_unverified_targets(case):
     docker, http = Docker(), Http()

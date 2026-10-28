@@ -50,10 +50,18 @@ class ProductionProbes:
                 raise DockerError('production-probe-endpoint-unverified') from None
             # Port/path come exclusively from admitted runtime. No public DNS,
             # redirects, host headers or HTTPS trust bypass is involved.
-            status = self.http.get(str(address), component['port'], component['health']['path'],
-                                   timeout=timeout, follow_redirects=False)
-            if type(status) is not int or not 100 <= status <= 599:
-                raise DockerError('production-probe-result-invalid')
+            try:
+                status = self.http.get(str(address), component['port'], component['health']['path'],
+                                       timeout=timeout, follow_redirects=False)
+            except DockerError as error:
+                if error.code != 'production-http-read-unavailable':
+                    raise
+                # A starting listener supplies no HTTP evidence. Still close
+                # the network/container checks before returning unknown health.
+                status = None
+            else:
+                if type(status) is not int or not 100 <= status <= 599:
+                    raise DockerError('production-probe-result-invalid')
             result = ProbeResult(True, http_status=status)
             if self._network(project, private, container_id) != network:
                 raise DockerError('production-probe-network-changed')

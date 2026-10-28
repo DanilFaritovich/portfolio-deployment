@@ -305,6 +305,38 @@ def test_automatic_application_update_and_repeat_noop(chain):
     assert (s.store/'current-release.json').read_bytes()==current_before
 
 
+@pytest.mark.parametrize('outages', [1, 3, 100])
+def test_update_waits_for_http_listener_before_accepting(chain, monkeypatch, outages):
+    from scripts.production_integration.http_read import InternalHTTPRead
+    s = chain
+    original = InternalHTTPRead.get
+    attempts = []
+    def starting(http, *args, **kwargs):
+        if s.current_ref == s.target.image:
+            attempts.append(None)
+            if len(attempts) <= outages:
+                raise DockerError('production-http-read-unavailable')
+        return original(http, *args, **kwargs)
+    monkeypatch.setattr(InternalHTTPRead, 'get', starting)
+    if outages == 100:
+        with pytest.raises(DockerError):
+            runner.deploy(s.client, 'application', s.evidence)
+        assert len(attempts) < outages
+        assert s.operations == ['pull', 'up', 'up']
+        assert s.current_ref == s.old.image
+        assert not (s.store / 'current-release.json').exists()
+        with s.lock() as lease, Journal(s.directory, lease) as journal:
+            assert not journal.incomplete()
+            assert journal.last_good('project-router', 'web')['target'] == s.old.image
+        return
+    assert runner.deploy(s.client, 'application', s.evidence)['status'] == 'succeeded'
+    assert len(attempts) > outages
+    assert s.operations == ['pull', 'up']
+    with s.lock() as lease, Journal(s.directory, lease) as journal:
+        assert not journal.incomplete()
+        assert journal.last_good('project-router', 'web')['target'] == s.target.image
+
+
 @pytest.mark.parametrize('failure',['readiness','witness','public-body'])
 def test_automatic_update_rejects_failed_release_and_verifies_rollback(chain,failure):
     s=chain;s.fail=failure
