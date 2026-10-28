@@ -32,7 +32,7 @@ class RuntimeInventory:
         self.engine, self.contracts, self.resolve_image = engine, tuple(contracts), resolve_image
         # Exact (kind, ID, name, facts hash) for non-application resources, approved
         # independently. Built-in networks and the gateway are not implicitly trusted.
-        self.infrastructure = frozenset(infrastructure)
+        self.infrastructure = frozenset(tuple(resource) for resource in infrastructure)
 
     def capture(self):
         identity = self.engine.identity()
