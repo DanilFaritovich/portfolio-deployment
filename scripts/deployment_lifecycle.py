@@ -105,7 +105,7 @@ class DeploymentLifecycle:
     def _transition(self, name, state, reason, evidence=None):
         self.journal.transition(self.run_id, name, state, reason, evidence)
 
-    def _fresh_target(self, app, name, *, snapshot=None):
+    def _fresh_target(self, app, name, *, snapshot=None, allow_unknown_health=False):
         d, observed, docker = self.provider.refresh() if snapshot is None else snapshot
         if d != self.desired:
             raise DockerError("desired-revision-or-content-changed")
@@ -116,6 +116,13 @@ class DeploymentLifecycle:
         plan = build_reconciliation_plan(target_desired, observed)
         # Configuration comparison reuses Stage 03. Health is checked below.
         entries = plan.document["entries"]
+        if allow_unknown_health:
+            # Only the target's missing health observation may proceed to the
+            # bounded readiness gate. Runtime, ownership and image checks below
+            # remain mandatory; ordinary pre-mutation checks stay strict.
+            entries = [e for e in entries if not (
+                e['application'] == app.id and e['component'] == name
+                and e['action'] == 'blocked' and e['reasons'] == ['health-unobserved'])]
         if any(e["status"] == "blocked" for e in entries):
             raise DockerError("runtime-unverified")
         matching = [e for e in entries if e["application"] == app.id and e["component"] == name]
@@ -135,11 +142,11 @@ class DeploymentLifecycle:
         return found[0], docker
 
     def _verify(self, app, name):
-        resource, _ = self._fresh_target(app, name)
+        resource, _ = self._fresh_target(app, name, allow_unknown_health=True)
         component = next(c for c in app.spec["components"] if c["name"] == name)
         evidence = verify_readiness(component, resource.identifier, self.probes, self.policy, **self.timing)
         # Fresh rediscovery closes the replacement/configuration race during probes.
-        after, _ = self._fresh_target(app, name)
+        after, _ = self._fresh_target(app, name, allow_unknown_health=evidence.status != "verified")
         if after.identifier != resource.identifier:
             raise DockerError("runtime-unverified")
         return evidence
@@ -209,7 +216,7 @@ class DeploymentLifecycle:
         name = operation.component
         try:
             # Ownership/runtime must be corroborated for the failed TARGET before rollback.
-            _, docker = self._fresh_target(self.app, name)
+            _, docker = self._fresh_target(self.app, name, allow_unknown_health=True)
             decision = plan_rollback(self.app, name, self.previous[name], self.journal.last_good(self.app.id, name),
                                      docker, owned=True, scope_allowed=True,
                                      side_effects_excluded=self.side_effects_excluded, test_session=self.adapter.test_session)
