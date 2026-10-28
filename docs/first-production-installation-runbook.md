@@ -1,5 +1,12 @@
 # C4.7 — First installation: administrative evidence and sealed phase handoff
 
+> Historical preparation/installation milestone. Full server deployment and the
+> first ProjectRouter rollout have since completed per operator (2026-10-28).
+> See [current status and delivery evidence](production-status.md). Statements
+> below about missing prerequisites or unperformed operations describe the
+> original review; do not rerun initial installation on the deployed host.
+
+
 **Prepared offline; installation BLOCKED. No SSH, key creation, approval, release,
 installation, start, image pull, bootstrap or rollout was performed.** All commands
 below are future operator actions, subject to the separate permissions at each stop.
