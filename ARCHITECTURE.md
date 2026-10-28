@@ -273,6 +273,26 @@ sixty-second aggregate bound, including their complete seal checks.
 
 ## Status and scope
 
+The root-only `operator-application-update-recovery` capsule role verifies one
+applied stateless image update left at `fresh-state-unavailable` after
+`mutation-completed`. It authenticates the original retained automation approval,
+workflow context and release evidence, binds the preceding LKG, and repeats
+complete runtime/ACTIVE, internal readiness and independent signed HTTPS checks.
+A new operator SSHSIG in `portfolio-application-update-recovery-v1`, valid for at
+most fifteen minutes, binds the journal, current-release file, inventories,
+original request and fresh observation. Delegated SSH keys gain no recovery role.
+
+The frozen v2 journal treats `recovery-required` as terminal. This narrow repair
+therefore retains the complete original SQLite and signed decision in private
+audit, then corrects only the final acceptance event and its attempt/run records;
+all earlier events remain unchanged. Authorization completion and the LKG pointer
+advance in one SQLite transaction. The verified `current-release.json` is written
+before that commit: an interruption leaves the pending journal fencing ordinary
+delivery, and further recovery requires a fresh observation and signature. No
+journal schema, normal transition, Docker resource or Caddy route is changed.
+Implementation and offline tests do not establish production recovery; the new
+role requires independent capsule review/installation and an exact signed decision.
+
 Current deployment and CD status is described at the top and in
 [production status](docs/production-status.md). The following chronology records
 what each implementation task established at the time, including gates that

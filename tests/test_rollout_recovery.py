@@ -1239,3 +1239,33 @@ def test_public_challenge_is_published_after_runtime_verification(failed_rollout
         public_postconditions=Public(), before_public=lambda: order.append('challenge'),
         clock=clock.now, sleep=clock.sleep)
     assert order == ['challenge', 'public']
+
+
+def test_update_observation_has_separate_scope_and_readiness_counts(failed_rollout):
+    from scripts.cd.rollout_recovery import observe_updated_release
+    world, c = failed_rollout
+    c = replace(c, scope='update-project-router')
+    clock = Clock()
+    result = observe_updated_release(c, world.world.app,
+        world.world.provider, Probes(), POLICY,
+        public_postconditions=OfflinePublic(), clock=clock.now, sleep=clock.sleep)
+    assert result['image'] == c.image and result['consecutive'] >= 2
+    assert result['probes'] >= result['consecutive']
+    with pytest.raises(DockerError, match='application-mismatch'):
+        observe_fixture(world, c)
+
+
+def test_update_reader_binds_explicit_release_without_widening_first_role(recovery_reader_world):
+    from scripts.cd.release import ImageRelease
+    w = recovery_reader_world
+    c = replace(w.candidate, scope='update-project-router')
+    release = ImageRelease(c.producer_sha, c.image, 'e'*64, '12', '1')
+    public = PublicPostconditions(replace(w.public_check.policy, body_sha256=release.html_sha256),
+                                  external=w.public_check.external)
+    provider, _ = w.build(candidate=c, update_release=release, public_postconditions=public)
+    assert type(provider) is ProductionStateProvider and provider.sample is None
+    with pytest.raises(DockerError, match='release-unbound'):
+        w.build(candidate=c)
+    with pytest.raises(DockerError, match='release-unbound'):
+        w.build(candidate=c, update_release=replace(release,image=release.image[:-1]+'f'),
+                public_postconditions=public)
