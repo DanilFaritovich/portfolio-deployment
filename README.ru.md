@@ -2,118 +2,50 @@
 
 [English version](README.md)
 
-Централизованная платформа Docker/GitOps-деплоя независимо собираемых портфолио-
-приложений на одном Ubuntu VPS. **Текущее состояние: Stage C3 — подготовка protected-main релиза; production installation и rollout ещё не выполнены.**
-Stage 08 смержен в `develop`; реальный локальный VM E2E Stage 07 пройден: 15/15 сценариев.
-Реализованы registry/admission, offline-планирование и retained Caddy previews;
-PR #4 Stage 04, PR #5 Stage 05 и PR #6 Stage 06 смержены в `develop`. Stage 05 добавляет детерминированный Compose,
-ограниченный Docker discovery, preflight, lock и адресный executor с offline mocks.
-Stage 06 добавляет bounded readiness, SQLite journal/LKG, ограниченный rollback
-и анализ crash recovery в существующий executor. Stage 07 добавляет отдельную
-disposable Ubuntu VM и test-only readers/probes; локальная приёмка пройдена,
-а будущие запуски по-прежнему требуют отдельных opt-in.
-Production-деплой остаётся **Planned**: Docker не даёт полный registry/gateway
-snapshot Stage 03. One-shot executor требует независимо установленных trust
-bindings и подписанного разрешения операции. В реальном реестре есть один
-включённый [manifest ProjectRouter](registry/applications/project-router.yaml),
-зарегистрированный в Stage C2 после независимой проверки producer/source/OCI/signatures.
-Регистрация задаёт desired state и не разрешает выполнение.
-[Release review Stage C3](docs/protected-main-release.md) описывает полный
-`main...develop`, release gates и последствия main-push публикации Caddy. Отдельный локальный smoke Stage 05 не запускался.
+Централизованная платформа Docker/GitOps-деплоя портфолио-приложений на одном
+Ubuntu VPS. **Production-деплой на сервер завершён, включая первый ProjectRouter
+rollout (подтверждение оператора от 2026-10-28).** Manager Production CD также
+подтверждён успешным GitHub Actions run с выполненным шагом деплоя.
 
-[Подготовка Stage 09.4A](docs/production-preparation.md) и
-[execution ADR](docs/adr/0001-production-execution.md) добавляют общую policy
-стабильного Compose plugin >= 2 с отдельными проверками CLI/конфигурации, authenticated source bindings, канонические production lock/storage,
-офлайн-план первой установки и source/artifact/approval contracts.
-Рекомендуется локальное исполнение на VDS через отдельно подготавливаемую
-privileged boundary; sudo fallback отсутствует. Свежие protected-main proofs
-и независимо установленные trust/execution bindings остаются gates выполнения.
-Исторические [ProjectRouter acceptance](docs/project-router-acceptance.md) и
-[Caddy acceptance](docs/caddy-runtime-acceptance.md) пройдены в изолированных средах;
-они не дают production authority. Stage 09.4B — First Authorized
-ProjectRouter Rollout — требует отдельного разрешения; Stages 09.5/09.6 остаются
-Planned. Наблюдения оператора не являются trusted planner state. Подключений к VDS
-и mutations в 09.4A не было.
+[Текущий статус и evidence](docs/production-status.md) содержат историю `main`,
+ссылки на CI/release/CD и границы подтверждённых результатов. Ранние документы
+Stage 01–09/C3/C4 описывают состояние на момент подготовки и не означают, что
+сервер всё ещё ждёт первой установки. Stage 07 ранее прошёл 15/15 реальных VM E2E;
+отдельный локальный smoke Stage 05 не запускался.
 
-[Контракты и безопасность Stage 09.1](docs/production-contracts.md) фиксируют
-`project-router` → `project-router-web:8080` в `portfolio-proxy`, readiness `/en/`,
-hostname `danil-miftakhov.dev` и ожидаемый build origin `https://danil-miftakhov.dev`.
-[Неактивный шаблон](docs/templates/project-router.yaml) находится вне реестра
-с placeholder digest. Зарегистрированный manifest фиксирует проверенный digest
-ProjectRouter и подписанные origin expectations из
-[acceptance evidence](docs/project-router-acceptance.md). Выполнение по-прежнему
-требует свежих protected-source CI и artifact/origin evidence,
-отдельно разрешённую read-only диагностику VDS и согласованные live integration
-transports/operation gates. Документ содержит acceptance gates 09.2–09.5 и несекретные сведения
-от оператора. Подключений к VPS и production mutations не выполнялось.
+ProjectRouter зарегистрирован в [реестре](registry/applications/project-router.yaml)
+и [admission policy](policy/admission.yaml). Его workflow после успешного CI для
+push в `main` вызывает общий production CD с закреплённой версией Manager.
+Автоматическое обновление проверяет immutable digest, подписанные release claims,
+standing policy, свежее состояние сервера, readiness и публичный HTTPS/content.
+Environment может требовать ручное approval. Последний видимый автоматический
+ProjectRouter CD завершился ошибкой 2026-10-25, до последующих исправлений Manager;
+успешное автоматическое обновление приложения после первого деплоя ещё не
+подтверждено этой проверкой. Политика и проверки могут блокировать доставку.
 
-[Operator guide Stage 09.2](docs/production-inspection.md) описывает `make production-check`
-(офлайн-проверка локальных prerequisites/trust), `make production-inspect` (отдельно
-разрешённый интерактивный read-only SSH) и `make production-report` (офлайн-просмотр
-последнего отчёта). Используй существующий
-`PRODUCTION_INVENTORY=../portfolio-server-infrastructure/inventories/production.yml`:
-из него берутся managed user, фактический порт и существующий ключ автоматизации;
-trust берётся из `~/.ssh/known_hosts`, с strict host checking и public-key-only auth.
-До разрешённого запуска независимо проверь исходное доверие к host key и разблокируй
-выбранный зашифрованный ключ в существующем agent. Приватный отчёт (каталог 0700,
-файл 0600): `~/.local/share/portfolio-deployment/production-inspection/latest.json`.
-Passed/blocked/unknown относятся к ограниченным наблюдениям; отсутствие Docker
-permissions — blocker, а не доказательство отсутствия Docker. DNS/TLS/GHCR,
-совместимость конкретного image, trusted live transports и согласованные пути/subnets
-остаются prerequisites для Stage 09.4B. Реального SSH и production mutations в этом этапе не было.
-
-[Operator guide Stage 09.3](docs/production-integration.md) описывает версионированный
-per-component runtime security contract, production Engine read adapter,
-полную композицию источников, OCI mapping/source verification ports и интеграцию
-managed Caddy runtime/candidates. Переиспользованы executor, host lock, readiness,
-SQLite journal/LKG и recovery. `make production-integration-check` работает офлайн;
-`make production-preflight PRODUCTION_CONTRACT=<saved.json>` и
-`make production-plan PRODUCTION_CONTRACT=<saved.json> OBSERVED=<saved.json> GIT_REVISION=<full-sha>`
-возвращают только blocked preview (`authorization=false`, exit 2). Используй `PYTHON=.venv/bin/python`.
-Production apply команды и настроенного live write transport нет.
-Stage 09.4B требует отдельно согласованных identities, путей/budgets/subnets,
-protected-main exact-SHA source/artifact/origin evidence, trusted live transports
-и разрешения операции. Stage 09.6 automated digest-update PR/CD запланирован после
-безопасного ручного rollout/rollback; автоматический CD здесь не реализован.
-
-[Stage 09.4B.2 release readiness](docs/production-release-source-trust.md) добавляет
-строгую связь reusable publication run/job/check и opt-in read-only API с reviewed
-installation policy и проверенными gh/Sigstore pins. Отчёт всегда содержит
-`productionAuthorized=false`. Live-проверка требует отдельного разрешения и
-read-only credentials; PR CI её не запускает. Manager develop SHA вне защищённой
-main блокирует проверку до отдельного reviewed merge в main.
-
-[Как добавить новое приложение в Portfolio Deployment](docs/application-acceptance.md):
-добавить один валидируемый YAML с release metadata и пройти независимое
-admission/security-ревью. Один ручной workflow **Application isolated acceptance**
-проверяет подписи образов, readiness/security, зависимости, restart и очистку своих
-ресурсов для HTTP/worker-компонентов. `make acceptance-check` проверяет неактивные
-декларации offline. Бизнес-тесты остаются в CI приложения; реальная приёмка и
-production admission требуют отдельных review/разрешений. Isolated acceptance
-ProjectRouter пройдена в run [39837965499](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/39837965499);
-это историческое evidence не заменяет свежую production release verification.
-
-[Operator SSHSIG verification](docs/operator-approval.md),
-[trusted composition и ACTIVE UDS](docs/production-installation.md#stage-b2-trusted-components)
-реализованы и проверены офлайн. Оба поставляемых installation bindings блокируют
-выполнение. Есть историческая подписанная публикация trusted Caddy; будущий merge
-в `main` автоматически собирает/публикует новый exact-SHA candidate после source/CI
-gates. Публикация не устанавливает и не развёртывает этот candidate.
+Контракты и процедуры: [manifest v1](docs/manifest-v1.md),
+[добавление приложения](docs/application-acceptance.md),
+[production installation](docs/production-installation.md),
+[execution/authorization](docs/production-execution.md) и
+[operator SSHSIG](docs/operator-approval.md). Исторические
+[ProjectRouter acceptance](docs/project-router-acceptance.md),
+[Caddy acceptance](docs/caddy-runtime-acceptance.md) и
+[C3 release review](docs/protected-main-release.md) сохраняют исходное evidence.
+Новые production-операции требуют соответствующего разрешения или действующей
+узкой подписанной policy; наличие работающего сервера не разрешает их автоматически.
 
 ## Назначение и архитектура
 
-Целевая цепочка: CI приложения → immutable-образ в GHCR → утверждённое desired
-state в Git → reconciliation → Docker Compose → проверка готовности → маршрутизация
-Caddy. Реальная production integration и активация gateway — **Planned**; readiness
-и recovery имеют offline-tested contracts и VM-only adapters, проверенные реальным E2E Stage 07.
+Рабочая схема: CI приложения → immutable-образ в GHCR → проверка release/policy
+→ host-local executor → Docker Compose → readiness → Caddy и публичный HTTPS.
+Registry и offline planner задают контракт; live adapters и CD проверяют факты
+перед выполнением. Текущая production-интеграция использует тот же executor,
+SQLite journal/LKG и host lock, что и offline/VM-проверки.
 
 - [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure)
   отвечает за Ubuntu, SSH/пользователей, Docker Engine и безопасность хоста.
-- **Portfolio Deployment** реализует контракт реестра, офлайн-admission и
-  планирование по явному snapshot, детерминированный Compose и ограниченный
-  execution foundation. Следующие этапы добавят полную runtime-интеграцию,
-  домены/HTTPS и production observation/transport adapters. Readiness и постоянная
-  история результатов реализованы офлайн в Stage 06.
+- **Portfolio Deployment** отвечает за admission, desired state, планирование,
+  Compose, production adapters, Caddy, readiness, журнал и policy-gated CD.
 - Прикладные репозитории, например
   [project-router](https://github.com/DanilFaritovich/project-router), отвечают за
   исходный код, тесты/CI, сборку и публикацию образов в GHCR и предоставляют
@@ -122,7 +54,7 @@ Caddy. Реальная production integration и активация gateway —
 Границы ответственности, потоки, доверие и ограничения восстановления описаны в
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## Планируемые возможности и технологии
+## Возможности и технологии
 
 **Реализовано офлайн:** закрытые схемы приложений/admission, immutable-ссылки на
 образы компонентов, проверки всего реестра и позитивные/негативные тесты. Поля,
@@ -146,41 +78,21 @@ storage changes, неизвестные/чужие ресурсы и недок�
 stateless image rollback, анализ crash recovery и composite observation contracts.
 Stage 07 добавляет VM-only probes/readers; mutations после crash остаются запрещены.
 
-**Planned:** production rollouts, полное live reconciliation и общий Caddy HTTPS.
-Zero-downtime не обещается.
+Production executor, live adapters, Caddy и CD реализованы. **Planned:** дальнейшая
+приёмка update/rollback и расширение автоматизации за пределами текущего узкого
+ProjectRouter image-only контракта. Zero-downtime не обещается.
 
-Целевые технологии: Git, Docker Engine/Compose, GHCR и Caddy. Для Stage 05 выбран
-Python CLI с повторным использованием PyYAML/jsonschema и pytest. Журнал использует
-SQLite стандартной библиотеки; сервер БД, daemon и Kubernetes не реализованы.
-Stage 09.1 выбирает ручное разрешение из защищённой `main`; настройка защиты GitHub
-и production-валидация точного SHA остаются prerequisites. Автоактивации нет.
+Технологии: Git, Docker Engine/Compose, GHCR, Caddy и Python CLI с PyYAML/jsonschema.
+Журнал использует SQLite стандартной библиотеки; сервер БД, daemon и Kubernetes
+не используются. One-shot executor проверяет exact candidate, подпись, source,
+свежие observations и одноразовый nonce под canonical host lock.
 
-[Stage 09.4B.3](docs/production-execution.md) реализует host-local one-shot
-механизм выполнения поверх существующего engine: точный кандидат, независимо
-проверяемое одноразовое разрешение, постоянную SQLite replay-защиту и canonical lock.
-Файлы установки подготовлены; доверенные production bindings не настроены.
-Установка на VDS, bootstrap и rollout не выполнялись. Полная live release
-verification, установленные operator keys/verifier/attestors, Caddy provenance и независимо одобренная установка
-Deployment Manager остаются prerequisites; по умолчанию `productionAuthorized=false`.
-
-[Stage 09.4B.4](docs/production-installation.md) добавляет детерминированный offline
-install bundle, независимую проверку protected-main/source/dependencies,
-отдельный административный installer и ограниченные локальные read-only источники.
-Deployment Manager отвечает за собственную установку, private storage, Caddy и
-сети приложений; Server Infrastructure — только за подготовку и обслуживание
-хоста. Installer сохраняет существующие данные и inode lock, не запускает executor
-или Docker. `make installation-bundle` экспортирует явно выбранный SHA и заранее
-проверенные runtime assets; результат из develop остаётся недоверенным.
-Независимый административный канал и production bindings пока не настроены.
-
-Загрузка проверенного GHCR image cache имеет отдельное разрешение
-`prepare-project-router-image` в существующем one-shot executor/ledger, проверки
-точного digest/platform и no-op. Caddy provenance остаётся обязательным; проверка
-пустой конфигурации подготовлена для независимого resource attestor. Установка,
-image preparation, `first-bootstrap` и `first-project-router-rollout` требуют
-отдельных approvals. [Operator handoff](docs/production-installation.md#remaining-operator-prerequisites-and-acceptance)
-описывает blockers для installation, read-only VDS preflight и bootstrap.
-Production operations и автоматический CD не выполнялись и не включались.
+Manager владеет своей установкой, private storage, Caddy и сетями приложений;
+Server Infrastructure — подготовкой и обслуживанием хоста. Installation, image
+preparation, `first-bootstrap` и `first-project-router-rollout` — отдельные
+операционные scopes. Они не запускаются повторно обычными offline-командами.
+После первого rollout обновление образа идёт через CD; bootstrap и recovery
+сохраняют отдельные разрешения. См. [статус и delivery flow](docs/production-status.md).
 
 ## Структура репозитория
 
@@ -218,9 +130,8 @@ requirements-dev.txt           Закреплённые инструменты �
 Makefile                       Интерфейс fix / validate / check / plan / gateway-*
 ```
 
-Генерация Compose реализована; доставка runtime-конфигурации и production Caddy
-activation остаются будущими задачами. Синтетические fixtures не являются
-production-манифестами.
+Compose и production Caddy реализованы; runtime-конфигурация остаётся server-side
+state. Синтетические fixtures не являются production-манифестами.
 
 ## Локальная разработка и проверки
 
@@ -298,12 +209,13 @@ SMOKE_AUTHORIZE=disposable-local-docker. `check` никогда его не вы
 [Документ Stage 05](docs/docker-deployment-engine.md) описывает prerequisites,
 изоляцию, адресный cleanup и неполный live discovery. Реальный smoke не запускался.
 Успех Compose — `applied-unverified`; timeout/disconnect — `unknown` с обязательным
-fresh discovery. Readiness и release success остаются неподтверждёнными.
+fresh discovery. Этот низкоуровневый результат сам по себе не подтверждает readiness или release success.
 
 Stage 08 добавляет offline GitHub Actions для PR в `develop` и `main`: закреплённые
 Python/tools, pip cache, минимальные read permissions, `make check` и
-`make workflow-check` (actionlint). Отдельный `make ci` не нужен. Реальные VM/E2E,
-Docker, публикация образов и деплой в CI не запускаются. Required check
+`make workflow-check` (actionlint). Отдельный `make ci` не нужен. Эти offline PR
+checks не запускают VM/E2E, Docker, публикацию образов или деплой; release/CD
+workflows выполняются отдельно. Required check
 **Offline CI / Offline checks** нужно вручную включить в branch rules GitHub.
 См. [Stage 08](docs/stage-08-automation.md): установка инструментов и ручная процедура
 экспорта/проверки evidence успешной сессии перед отдельно подтверждаемыми остановкой
@@ -332,8 +244,8 @@ references; читать references нужно только для текуще�
 `main` — стабильная ветка, `develop` — интеграционная, рабочие ветки создаются
 строго от `develop`. После завершения обычных задач разрешены commit, push и PR в
 `develop`, если пользователь не установил более строгую границу. Review и merge
-выполняются отдельно: автоматические merge, tags/releases и production-операции
-не разрешены.
+выполняются отдельно: автоматические merge и tags/releases не разрешены;
+production-операции следуют своей policy.
 
 ## План этапов
 
@@ -345,24 +257,20 @@ references; читать references нужно только для текуще�
 | Stage 02 | Service Registry & Manifest Validation | Implemented offline; PR #2 merged |
 | Stage 03 | Desired State & Reconciliation Planning | Implemented offline; PR #3 merged |
 | Stage 04 | Caddy Gateway Foundation | Implemented offline; PR #4 merged into develop |
-| Stage 05 | Docker Deployment Engine | Implemented foundation; PR #5 merged; smoke not-performed; production apply blocked |
+| Stage 05 | Docker Deployment Engine | Implemented foundation; PR #5 merged; smoke not-performed; foundation boundary; production через Stage 09 |
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
-| Stage 07 | Local E2E & Integration Testing | Реализован; реальный локальный VM E2E пройден, 15/15; production acceptance ожидается |
+| Stage 07 | Local E2E & Integration Testing | Реализован; реальный локальный VM E2E пройден, 15/15; историческая локальная приёмка |
 | Stage 08 | GitHub Actions & Automation | Реализован офлайн; ручная процедура завершения VM ожидает live review |
-| Stage 09 | Production Integration & Release | One-shot execution, SSHSIG verification, trusted composition и ACTIVE UDS реализованы офлайн; ProjectRouter зарегистрирован; C3 — подготовка protected-main релиза; installation/первый rollout и 09.5/09.6 требуют отдельных approvals |
+| Stage 09 | Production Integration & Release | Серверный деплой и первый ProjectRouter rollout завершены по подтверждению оператора; Manager CD успешен; автоматическое обновление ProjectRouter и live rollback требуют отдельного evidence |
 
 Stage 05 выбирает Python CLI без изменений контрактов Stage 02–04. Stage C2
 зарегистрировал ProjectRouter с независимо проверенным digest. Stage 06 отвечает за readiness,
-rollback, journal и recovery; Stage 07 расширяет изолированные E2E. Полные live
-observations, настройка защиты production source, доставка конфигурации и index mapping
-требуют review до production-выполнения.
+rollback, journal и recovery; Stage 07 расширяет изолированные E2E. Production adapters и policy-gated CD реализованы поверх того же engine.
 
-SQLite durability зависит от надёжного локального storage/fsync. Журнал не заменяет
-live state или backup. Незавершённые runs блокируют новые journaled operations;
-crash analysis не повторяет mutations и не снимает неопределённость. Для production
-ещё нужны полные реальные Docker/gateway/runtime observations, защищённый source
-и authorization contract, доставка конфигурации, artifact retention, backup/recovery
-ownership и live acceptance. См. [ограничения и API Stage 06](docs/readiness-recovery.md).
+SQLite durability зависит от надёжного storage/fsync. Журнал не заменяет live state
+или backup. Незавершённые runs блокируют новые операции; recovery требует своего
+подписанного разрешения и не повторяет mutations автоматически.
+См. [ограничения и API Stage 06](docs/readiness-recovery.md).
 
 ## Изолированный локальный E2E
 
@@ -400,20 +308,20 @@ CLI: `python -m scripts.e2e.cli`; отдельные prepare/images/test/status/
 автоматически. `make e2e-check` и `make check` остаются полностью офлайн.
 **Подтверждённая локальная приёмка (2026-10-21):** сессия `4963fe050c4567f2`, receipt
 `complete/passed`, `realE2E=performed`, **15/15 реальных сценариев passed**; принятая
-реализация также прошла **779 offline tests**. Production deployment не выполнялся,
-Stage 08 добавляет offline CI; Stages 09.1–09.4A и механизм выполнения 09.4B.3
-реализованы офлайн. Production-установка/первый rollout и 09.5/09.6 остаются Planned.
+реализация также прошла **779 offline tests**. Production deployment в рамках
+Stage 07 не выполнялся. Позднее серверный деплой
+завершён: см. [текущий production-статус](docs/production-status.md).
 Предыдущие неудачные попытки и evidence их закрытия
 сохранены; journals намеренных crash/unknown сценариев остаются analysis-only,
 без replay. См. [результаты приёмки и историю](docs/local-e2e.md#verified-local-acceptance).
 
 ## Безопасность, ограничения и лицензирование
 
-Stage 07 разрешает только отдельно авторизованные E2E в disposable Ubuntu VM,
-включая test-only активацию loopback Caddy;
-запрещены VPS/SSH, production Ansible и контейнеры, production-активация Caddy, изменения DNS/доменов, production-секреты,
-автоматический деплой, изменения других репозиториев, merge и release tags.
-Будущие production-работы требуют отдельного разрешения. PR-проверки не должны
+Обычная разработка и PR-проверки остаются офлайн. Disposable VM E2E требует
+отдельных opt-in. Новые SSH/production-операции, изменения policy/ключей, bootstrap
+и recovery требуют применимого разрешения либо действующей узкой подписанной
+policy. Изменения других репозиториев, merge и release tags не разрешаются
+завершённым деплоем. PR-проверки не должны
 получать production-секреты. Git хранит ссылки на конфигурацию, без реальных
 учётных данных. `.gitignore` — только дополнительная защита; проверяй staged-файлы.
 

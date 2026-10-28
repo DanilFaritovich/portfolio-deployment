@@ -6,17 +6,29 @@ setup is in [README.md](README.md) / [README.ru.md](README.ru.md).
 
 ## Scope and boundaries
 
+Current status (2026-10-28): the operator confirms full production server
+deployment, including the first ProjectRouter rollout. Manager Production CD
+run 40590650857 succeeded with an executed deployment step. Read
+[production status and main history](docs/production-status.md) before making
+deployment-status claims. The latest reviewed automatic ProjectRouter CD attempt
+failed before later Manager fixes; subsequent automatic application update and
+production rollback acceptance need separate evidence. Do not infer live runtime
+state from a manifest, green offline CI or an old preparation document.
+
+Historical foundations:
+
 Stage 01 provides documentation and offline development checks. Stage 02
 implements the Service Registry contract, separate admission policy and bounded
 offline manifest validator. Stage 03 adds immutable desired/observed models and
 a pure offline reconciliation planner using explicit local snapshots. The real
-registry and admission allowlist are empty pending reviewed applications and confirmed digests.
+registry and separate admission policy now contain ProjectRouter.
 Stage 04 adds deterministic offline Caddy route/candidate previews and opt-in local
 configuration validation; PR #4 is merged into develop. Stage 05 adds a Python CLI
 Compose engine foundation, bounded Docker-only discovery, preflight, host flock,
-scoped execution and offline mocks. Real operations are limited to separately
-authorized disposable local smoke; it was not run during implementation. Full
-live registry/gateway observation integration and production apply remain blocked.
+scoped execution and offline mocks. At that stage, real operations were limited
+to separately authorized disposable local smoke; it was not run during
+implementation. Later production integration reuses the same engine with separate
+authenticated observation/execution bindings.
 Stage 05 PR #5 is merged into develop. Stage 06 adds offline readiness gates, a
 SQLite journal/LKG, constrained rollback and read-only crash recovery analysis in
 the same executor; Stage 06 PR #6 is merged into develop. Stage 07 adds a separate
@@ -25,12 +37,13 @@ Caddy activation and 15 real scenario definitions, reusing the same executor.
 Real local VM E2E passed **15/15** scenarios in session `4963fe050c4567f2`
 (`complete/passed`, `realE2E=performed`); all **6/6** GHCR fixture digests were
 published and anonymously verified. The accepted implementation passed
-**779 offline tests**. Production deployment was not performed; Stages 08–09 remain **Planned**.
+**779 offline tests**. This Stage 07 evidence is distinct from later production
+deployment. Stage 08 CI and Stage 09 production/CD mechanisms are implemented.
 Server provisioning, Ubuntu, SSH, users, Docker Engine and host hardening belong
 to `DanilFaritovich/portfolio-server-infrastructure`. Application repositories
 own source, CI, image builds/publication and deployment contracts.
 
-Do not implement Stages 08–09 without their own scoped task. Python CLI is selected;
+Further production/CD changes require their own scoped task. Python CLI is selected;
 SQLite via standard-library sqlite3 is the Stage 06 local journal, not live state.
 Do not add a daemon, database server, Kubernetes
 or deployment trigger without an explicit
@@ -46,7 +59,11 @@ architectural rationale and the relevant task scope.
   separate trust allowlist; policy changes require security review.
 - `schemas/`, `tests/fixtures/`: versioned application/admission schemas and
   synthetic positive/negative examples; fixtures are not production manifests.
-- `scripts/`: offline tooling plus constrained Stage 05 Python CLI engine; no production apply interface.
+- `scripts/`: offline tooling, the shared Python engine and production integration.
+- `scripts/production_integration/`, `scripts/cd/`, `installation/`: authenticated
+  one-shot execution, sealed installation/capsule, signed policy, CD and recovery.
+- `.github/workflows/`: offline checks, artifact publication, acceptance and
+  protected delivery through `cd-deploy.yml` and `production-bootstrap.yml`.
 - `scripts/compose.py`, `scripts/deployment.py`: immutable Compose/operations/results,
   resource preflight and scoped execution under host flock.
 - `scripts/docker_adapter.py`, `scripts/docker_discovery.py`: bounded local-only
@@ -65,13 +82,15 @@ architectural rationale and the relevant task scope.
   adapter; `scripts/gateway_cli.py`: preview CLI; `scripts/gateway_validation.py`:
   opt-in official local Caddy validation. See [Stage 04](docs/caddy-gateway.md).
   Desired routes never imply activation; retained candidates preserve active routes.
-  Unknown/incomplete gateway scope yields no full Caddyfile. No reload exists.
+  Unknown/incomplete gateway scope yields no full Caddyfile. Production reload
+  is a separate authorized integration in `scripts/production_integration/`.
 - `scripts/readiness.py`, `scripts/composite_state.py`: bounded probe and complete-source
   contracts; real disposable VM transports are isolated in `scripts/e2e/`.
 - `scripts/deployment_journal.py`, `scripts/deployment_lifecycle.py`: private SQLite
   transactions under host lock, intent before mutation, application-wide atomic LKG,
   conservative rollback and analysis-only crash recovery. See [Stage 06](docs/readiness-recovery.md).
-  Unfinished runs block further journaled work; no reset/resume CLI or production apply.
+  Unfinished runs block further journaled work. Separately signed production
+  recovery is narrowly scoped; no generic reset/resume or automatic replay exists.
 - `scripts/e2e/`, `scripts/e2e_guest.py`, `e2e/images/`: VM-only integration,
   separate test admission/image lock, real readers/probes, guarded activation,
   scenario runner and non-destructive cleanup. See [Stage 07](docs/local-e2e.md).
@@ -107,8 +126,11 @@ If `develop` is absent, establish it from `main` before creating a task branch.
 Use the existing Makefile as the main interface. Default checks/previews are offline:
 `make fix` normalizes project-owned text, preserving vendored skills;
 `make validate` performs read-only validation of the complete registry and
-admission policy; `make check` runs bootstrap checks, registry validation and
-Stage 02–07 offline tests. `make plan OBSERVED=<local.json> GIT_REVISION=<full-sha>`
+admission policy; `make check` runs bootstrap checks, registry validation,
+acceptance/Caddy contract checks and the offline pytest suite, including
+production/CD tests. `make cd-check` targets offline CD tests; `make cd-integration`
+requires its own disposable endpoint/image/evidence inputs and explicit opt-in.
+`make plan OBSERVED=<local.json> GIT_REVISION=<full-sha>`
 requires explicit offline inputs; blocked/degraded plans are not executable.
 `make gateway-render` requires the same inputs; JSON separates desired/current/retained
 candidate. `make gateway-check` runs offline gateway tests; `make gateway-validate`
@@ -123,7 +145,8 @@ from Docker inventory. Runtime refs and unverified OCI mappings block execution.
 `make e2e-check` is offline. `e2e-prepare`, `e2e-images`, `e2e-test`,
 `e2e-diagnose` and `e2e-clean` have separate explicit opt-ins; never run them
 implicitly. `e2e-status` is read-only Multipass metadata. No VM deletion, volume
-removal, automatic recovery replay or production Caddy activation is available.
+removal or automatic recovery replay is available through these E2E targets.
+Production Caddy activation is restricted to the authorized production executor.
 Run safe fixes before targeted checks, then `make check` once implementation
 stabilizes. Documentation-only changes need targeted documentation
 checks, without rerunning unchanged executable tests. No broader `verify`/`ci`
@@ -147,11 +170,14 @@ Do not change other repositories as a side effect.
 
 ## Security and operating boundaries
 
-Stage 01–06 work forbids VPS/SSH contact, production Ansible/containers, Caddy activation, DNS or
-domain changes, requesting/creating production secrets and automatic deployments.
-Stage 07 additionally permits only separately authorized disposable VM operations
-through its own opt-ins; implementation/offline validation never authorizes a run.
-Only explicitly authorized disposable local Docker smoke or VM E2E is allowed; default
+Ordinary development and PR checks remain offline. Production is already deployed;
+this does not grant new operation authority. New VPS/SSH contact, production
+Ansible/containers, Caddy activation, DNS/domain changes, production secrets,
+bootstrap and recovery require explicit authorization or an existing narrowly
+scoped signed policy. Configured CD operates only through its protected workflow,
+standing policy, exact-candidate approval and fresh live checks. Disposable VM
+operations still require their separate opt-ins; offline validation authorizes no run.
+Disposable local Docker smoke or VM E2E requires explicit authorization; default
 checks never connect to Docker. Never use production project names for smoke or
 remove preexisting volumes. Keep the fixed host lock inode; no unlink/prune/down.
 Future production work also requires explicit operation authorization or an

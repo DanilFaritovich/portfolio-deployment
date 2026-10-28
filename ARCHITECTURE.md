@@ -1,6 +1,19 @@
 # Portfolio Deployment architecture
 
-## Minimal continuous delivery — implementation, production activation pending
+## Minimal continuous delivery — production deployed
+
+As of 2026-10-28, the operator confirms full server deployment and the first
+ProjectRouter rollout. Manager Production CD run 40590650857 independently shows
+a successful executed deployment step. See [production status and main history](docs/production-status.md)
+for exact SHAs, run links and evidence limits. The latest reviewed automatic
+ProjectRouter CD attempt failed before later Manager fixes; a successful
+subsequent application update and production rollback drill remain separate
+acceptance items. No fresh host inspection was performed for this documentation.
+
+The later stage-by-stage sections preserve historical implementation boundaries.
+Their preparation-time missing bindings or unperformed operations are not a
+current host inventory. Inert defaults in a checkout remain closed; installed
+sealed production bindings and operator-approved policy supply live authority.
 
 Protected `main` now has two delivery paths. Manager `manager-release.yml` waits
 for successful exact-SHA Offline CI, builds the same bundle twice from Git objects
@@ -97,7 +110,9 @@ from inspection failure. Pull uses only the verified linux/amd64 digest, followe
 by two Engine bindings to its registry config/digest/platform. Existing cached
 images are verified without pulling. No bootstrap preparation pulls an image.
 These administrative delivery and cache paths have offline acceptance coverage;
-their production installation/execution remains separately authorized and unrun.
+their production installation/execution requires separate authority. The current
+deployment milestone is recorded above; individual administrative recovery paths
+are not declared performed solely from their offline coverage.
 
 Application CD projects only image/release claims into the sealed template and
 reruns complete existing admission. Verified current/target contracts feed the
@@ -161,9 +176,11 @@ the existing Manager CD, including whole-tree rollback and separately signed
 recovery. The capsule entry supports an already installed sealed Manager without
 changing its frozen bindings, launcher or journal schema; an older capsule needs
 separate administrative review/installation of this capability, never self-update
-through Manager CD. Production installation, bootstrap, first rollout and both live
-CD chains remain unperformed until separately authorized. Publishing artifacts or
-passing local checks does not establish production CD.
+through Manager CD. Production installation/bootstrap and first rollout are
+complete per operator;
+the Manager live CD chain has successful run evidence. Automatic application
+updates need separate success evidence. Publishing artifacts or passing local
+checks alone does not establish production CD.
 
 An independently installed capsule additionally provides root-only
 `operator-bootstrap-containment` for one failed first bootstrap with no previous
@@ -246,6 +263,11 @@ retains its one-second deadline. The two bootstrap postcondition rounds have a
 sixty-second aggregate bound, including their complete seal checks.
 
 ## Status and scope
+
+Current deployment and CD status is described at the top and in
+[production status](docs/production-status.md). The following chronology records
+what each implementation task established at the time, including gates that
+were still missing then. It does not roll back the completed production milestone.
 
 Stages 01–04 provide registry/admission validation, immutable planning models and
 offline Caddy previews. Stage 04 PR #4 is merged into `develop`. Stage 05 adds a
@@ -482,15 +504,15 @@ discovery cannot establish full Stage 03 registry/gateway evidence. See the
 
 | Owner / component | Responsibility | Status |
 | --- | --- | --- |
-| [Portfolio Server Infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure) | Ubuntu VPS, SSH/users/access policy, Docker Engine, system baseline, firewall and host security | External ownership; integration Planned; operation not verified here |
+| [Portfolio Server Infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure) | Ubuntu VPS, SSH/users/access policy, Docker Engine, system baseline, firewall and host security | External ownership; prepared host consumed by production deployment |
 | Service registry | Approved application identities, versioned multi-component contracts, references and storage declarations | Implemented offline; one registered ProjectRouter desired manifest |
 | Desired state | Per-application manifests selecting component digests and references | Deeply immutable normalized model implemented offline |
 | Validator | Bounded YAML, closed schemas, semantic/global checks and separate admission policy | Implemented offline |
 | Planner | Pure desired/observed comparison using explicit local snapshots; reviewable plan only | Implemented offline |
-| Compose engine | Deterministic renderer, bounded Docker discovery, ownership/preflight, lock and scoped executor | Implemented foundation with mocks; disposable smoke opt-in; full production observation/readiness integration pending |
-| Caddy gateway | Canonical offline route/candidate rendering and opt-in local validation | Foundation implemented offline; Stage 07 adds VM-only runtime/activation; production TLS Planned |
+| Compose engine | Deterministic renderer, bounded Docker discovery, ownership/preflight, lock and scoped executor | Shared engine with offline mocks, VM adapters and authenticated production integration |
+| Caddy gateway | Canonical offline route/candidate rendering and opt-in local validation | Offline previews plus production gateway/ACTIVE integration; deployment complete per operator |
 | State/result journal | Intent/events, readiness evidence, atomic application LKG and recovery status under host lock | Implemented with SQLite; Stage 07 disposable VM integration accepted by 15 real scenarios |
-| [Application repositories, e.g. project-router](https://github.com/DanilFaritovich/project-router) | Source, tests/CI, Docker builds, GHCR publishing and deployment contract | External ownership; integration Planned; deployability not verified |
+| [Application repositories, e.g. project-router](https://github.com/DanilFaritovich/project-router) | Source, tests/CI, Docker builds, GHCR publishing and deployment contract | External ownership; first ProjectRouter rollout complete per operator; later automatic update acceptance separate |
 
 Portfolio Deployment must not provision SSH/users, install Docker Engine or
 duplicate infrastructure Ansible. It consumes a separately provisioned host and
@@ -501,7 +523,7 @@ Applications build once and publish artifacts independently. This repository
 does not rebuild their source on the VPS or take over their CI. A repository name
 alone is not a deployment contract and does not establish that an image exists.
 
-## Target topology — Planned
+## Deployment topology
 
 ```text
 Application repository -> tests/build -> GHCR image@sha256:digest
@@ -517,17 +539,19 @@ Internet -> Caddy gateway -> shared proxy network -> HTTP application
                                            database / private dependency
 ```
 
-Arrows describe intended trust/data flows. They do not imply installed resources.
+Arrows describe the architecture; optional database/private dependencies are
+generic capabilities, not an assertion about installed ProjectRouter resources.
 Only Caddy intentionally publishes application HTTP(S) host ports (normally
 80/443). Infrastructure-owned management access is a separate boundary.
 
-## Publication and rollout flow — Planned
+## Publication and rollout flow
 
 1. An application validates/tests its source, builds for the supported host
    platform, publishes to GHCR and exposes the resulting immutable digest plus
    its runtime contract. A readable commit tag may accompany the digest.
-2. A trusted operator or approved automation proposes a desired-state change in
-   this repository. Publication of an image does not itself authorize rollout.
+2. A trusted operator proposes a registry change, or approved application CD
+   projects verified release claims into the sealed template and reruns admission.
+   Publication of an image does not itself authorize rollout.
 3. Offline CI validates declarations and plans with fixtures; reviewers approve
    service/domain/image ownership and configuration prerequisites. Untrusted PR
    input is never executable deployment code.
@@ -542,10 +566,12 @@ Only Caddy intentionally publishes application HTTP(S) host ports (normally
 7. Verify the affected path, record the outcome and last known-good state, then
    release the lock. Failure records partial state; it does not claim convergence.
 
-Git approval, green CI, production-source eligibility and operator authorization
-are separate gates. Stage 09.1 selects manual deployment from protected `main` in producer and manager;
-protection enforcement and exact-SHA CI evidence are prerequisites. Arbitrary task
-branches, develop artifacts and unapproved tags must not be deployed.
+Git approval, green CI, production-source eligibility and operation authorization
+are separate gates. First installation/bootstrap/rollout use scoped operator
+approvals; subsequent CD uses the signed standing policy plus exact-candidate
+approvals and fresh checks. Producer CI calls shared CD without requiring a new
+registry PR for each image update. Arbitrary task branches, develop artifacts
+and unapproved tags must not be deployed.
 
 ## Application registration contract — Implemented offline
 
@@ -640,7 +666,7 @@ A digest fixes content identity; it does not prove the artifact is trustworthy,
 vulnerability-free, available indefinitely or compatible with stored data.
 Allowlisted producers, retention and supply-chain verification need policy.
 
-## Container and network isolation — Rendered; production integration Planned
+## Container and network isolation
 
 Use stable service aliases and explicit project/resource ownership. Attach only
 gateway-facing HTTP containers to the deployment-owned shared proxy network.
@@ -659,7 +685,7 @@ volumes. Ban privileged containers, host namespaces and Docker socket mounts in
 applications and Caddy without a separately justified policy. Docker API access
 for the executor is effectively host administration and must be tightly scoped.
 
-## Caddy foundation — Implemented offline; HTTPS/reload Planned
+## Caddy previews and production gateway
 
 Stage 04 data flow is validated DesiredState + ObservedState + matching
 ReconciliationPlan → `scripts/gateway.py` → immutable GatewayCandidate. Frozen
@@ -711,7 +737,7 @@ updates need a reviewed strategy for readiness and traffic: in-place Compose
 replacement can interrupt traffic. Zero downtime/blue-green is not guaranteed.
 Preserve healthy unrelated routes and journal failed/partial convergence.
 
-## Rollback and recovery boundaries — Local VM E2E accepted; production acceptance pending
+## Rollback and recovery boundaries
 
 SQLite v1 commits intent before each mutation and stores component transitions,
 readiness evidence and application-wide atomic LKG pointers. Only proven stateless
@@ -735,7 +761,7 @@ testing. Lost SSH/host access and host rebuild belong to infrastructure recovery
 application data restore requires its own tested operator procedure. A deployment
 journal is neither a backup nor a disaster-recovery system.
 
-## Trust boundaries, secrets and permissions — Policy defined offline; enforcement pending
+## Trust boundaries, secrets and permissions
 
 - Application producer -> GHCR: trust approved repository/CI identity; digest
   selection does not automatically trust arbitrary publishers.
@@ -782,7 +808,9 @@ run and cleanup. All 15 real Docker/Caddy scenarios (**15/15**) passed in sessio
 `35af4761ee80d32e657174e08dd086a12022562d`. See
 [local E2E](docs/local-e2e.md).
 
-**Planned production verification (Stage 09):** separately approved host, access,
+**Production verification (Stage 09):** completed deployment is recorded in
+[production status](docs/production-status.md); each new operation still needs
+separately approved host, access,
 artifact, DNS/TLS, health and recovery checks. CI success alone does not authorize
 production mutations. Never present local results as production acceptance evidence.
 
@@ -790,8 +818,9 @@ See the preliminary [roadmap](docs/roadmap.md). Stages 01–04 are implemented
 offline; Stage 05 is an engine foundation with an unexecuted local smoke harness.
 Stage 06 is implemented offline; Stage 07 infrastructure passed real disposable
 VM acceptance; Stage 08 adds offline CI and Stage 09.1 defines production contracts/security.
-Stage 09.2 is implemented offline; Stages 09.3–09.5 remain Planned. Protected-source enforcement, configuration delivery, full live observation integration and
-operator recovery/retention procedures remain open. See
+Production adapters, signed execution and CD are implemented; first rollout is
+complete per operator. Further update/rollback acceptance and operator
+recovery/retention review retain their own evidence requirements. See
 [development instructions](AGENTS.md) for workflow boundaries.
 
 ## Stage 05 execution boundary
@@ -863,8 +892,8 @@ Acceptance evidence is retained outside Git: host receipt
 `~/.local/share/portfolio-deployment/e2e-state-agent.uZQWee44/4963fe050c4567f2.json`
 records `complete/passed`, `mode=real`, `realE2E=performed` and all 15 results.
 The accepted implementation also passed 779 offline tests. Production deployment
-was not performed; Stage 08 adds offline CI and Stage 09.1 defines offline contracts/security;
-Stage 09.2 is implemented offline; Stages 09.3–09.5 remain Planned.
+was not performed by Stage 07; it completed later, as recorded in
+[production status](docs/production-status.md).
 See [acceptance and failed-attempt history](docs/local-e2e.md#verified-local-acceptance).
 The historical acceptance recorded reports, baseline, gateway snapshots and intentional crash/unknown
 journals; current VM existence is not asserted here; recovery analysis confirms no automatic completion or replay. Failed

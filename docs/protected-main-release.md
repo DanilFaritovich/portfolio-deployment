@@ -1,5 +1,12 @@
 # Stage C3 — protected-main release review
 
+> Historical preparation/installation milestone. Full server deployment and the
+> first ProjectRouter rollout have since completed per operator (2026-10-28).
+> See [current status and delivery evidence](production-status.md). Statements
+> below about missing prerequisites or unperformed operations describe the
+> original review; do not rerun initial installation on the deployed host.
+
+
 Status: release preparation only. No merge, tag, GitHub Release, production
 installation, image acquisition or rollout is authorized by this review.
 Documentation corrections travel through a separate PR into `develop`; its manual

@@ -1,5 +1,12 @@
 # Stage 09.4B.4 — Installation and production integration
 
+> Historical preparation/installation milestone. Full server deployment and the
+> first ProjectRouter rollout have since completed per operator (2026-10-28).
+> See [current status and delivery evidence](production-status.md). Statements
+> below about missing prerequisites or unperformed operations describe the
+> original review; do not rerun initial installation on the deployed host.
+
+
 Status: implemented and verified offline with controlled sources and disposable
 filesystems. No VDS/SSH, VM, Docker, systemd, DNS or production mutation occurred.
 Production installation and first bootstrap remain blocked by the independent
