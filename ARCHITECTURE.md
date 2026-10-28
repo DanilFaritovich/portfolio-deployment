@@ -761,6 +761,13 @@ status, with configurable bounded deadlines and two consecutive successes. A hea
 an unhealthy running container is not automatically restarted by Docker health
 status. Gateway availability needs an independent check.
 
+An unavailable internal HTTP read yields unknown health after closing the
+container/network identity checks. Post-mutation verification permits only the
+target's missing health observation to reach the bounded readiness gate; all
+configuration checks and pre-mutation health gates remain strict. Unknown health
+after the deadline cannot promote LKG; a safe rollback still requires independently
+verified target runtime and the existing rollback policy.
+
 New services receive routes only after internal readiness. Existing service
 updates need a reviewed strategy for readiness and traffic: in-place Compose
 replacement can interrupt traffic. Zero downtime/blue-green is not guaranteed.
