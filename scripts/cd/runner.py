@@ -29,6 +29,7 @@ from scripts.cd.diagnostics import PUBLIC_FAILURES, remote_code
 # the observer handles a request. It is distinct from public proof freshness.
 OBSERVER_RPC_TIMEOUT = 30
 OBSERVER_JOIN_TIMEOUT = 90
+OBSERVER_WAIT_RPC_TIMEOUT = 1230
 
 
 DIAGNOSTICS = {
@@ -86,10 +87,14 @@ class Client:
             '-oStrictHostKeyChecking=yes', '-oUserKnownHostsFile=' + str(known), '-oClearAllForwardings=yes',
             '-oRequestTTY=no', '-oPermitLocalCommand=no', '-oProxyCommand=none', '-oConnectTimeout=10']
 
-    def call(self, request, *, role='automation', raw=b'', timeout=1500):
+    def call(self, request, *, role='automation', raw=b'', timeout=1500, stop=None):
+        argv = [*self.options, '-i', str(self.keys[role]), self.target, 'portfolio-cd-v1']
+        payload = canonical(request) + b'\n' + raw
         try:
-            result = subprocess.run([*self.options, '-i', str(self.keys[role]), self.target, 'portfolio-cd-v1'],
-                input=canonical(request) + b'\n' + raw, capture_output=True, timeout=timeout, check=False)
+            if stop is None:
+                result = subprocess.run(argv, input=payload, capture_output=True, timeout=timeout, check=False)
+            else:
+                result = self.cancellable_call(argv, payload, timeout, stop)
         except subprocess.TimeoutExpired:
             raise DockerError('cd-ssh-timeout') from None
         if result.returncode == 255:
@@ -122,6 +127,32 @@ class Client:
             raise DockerError('cd-remote-command-failed')
         return doc
 
+    @staticmethod
+    def cancellable_call(argv, payload, timeout, stop):
+        # Long polling must release SSH promptly when prepare/execute fails.
+        # It never grants automation authority and is never replayed on timeout.
+        deadline = time.monotonic() + timeout
+        with subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
+            try:
+                while True:
+                    require(not stop.is_set(), 'cd-observer-cancelled')
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(argv, timeout)
+                    try:
+                        stdout, stderr = process.communicate(input=payload, timeout=min(.25, remaining))
+                        return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+                    except subprocess.TimeoutExpired:
+                        payload = None
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.communicate(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.communicate()
+
     def approval(self, candidate):
         now = int(time.time())
         payload = {'version': 1, 'candidate': hashed(candidate), 'operator': os.environ['CD_AUTOMATION_PRINCIPAL'],
@@ -139,10 +170,15 @@ class Client:
         return base64.b64encode(sign(payload, principal=os.environ['CD_AUTOMATION_PRINCIPAL'],
             key=self.keys['automation'], namespace=REQUEST_NAMESPACE)).decode()
 
-    def observer(self, stop, observed=None):
+    def observer(self, stop, observed=None, wait=False):
+        not_before = int(time.time())
         while not stop.wait(.25):
             try:
-                challenge = self.call({'op': 'observe'}, role='observer', timeout=OBSERVER_RPC_TIMEOUT)
+                if wait:
+                    challenge = self.call({'op': 'observe-wait', 'not_before': not_before}, role='observer',
+                                          timeout=OBSERVER_WAIT_RPC_TIMEOUT, stop=stop)
+                else:
+                    challenge = self.call({'op': 'observe'}, role='observer', timeout=OBSERVER_RPC_TIMEOUT)
                 if stop.is_set():
                     return
                 require(challenge['policy_id'] == os.environ['CD_POLICY_ID'] and
@@ -168,8 +204,10 @@ class Client:
                 if stop.is_set():
                     return
                 result = self.call({'op': 'witness', 'receipt': signed}, role='observer', timeout=OBSERVER_RPC_TIMEOUT)
-                if result.get('status') == 'observed' and observed is not None:
-                    observed.set()
+                if result.get('status') == 'observed':
+                    not_before = challenge['created'] + 1
+                    if observed is not None:
+                        observed.set()
             except Exception:
                 # An absent challenge or failed HTTPS yields NO success receipt.
                 # Required server-side acceptance will time out and fail release.
@@ -226,7 +264,7 @@ def main():
         # Manager upgrades verify sealed trees/imports and never serve public
         # traffic. Observer intake competes with their bounded host observations.
         if kind != 'manager':
-            thread = threading.Thread(target=client.observer, args=(stop,observed), daemon=True)
+            thread = threading.Thread(target=client.observer, args=(stop,observed,not observe_only), daemon=True)
             thread.start()
         try:
             if observe_only:

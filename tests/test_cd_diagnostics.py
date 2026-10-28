@@ -367,7 +367,8 @@ def test_public_operations_keep_observer_and_always_stop_worker(client,monkeypat
             configured=target.__self__
             assert target.__func__ is runner.Client.observer and daemon is True
             assert set(configured.keys)==({'observer'} if kind=='observe-initial' else {'automation','observer'})
-            self.stop,self.observed=args
+            self.stop,self.observed,wait=args
+            assert wait is (kind=='application')
         def start(self):
             events.append('started')
             if kind=='observe-initial':self.observed.set()
