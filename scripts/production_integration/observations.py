@@ -90,6 +90,10 @@ class ProductionStateReader:
         require(observed.document['scope'] == {'kind': 'registry', 'complete': True, 'trusted': True},
                 'production-runtime-scope-incomplete')
         refs = set(desired_refs)
+        if type(runtime) is RuntimeSource:
+            # This catalog is independently admitted and all its images were
+            # verified by RuntimeInventory, including the rollback baseline.
+            refs.update(c['image'] for a in runtime.inventory.contracts for c in a.spec['components'])
         for app in observed.document['applications']:
             for c in app['components']:
                 if c['imageIdentity']:
