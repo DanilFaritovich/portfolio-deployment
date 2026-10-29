@@ -9,7 +9,6 @@ import time
 from scripts.cd.host import StandingReview
 from scripts.cd.policy import AutomationVerifier, pin, read_policy
 from scripts.cd.release import ImageRelease, ImageReleaseVerifier, ProjectedContent, require_forward_release
-from scripts.cd.rollout_recovery import await_public_witness
 from scripts.production_integration.artifacts import bind_engine_image, verify_oci_bytes
 from scripts.production_integration.authorization import OperationCandidate
 from scripts.production_integration.candidate import hashed
@@ -22,7 +21,7 @@ from scripts.production_integration.locking import production_host_lock, require
 from scripts.production_integration.observations import require
 from scripts.production_integration.operator_approval import TRUST, canonical, closed_json, trust_keys
 from scripts.production_integration.public_postconditions import ORIGIN, PATH, PublicPostconditions, tls_context
-from scripts.production_integration.public_witness import SignedPublicWitness
+from scripts.production_integration.public_witness import SignedPublicWitness, await_public_witness
 from scripts.production_integration.release_crypto import AttestationVerifier
 from scripts.production_integration.release_source import WorkflowCheck
 from scripts.production_integration.release_transport import GitHubRead, GHCRRead, HTTPSRead, IMAGE_REPOSITORY

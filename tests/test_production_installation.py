@@ -438,3 +438,43 @@ def test_installer_refuses_foreign_content_in_admin_directory(admin):
     with pytest.raises(InstallError, match='admin-socket-unsafe'):
         bootstrap.install(package(), admin)
     assert path.read_bytes() == b'foreign'
+
+
+def test_packaged_application_imports_without_administrative_sources(tmp_path):
+    """Match cd_entry's isolated import path; the checkout must not fill gaps."""
+    import importlib.util
+    import shutil
+
+    runtime = tmp_path / 'manager'
+    vendor = runtime / 'vendor'
+    # Supply runtime dependencies explicitly, without exposing the checkout or site.
+    for name in ('yaml', 'jsonschema', 'jsonschema_specifications', 'attr', 'attrs', 'referencing', 'rpds'):
+        spec = importlib.util.find_spec(name)
+        shutil.copytree(Path(spec.origin).parent, vendor / name,
+                        ignore=shutil.ignore_patterns('__pycache__'))
+    for directory in ('scripts', 'installation'):
+        for source in (ROOT / directory).rglob('*.py'):
+            target = install_bundle.source_target(source.relative_to(ROOT).as_posix())
+            if target is not None:
+                destination = runtime / target
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(source.read_bytes())
+    assert not (runtime / 'installation/operator_bootstrap.py').exists()
+    code = '''
+import sys
+sys.path[0:0] = [sys.argv[1], sys.argv[1] + '/vendor']
+def audit(event, args):
+    if event.startswith(('socket.', 'subprocess.')):
+        raise RuntimeError('application-import-must-be-passive')
+sys.addaudithook(audit)
+from scripts.cd.application import main, PublicAcceptance, await_public_witness
+from scripts.production_integration.public_witness import await_public_witness as shared
+assert callable(main) and callable(PublicAcceptance)
+assert await_public_witness is shared
+assert 'scripts.cd.rollout_recovery' not in sys.modules
+assert 'scripts.cd.bootstrap_containment' not in sys.modules
+assert 'installation.operator_bootstrap' not in sys.modules
+'''
+    result = subprocess.run([os.sys.executable, '-I', '-S', '-B', '-c', code, str(runtime)],
+                            cwd=tmp_path, capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
