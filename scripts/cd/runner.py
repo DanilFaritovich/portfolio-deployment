@@ -233,12 +233,16 @@ def deploy(client, kind, directory):
     require(mapping['image'].split('@')[1] == content['imageDigest'] and content['sourceRef'] == 'refs/heads/main' and
             content['sourceRepository'] == 'DanilFaritovich/project-router', 'cd-release-evidence-mismatch')
     for operation in ('prepare-cache', 'prepare-update'):
+        # Fixed phase names only: never log release, candidate or envelope data.
+        print('cd-stage; application-' + operation, flush=True)
         response = client.call({'op': 'application', 'request': {'op': operation, 'release': asdict(release)}})
         if response.get('status') in ('cache-present', 'no-op'):
             continue
         require(response.get('status') == 'prepared', 'cd-application-prepare-failed')
         candidate = response['candidate']
+        print('cd-stage; application-approval', flush=True)
         envelope = client.approval(candidate)
+        print('cd-stage; application-execute', flush=True)
         response = client.call({'op': 'application', 'request': {'op': 'execute', 'release': asdict(release),
                                'candidate': candidate, 'envelope': envelope}, 'context': client.context(candidate, envelope)})
         require(response.get('status') == 'succeeded', 'cd-application-deployment-failed')
