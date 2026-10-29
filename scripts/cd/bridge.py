@@ -145,6 +145,29 @@ def publish_request(policy, candidate, envelope, request):
     exclusive(directory/(claims.nonce+'.json'),raw)
 
 
+def application_result(result):
+    """Decode installed output without confusing transport with approval checks."""
+    require(len(result.stdout) <= HEADER_LIMIT, 'cd-installed-output-limit')
+    if not result.stdout:
+        return {'status': 'recovery-required'}
+    raw = result.stdout.strip()
+    # Frozen cd_entry.py predates canonical responses. Recognize ONLY its exact
+    # failure literal, never general noncanonical JSON or any success response.
+    if result.returncode != 0 and raw == b'{"status":"blocked","reason":"cd-installed-entry-failed"}':
+        return {'status': 'blocked', 'reason': 'cd-installed-entry-failed',
+                'diagnostic': 'cd-installed-entry-failed'}
+    from scripts.docker_adapter import DockerError
+    try:
+        document = closed_json(raw, HEADER_LIMIT)
+    except DockerError:
+        raise DockerError('cd-installed-result-invalid') from None
+    require(type(document) is dict and type(document.get('status')) is str,
+            'cd-installed-result-invalid')
+    require(result.returncode == 0 or document['status'] not in
+            ('prepared', 'cache-present', 'no-op', 'succeeded'), 'cd-installed-result-invalid')
+    return document
+
+
 def handle(role, request, stream):
     require(role in ('automation', 'observer') and type(request) is dict and type(request.get('op')) is str,
             'cd-bridge-request-invalid')
@@ -177,8 +200,7 @@ def handle(role, request, stream):
             publish_request(policy,candidate,base64.b64decode(request['request']['envelope'],validate=True),request)
         result = subprocess.run(['/usr/bin/python3', '-I', '-S', '-B', str(ROOT / 'cd_entry.py')],
             input=canonical(request['request']), capture_output=True, env={'LANG': 'C'}, cwd='/', timeout=1500, check=False)
-        require(len(result.stdout) <= HEADER_LIMIT, 'cd-installed-output-limit')
-        return closed_json(result.stdout.strip(), HEADER_LIMIT) if result.stdout else {'status': 'recovery-required'}
+        return application_result(result)
     if request['op'] == 'manager-prepare':
         require(set(request) == {'op', 'length'} and type(request['length']) is int and 0 < request['length'] <= LIMIT,
                 'cd-bundle-length-invalid')

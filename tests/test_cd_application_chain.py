@@ -398,3 +398,32 @@ def test_readiness_facts_distinguish_known_failure_from_unknown(worker,probe,exp
         (({'type':'worker' if worker else 'frontend'},SimpleNamespace(identifier='container'),None),)),)
     result=source.collect_selected('round',engine.identity(),selected)
     assert result.payload=={'container':expected}
+
+
+@pytest.mark.parametrize('changed_fact', ['routes4', 'rules4', 'listeners'])
+def test_kernel_policy_drift_survives_application_entry_without_mutation(chain, monkeypatch, capsys, changed_fact):
+    import io
+    from scripts.cd.bridge import application_result
+    from scripts.production_integration.operator_approval import closed_json
+
+    s = chain
+    journal = s.directory / 'journal.sqlite3'
+    before = journal.read_bytes()
+    # The policy was genuinely signed over the original facts by the fixture.
+    # No policy replacement/normalization or trust bypass is allowed on drift.
+    row = ({'protocol': 'tcp', 'address': '127.0.0.1:12345', 'port': 12345}
+           if changed_fact == 'listeners' else {'dst': '192.0.2.0/24', 'dev': 'foreign'})
+    s.facts.network[changed_fact].append(row)
+    request = {'op': 'prepare-cache', 'release': asdict(s.target)}
+    monkeypatch.setattr(application.sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(canonical(request))))
+    result_code = application.main(s.executor.verifier.installation)
+    raw = capsys.readouterr().out.encode()
+    result = closed_json(raw.strip(), 131072)
+    assert result_code == 2
+    assert result == {'status': 'blocked', 'reason': 'cd-installed-entry-failed',
+                      'diagnostic': 'cd-kernel-policy-drift'}
+    assert application_result(SimpleNamespace(returncode=result_code, stdout=raw)) == result
+    assert s.operations == [] and s.public_checks == [] and s.results == []
+    assert journal.read_bytes() == before
+    assert not (s.store / 'current-release.json').exists()
+    assert not (s.store / 'challenge.json').exists()

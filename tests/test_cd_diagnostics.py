@@ -425,3 +425,103 @@ def test_bootstrap_waits_for_observer_with_matching_shutdown_budget(client, monk
     else:
         bootstrap_runner.main()
     assert joined == [90]
+
+
+def test_frozen_entry_failure_is_not_reported_as_an_invalid_approval(monkeypatch, capsys):
+    import runpy
+    from pathlib import Path
+    from scripts.cd import bridge
+    from installation import cd_entry
+
+    # Exercise the actual frozen entry's exception response, not a retyped fixture.
+    monkeypatch.setattr('sys.argv', [cd_entry.__file__])
+    with monkeypatch.context() as entry_patch:
+        def fail():
+            raise RuntimeError('PRIVATE-SENTINEL')
+        entry_patch.setattr(cd_entry.os, 'geteuid', fail)
+        with pytest.raises(SystemExit) as stopped:
+            runpy.run_path(str(Path(cd_entry.__file__)), run_name='__main__')
+        assert stopped.value.code == 2
+    raw = capsys.readouterr().out.encode()
+    calls = []
+    monkeypatch.setattr(bridge, 'installation', lambda: object())
+    monkeypatch.setattr(bridge, 'installed_policy', lambda installed: object())
+    monkeypatch.setattr(bridge, 'updater', lambda *a: SimpleNamespace(fenced=lambda: None))
+    def invoke(*args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(returncode=2, stdout=raw, stderr=b'PRIVATE-SENTINEL')
+    monkeypatch.setattr(bridge.subprocess, 'run', invoke)
+    response = bridge.handle('automation', {'op': 'application', 'request': {'op': 'prepare-cache'}}, None)
+    assert response == {'status': 'blocked', 'reason': 'cd-installed-entry-failed',
+                        'diagnostic': 'cd-installed-entry-failed'}
+    monkeypatch.setattr(runner.subprocess, 'run', lambda *a, **k: SimpleNamespace(
+        returncode=2, stdout=bridge.canonical(response), stderr=b'PRIVATE-SENTINEL'))
+    transport = runner.Client.__new__(runner.Client)
+    transport.options, transport.keys, transport.target = [], {'automation': 'unused'}, 'unused'
+    with pytest.raises(DockerError, match='^cd-installed-entry-failed$') as caught:
+        transport.call({'op': 'application'})
+    runner.report_failure(caught.value)
+    output = capsys.readouterr().out
+    assert 'production-operator-approval-invalid' not in output and 'PRIVATE-SENTINEL' not in output
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize('raw', [b'PRIVATE-SENTINEL', b'{"status": "prepared"}', b'[]',
+    b'{"status":"prepared","status":"succeeded"}'])
+def test_installed_response_rejects_invalid_documents_with_its_own_code(raw):
+    from scripts.cd.bridge import application_result
+    with pytest.raises(DockerError, match='^cd-installed-result-invalid$'):
+        application_result(SimpleNamespace(returncode=0, stdout=raw))
+
+
+def test_installed_response_preserves_canonical_results_and_rejects_failed_success():
+    from scripts.cd.bridge import application_result
+    from scripts.production_integration.operator_approval import canonical
+    document = {'status': 'prepared', 'candidate': {'exact': 'unchanged'}}
+    assert application_result(SimpleNamespace(returncode=0, stdout=canonical(document)+b'\n')) == document
+    with pytest.raises(DockerError, match='^cd-installed-result-invalid$'):
+        application_result(SimpleNamespace(returncode=2, stdout=canonical(document)))
+
+
+@pytest.mark.parametrize('diagnostic', ['cd-kernel-policy-drift', 'PRIVATE-SENTINEL'])
+def test_application_failure_is_canonical_allowlisted_and_reaches_actions(client, monkeypatch, capsys, diagnostic):
+    import io
+    from scripts.cd import application, bridge
+    from scripts.production_integration.operator_approval import closed_json
+    monkeypatch.setattr(application.sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(b'{"op":"prepare-cache"}')))
+    def fail(*args):
+        raise DockerError(diagnostic)
+    monkeypatch.setattr(application, 'handle', fail)
+    assert application.main(object()) == 2
+    raw = capsys.readouterr().out.encode()
+    result = bridge.application_result(SimpleNamespace(returncode=2, stdout=raw))
+    assert closed_json(raw.strip(), 131072) == result
+    if diagnostic == 'cd-kernel-policy-drift':
+        assert result['diagnostic'] == diagnostic
+    else:
+        assert 'diagnostic' not in result
+    monkeypatch.setattr(runner.subprocess, 'run', lambda *a, **k: SimpleNamespace(
+        returncode=2, stdout=raw, stderr=b'PRIVATE-SENTINEL'))
+    with pytest.raises(DockerError) as caught:
+        client.call({'op': 'application'})
+    runner.report_failure(caught.value)
+    output = capsys.readouterr().out
+    assert 'PRIVATE-SENTINEL' not in output
+    assert (diagnostic in output) == (diagnostic == 'cd-kernel-policy-drift')
+
+
+def test_application_stage_logs_do_not_expose_release_or_candidate(tmp_path, capsys):
+    image = 'ghcr.io/danilfaritovich/project-router@sha256:' + 'a' * 64
+    (tmp_path / 'mapping.json').write_text(json.dumps({'image': image}))
+    (tmp_path / 'public-content.json').write_text(json.dumps({
+        'sourceSha': 'b' * 40, 'htmlSha256': 'c' * 64, 'runId': '1', 'runAttempt': '1',
+        'imageDigest': 'sha256:' + 'a' * 64, 'sourceRef': 'refs/heads/main',
+        'sourceRepository': 'DanilFaritovich/project-router'}))
+    responses = iter([{'status': 'prepared', 'candidate': {'private': 'PRIVATE-SENTINEL'}},
+                      {'status': 'succeeded'}, {'status': 'no-op'}])
+    client = SimpleNamespace(call=lambda *a, **k: next(responses),
+        approval=lambda *a: 'PRIVATE-ENVELOPE', context=lambda *a: 'PRIVATE-CONTEXT')
+    assert runner.deploy(client, 'application', tmp_path)['status'] == 'no-op'
+    assert capsys.readouterr().out.splitlines() == [
+        'cd-stage; application-prepare-cache', 'cd-stage; application-approval',
+        'cd-stage; application-execute', 'cd-stage; application-prepare-update']
