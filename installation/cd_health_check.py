@@ -10,6 +10,7 @@ try:
     document = json.loads((root / 'installation.json').read_bytes())
     installation = SealedInstallation(document['manager_sha'], tuple(map(tuple, document['files'])))
     installation.verify()
+    import scripts.cd.application
     import scripts.production_integration.bootstrap
     import scripts.production_integration.composition
     import bindings
