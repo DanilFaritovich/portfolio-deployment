@@ -307,6 +307,28 @@ def test_automatic_application_update_and_repeat_noop(chain):
     assert (s.store/'current-release.json').read_bytes()==current_before
 
 
+@pytest.mark.parametrize('transition_at', [2, 4])
+def test_update_reobserves_docker_health_transition(chain, monkeypatch, transition_at):
+    s = chain
+    inventory = s.engine.inventory
+    captures = []
+    def starting(kind):
+        records = inventory(kind)
+        if kind == 'container' and s.current_ref == s.target.image:
+            captures.append(None)
+            for record in records:
+                record['State']['Health'] = {'Status':
+                    'starting' if len(captures) < transition_at else 'healthy'}
+        return records
+    monkeypatch.setattr(s.engine, 'inventory', starting)
+    assert runner.deploy(s.client, 'application', s.evidence)['status'] == 'succeeded'
+    assert s.operations == ['pull', 'up']
+    assert len(captures) >= transition_at
+    with s.lock() as lease, Journal(s.directory, lease) as journal:
+        assert journal.last_good('project-router', 'web')['target'] == s.target.image
+        assert not journal.incomplete() and not journal.authorization_recovery()
+
+
 @pytest.mark.parametrize('outages', [1, 3, 100])
 def test_update_waits_for_http_listener_before_accepting(chain, monkeypatch, outages):
     from scripts.production_integration.http_read import InternalHTTPRead

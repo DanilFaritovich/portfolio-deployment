@@ -648,6 +648,88 @@ def test_active_double_read_detects_change(integrated):
     assert len(reads) == 2
 
 
+@pytest.mark.parametrize('expired', [False, True])
+def test_health_reobservation_discards_sources_and_keeps_freshness(integrated, monkeypatch, expired):
+    s = integrated
+    s.world.present = s.world.route = True
+    now, captures, rounds = [0.0], [], []
+    clock = lambda: now[0]
+    s.provider.clock = s.provider.reader.clock = clock
+    for port in s.ports.values():
+        port.clock = clock
+    inventory = s.engine.inventory
+    gateway = s.ports['gateway'].collect
+    probe = s.probes.probe
+    def changing(kind):
+        records = inventory(kind)
+        if kind == 'container':
+            captures.append(None)
+            records[0]['State']['Health'] = {'Status': 'starting' if len(captures) < 4 else 'healthy'}
+        return records
+    def collect(round_id, **kwargs):
+        rounds.append(round_id)
+        return gateway(round_id, **kwargs)
+    def health(*args, **kwargs):
+        if expired and len(rounds) == 2:
+            now[0] += 6
+        return probe(*args, **kwargs)
+    monkeypatch.setattr(s.engine, 'inventory', changing)
+    monkeypatch.setattr(s.ports['gateway'], 'collect', collect)
+    monkeypatch.setattr(s.probes, 'probe', health)
+    if expired:
+        with pytest.raises(DockerError, match='^production-source-incomplete-or-unverified$'):
+            s.provider.refresh()
+        assert s.provider.sample is None
+    else:
+        s.provider.refresh()
+        assert {source.round_id for source in s.provider.sample.sources} == {rounds[-1]}
+    assert len(rounds) == len(set(rounds)) == 2
+    assert not s.world.calls
+
+
+@pytest.mark.parametrize('failure', ['flapping-health', 'configuration', 'replacement', 'stopped', 'network'])
+def test_health_reobservation_stays_bounded_and_rejects_other_drift(integrated, monkeypatch, failure):
+    s = integrated
+    s.world.present = s.world.route = True
+    inventory = s.engine.inventory
+    captures = []
+    def changing(kind):
+        records = inventory(kind)
+        if kind == 'container':
+            captures.append(None)
+            record = records[0]
+            record['State']['Health'] = {'Status': 'starting' if len(captures) % 2 else 'healthy'}
+            if len(captures) >= 2:
+                if failure == 'configuration': record['Config']['Env'] = ['UNAPPROVED=1']
+                elif failure == 'replacement': record['Id'] = 'f' * 64
+                elif failure == 'stopped': record['State']['Status'] = 'exited'
+                elif failure == 'network': record['NetworkSettings']['Networks'] = {}
+        return records
+    monkeypatch.setattr(s.engine, 'inventory', changing)
+    code = 'production-docker-health-changed' if failure == 'flapping-health' else 'production-runtime-inventory-changed'
+    with pytest.raises(DockerError, match='^' + code + '$'):
+        s.provider.refresh()
+    assert len(captures) == (4 if failure == 'flapping-health' else 2)
+    assert s.provider.sample is None and not s.world.calls
+
+
+def test_coordinated_health_transition_never_reuses_host_round(integrated, monkeypatch):
+    s = integrated
+    s.world.present = s.world.route = True
+    inventory = s.engine.inventory
+    captures, barriers = [], []
+    def changing(kind):
+        records = inventory(kind)
+        if kind == 'container':
+            captures.append(None)
+            records[0]['State']['Health'] = {'Status': 'starting' if len(captures) == 1 else 'healthy'}
+        return records
+    monkeypatch.setattr(s.engine, 'inventory', changing)
+    with pytest.raises(DockerError, match='^production-docker-health-changed$'):
+        s.provider.reader(before_observation=lambda: barriers.append(None))
+    assert len(captures) == 2 and not barriers and not s.world.calls
+
+
 def test_historical_contract_not_replaced_by_desired(integrated):
     s = integrated
     s.world.present = True
