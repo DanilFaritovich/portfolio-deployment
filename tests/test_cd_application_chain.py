@@ -63,7 +63,7 @@ def identities(tmp_path):
 
 
 @pytest.fixture
-def chain(integrated, fixed_composition, identities, tmp_path, monkeypatch):
+def chain(integrated, fixed_composition, identities, tmp_path, monkeypatch, request):
     s = integrated
     installation = s.executor.verifier.installation
     s.world.present = s.world.route = True
@@ -124,6 +124,8 @@ def chain(integrated, fixed_composition, identities, tmp_path, monkeypatch):
         'caddyfile_sha256':hashlib.sha256(caddyfile.read_bytes()).hexdigest(),
         'caddy_runtime_hash':'a'*64,'caddy_evidence_hash':'b'*64,
         'rollout':{'infrastructure':tuple(s.inventory.infrastructure)}}
+    if hasattr(request, 'param'):
+        doc['host_contract']['kernel_mode'] = request.param
     # Real projected content/admission over a private copy of the registered template.
     repo = Path(__file__).resolve().parents[1]
     document = yaml.safe_load((repo/'registry/applications/project-router.yaml').read_text())
@@ -427,3 +429,71 @@ def test_kernel_policy_drift_survives_application_entry_without_mutation(chain, 
     assert journal.read_bytes() == before
     assert not (s.store / 'current-release.json').exists()
     assert not (s.store / 'challenge.json').exists()
+
+
+@pytest.mark.parametrize('chain', ['image-only'], indirect=True)
+@pytest.mark.parametrize('changed_fact', ['routes4', 'rules4', 'listeners'])
+def test_signed_image_only_policy_updates_without_reapproving_kernel_snapshot(chain, changed_fact):
+    s = chain
+    s.facts.network[changed_fact].append(
+        {'protocol': 'tcp', 'address': '127.0.0.1:12345', 'port': 12345}
+        if changed_fact == 'listeners' else {'dst': '192.0.2.0/24', 'dev': 'infrastructure'})
+    assert runner.deploy(s.client, 'application', s.evidence)['status'] == 'succeeded'
+    assert s.operations == ['pull', 'up']
+    assert s.public_checks[-1] == s.target.image
+    assert json.loads((s.store / 'current-release.json').read_bytes()) == asdict(s.target)
+    with s.lock() as lease, Journal(s.directory, lease) as journal:
+        assert journal.last_good('project-router', 'web')['target'] == s.target.image
+        assert not journal.incomplete() and not journal.authorization_recovery()
+    before = list(s.operations)
+    assert runner.deploy(s.client, 'application', s.evidence)['status'] == 'no-op'
+    assert s.operations == before
+
+
+@pytest.mark.parametrize('chain', ['image-only'], indirect=True)
+def test_image_only_policy_still_rejects_unapproved_container_runtime(chain):
+    s = chain
+    facts = s.world.container.facts
+    facts['host']['Privileged'] = True
+    s.world.container = replace(s.world.container, facts_json=encode(facts))
+    before = (s.directory / 'journal.sqlite3').read_bytes()
+    with pytest.raises(DockerError, match='^production-runtime-historical-contract-unknown-or-ambiguous$'):
+        runner.deploy(s.client, 'application', s.evidence)
+    assert s.operations == []
+    assert (s.directory / 'journal.sqlite3').read_bytes() == before
+    assert not (s.store / 'current-release.json').exists()
+
+
+@pytest.mark.parametrize('chain', ['disabled', True, None, {}], indirect=True)
+def test_signed_unknown_kernel_mode_fails_before_execution(chain):
+    s = chain
+    with pytest.raises(DockerError, match='^cd-host-contract-invalid$'):
+        runner.deploy(s.client, 'application', s.evidence)
+    assert s.operations == [] and s.public_checks == []
+
+
+def test_unsigned_kernel_mode_change_does_not_authorize_image_only_update(chain):
+    s = chain
+    standing = application.installed_policy(s.executor.verifier.installation)
+    standing.document['host_contract']['kernel_mode'] = 'image-only'
+    with pytest.raises(DockerError, match='^cd-policy-payload-changed$'):
+        runner.deploy(s.client, 'application', s.evidence)
+    assert s.operations == [] and s.public_checks == []
+
+
+@pytest.mark.parametrize('chain', ['image-only'], indirect=True)
+def test_image_only_policy_still_rejects_changed_infrastructure(chain, monkeypatch):
+    s = chain
+    inventory = s.engine.inventory
+    def changed_inventory(kind):
+        records = copy.deepcopy(inventory(kind))
+        if kind == 'network':
+            records[0]['Options']['com.docker.network.bridge.enable_icc'] = 'false'
+        return records
+    monkeypatch.setattr(s.engine, 'inventory', changed_inventory)
+    before = (s.directory / 'journal.sqlite3').read_bytes()
+    with pytest.raises(DockerError, match='^production-runtime-approved-infrastructure-missing-or-changed$'):
+        runner.deploy(s.client, 'application', s.evidence)
+    assert s.operations == [] and s.public_checks == []
+    assert (s.directory / 'journal.sqlite3').read_bytes() == before
+    assert not (s.store / 'current-release.json').exists()

@@ -21,8 +21,11 @@ class StandingReview:
     def __init__(self, installation, policy):
         self.installation, self.standing = installation, policy
         d = policy.current().document['host_contract']
-        require(set(d) == {'host_policy', 'kernel_sha256', 'storage_roots', 'caddyfile_sha256',
-                           'caddy_runtime_hash', 'caddy_evidence_hash', 'rollout'}, 'cd-host-contract-invalid')
+        fields = {'host_policy', 'kernel_sha256', 'storage_roots', 'caddyfile_sha256',
+                  'caddy_runtime_hash', 'caddy_evidence_hash', 'rollout'}
+        require(set(d) in (fields, fields | {'kernel_mode'}) and
+                type(d.get('kernel_mode', 'exact')) is str and
+                d.get('kernel_mode', 'exact') in ('exact', 'image-only'), 'cd-host-contract-invalid')
         self.policy = HostPolicy(**d['host_policy'])
         require((self.policy.host, self.policy.daemon) == (policy.document['host'], policy.document['daemon']),
                 'cd-host-identity-mismatch')
@@ -63,7 +66,14 @@ class StandingReview:
     def validate_facts(self, policy, host, docker, network, contents):
         self.current()
         d = self.document
-        require(policy == self.policy and hashed(host.network) == d['kernel_sha256'], 'cd-kernel-policy-drift')
+        require(policy == self.policy, 'cd-host-policy-unbound')
+        # Application CD never writes host routes/listeners or creates topology.
+        # Only an explicit signed opt-in delegates those facts to infrastructure;
+        # the complete approved Docker runtime below is still checked each time.
+        # Existing policies retain their exact snapshot constraint by default.
+        mode = self.standing.document['host_contract'].get('kernel_mode', 'exact')
+        if mode == 'exact':
+            require(hashed(host.network) == d['kernel_sha256'], 'cd-kernel-policy-drift')
         roots = {r['path']: r for r in contents if r['path'] in d['storage_roots']}
         require(set(roots) == set(d['storage_roots']) and
                 all({k: roots[p][k] for k in ('uid', 'gid', 'mode', 'device', 'inode')} == expected
