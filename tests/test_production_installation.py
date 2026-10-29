@@ -448,10 +448,14 @@ def test_packaged_application_imports_without_administrative_sources(tmp_path):
     runtime = tmp_path / 'manager'
     vendor = runtime / 'vendor'
     # Supply runtime dependencies explicitly, without exposing the checkout or site.
-    for name in ('yaml', 'jsonschema', 'jsonschema_specifications', 'attr', 'attrs', 'referencing', 'rpds'):
+    for name in ('yaml', 'jsonschema', 'jsonschema_specifications', 'attr', 'attrs',
+                 'referencing', 'rpds', 'typing_extensions'):
         spec = importlib.util.find_spec(name)
-        shutil.copytree(Path(spec.origin).parent, vendor / name,
-                        ignore=shutil.ignore_patterns('__pycache__'))
+        if spec.submodule_search_locations is None:
+            shutil.copyfile(spec.origin, vendor / (name + '.py'))
+        else:
+            shutil.copytree(Path(spec.origin).parent, vendor / name,
+                            ignore=shutil.ignore_patterns('__pycache__'))
     for directory in ('scripts', 'installation'):
         for source in (ROOT / directory).rglob('*.py'):
             target = install_bundle.source_target(source.relative_to(ROOT).as_posix())
