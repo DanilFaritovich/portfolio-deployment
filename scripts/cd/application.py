@@ -9,6 +9,7 @@ import time
 from scripts.cd.host import StandingReview
 from scripts.cd.policy import AutomationVerifier, pin, read_policy
 from scripts.cd.release import ImageRelease, ImageReleaseVerifier, ProjectedContent, require_forward_release
+from scripts.cd.rollout_recovery import await_public_witness
 from scripts.production_integration.artifacts import bind_engine_image, verify_oci_bytes
 from scripts.production_integration.authorization import OperationCandidate
 from scripts.production_integration.candidate import hashed
@@ -20,7 +21,7 @@ from scripts.production_integration.docker import EngineContract
 from scripts.production_integration.locking import production_host_lock, require_production_lease
 from scripts.production_integration.observations import require
 from scripts.production_integration.operator_approval import TRUST, canonical, closed_json, trust_keys
-from scripts.production_integration.public_postconditions import PublicPostconditions, tls_context
+from scripts.production_integration.public_postconditions import ORIGIN, PATH, PublicPostconditions, tls_context
 from scripts.production_integration.public_witness import SignedPublicWitness
 from scripts.production_integration.release_crypto import AttestationVerifier
 from scripts.production_integration.release_source import WorkflowCheck
@@ -79,8 +80,17 @@ class PublicAcceptance:
         # not success evidence and never grants authority to the observer key.
         payload = {'policy': asdict(public), 'routes': [asdict(r) for r in routes],
                    'ca': base64.b64encode(Path(public.ca_file).read_bytes()).decode(),
-                   'created': int(time.time()), 'policy_id': self.standing.identity}
-        durable_replace(STATE, CHALLENGE.name, canonical(payload))
+                   'policy_id': self.standing.identity}
+        subject = {'origin': ORIGIN, 'path': PATH, 'identity': list(public.identity),
+                   'routes': payload['routes'], 'policy': hashed(asdict(public))}
+        def publish():
+            self.installation.verify()
+            self.standing.current()
+            durable_replace(STATE, CHALLENGE.name,
+                            canonical({**payload, 'created': int(time.time())}))
+        # Sealed observer intake has its own bounded delivery window. Metadata
+        # only ends the rendezvous; full DNS/TLS/body and SSHSIG checks follow.
+        await_public_witness(publish, subject)
         witness = SignedPublicWitness(self.installation, self.standing.document['observer']['key'])
         PublicPostconditions(public, external=witness).verify(routes, public.identity)
         return True

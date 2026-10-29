@@ -85,6 +85,7 @@ def chain(integrated, fixed_composition, identities, tmp_path, monkeypatch, requ
     target = ImageRelease('d'*40,target_ref,hashlib.sha256(b'next').hexdigest(),'2','1')
     s.cached, s.operations, s.public_checks, s.results = {old_ref}, [], [], []
     s.fail = None
+    s.witness_after, s.challenge_publications = 1, 0
     s.current_ref = old_ref
     original_inspect = s.engine.inspect
     def inspect(kind, identity):
@@ -241,6 +242,7 @@ def chain(integrated, fixed_composition, identities, tmp_path, monkeypatch, requ
     monkeypatch.setattr(public_witness,'RECEIPT',receipt)
     monkeypatch.setattr(public_witness,'protected',lambda p:None)
     def witness():
+        if s.challenge_publications < s.witness_after:return
         challenge=json.loads((store/'challenge.json').read_bytes())
         subject={'origin':'https://danil-miftakhov.dev','path':'/en/',
             'identity':challenge['policy']['identity'],'routes':challenge['routes'],
@@ -248,13 +250,38 @@ def chain(integrated, fixed_composition, identities, tmp_path, monkeypatch, requ
         if s.fail=='witness' and s.current_ref==target_ref:return
         if s.fail=='rollback-witness':return
         now=int(time.time())
+        if s.fail=='witness-expired':now-=31
+        if s.fail=='witness-subject':subject['policy']='sha256:'+'0'*64
+        key = identities['automation' if s.fail=='witness-signature' else 'observer'][0]
         signed=json.loads(sign({'subject':subject,'observed_at':now,'expires':now+30},
-            principal='public-observer',key=identities['observer'][0],namespace=public_witness.NAMESPACE))
+            principal='public-observer',key=key,namespace=public_witness.NAMESPACE))
         signed.pop('principal');receipt.write_bytes(canonical(signed))
+    # The independent observer reacts to challenge publication, not to local HTTP.
+    durable_replace = application.durable_replace
+    def publish(directory, name, raw):
+        durable_replace(directory, name, raw)
+        if name == 'challenge.json':
+            s.challenge_publications += 1
+            witness()
+    monkeypatch.setattr(application, 'durable_replace', publish)
+    from scripts.cd.rollout_recovery import await_public_witness
+    from scripts.production_integration import installation as installation_module
+    protected = installation_module.protected
+    def receipt_protected(path):
+        if Path(path) != receipt:return protected(path)
+        if not receipt.exists():raise DockerError('production-installation-not-provisioned')
+    monkeypatch.setattr(installation_module, 'protected', receipt_protected)
+    def wait(publish, subject):
+        elapsed = [0.0]
+        def sleep(seconds):elapsed[0] += seconds
+        return await_public_witness(publish, subject, receipt=receipt,
+            clock=lambda: elapsed[0], sleep=sleep)
+    monkeypatch.setattr(application, 'await_public_witness', wait, raising=False)
+    s.receipt = receipt
     class PublicNetwork:
         def resolve(self,resolver,kind,deadline):return ('8.8.8.8',) if kind==1 else ()
         def https(self,address,ca,deadline):
-            witness();s.public_checks.append(s.current_ref)
+            s.public_checks.append(s.current_ref)
             body=b'old' if s.current_ref==old_ref else b'next'
             if s.fail=='public-body' and s.current_ref==target_ref:body=b'wrong release'
             return b'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: '+str(len(body)).encode()+b'\r\n\r\n'+body
@@ -519,3 +546,37 @@ def test_image_only_policy_still_rejects_changed_infrastructure(chain, monkeypat
     assert s.operations == [] and s.public_checks == []
     assert (s.directory / 'journal.sqlite3').read_bytes() == before
     assert not (s.store / 'current-release.json').exists()
+
+
+def test_repeat_noop_waits_for_delayed_independent_observer_without_mutation(chain):
+    s = chain
+    assert runner.deploy(s.client, 'application', s.evidence)['status'] == 'succeeded'
+    s.receipt.unlink()
+    # Forty renewals represent twenty seconds of sealed observer intake, longer
+    # than the fifteen-second public-probe budget and initial challenge lifetime.
+    s.witness_after, s.challenge_publications = 41, 0
+    journal = s.directory / 'journal.sqlite3'
+    before = (journal.read_bytes(), (s.store / 'current-release.json').read_bytes(),
+              list(s.operations), (s.lock_path / 'host.lock').stat().st_ino)
+    assert runner.deploy(s.client, 'application', s.evidence)['status'] == 'no-op'
+    assert s.challenge_publications == 41
+    assert before == (journal.read_bytes(), (s.store / 'current-release.json').read_bytes(),
+                      s.operations, (s.lock_path / 'host.lock').stat().st_ino)
+
+
+@pytest.mark.parametrize('failure,expected', [
+    ('witness', 'rollout-recovery-witness-delivery-timeout'),
+    ('witness-expired', 'rollout-recovery-witness-delivery-timeout'),
+    ('witness-subject', 'rollout-recovery-witness-delivery-timeout'),
+    ('witness-signature', 'public-witness-signature-invalid'),
+])
+def test_repeat_noop_rejects_missing_stale_unbound_or_forged_witness(chain, failure, expected):
+    s = chain
+    assert runner.deploy(s.client, 'application', s.evidence)['status'] == 'succeeded'
+    s.receipt.unlink()
+    s.fail = failure
+    journal = s.directory / 'journal.sqlite3'
+    before = (journal.read_bytes(), (s.store / 'current-release.json').read_bytes(), list(s.operations))
+    with pytest.raises(DockerError, match='^'+expected+'$'):
+        runner.deploy(s.client, 'application', s.evidence)
+    assert before == (journal.read_bytes(), (s.store / 'current-release.json').read_bytes(), s.operations)
