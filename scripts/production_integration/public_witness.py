@@ -84,3 +84,41 @@ class SignedPublicWitness:
         except (OSError, subprocess.TimeoutExpired, ValueError, TypeError, KeyError):
             raise DockerError('public-witness-unavailable') from None
         return subject
+
+
+def await_public_witness(publish, subject, *, receipt=None, timeout=90,
+                         clock=time.monotonic, wall=time.time, sleep=time.sleep):
+    """Bounded rendezvous, followed by the unchanged cryptographic public gate.
+
+    Sealed SSH intake can take longer than the public probe budget. Renew the
+    identical challenge while the independent observer probes/signs/delivers.
+    Receipt metadata only ends this wait; it never establishes acceptance.
+    """
+    from scripts.docker_adapter import DockerError
+    from scripts.production_integration.installation import protected
+    from scripts.production_integration.operator_approval import closed_json
+
+    path = RECEIPT if receipt is None else Path(receipt)
+    require(type(timeout) in (int, float) and 0 < timeout <= 90,
+            'rollout-recovery-witness-wait-invalid')
+    started, deadline = int(wall()), clock() + timeout
+    while clock() < deadline:
+        publish()
+        try:
+            protected(path)
+            with path.open('rb') as stream:
+                document = closed_json(stream.read(16385), 16384)
+            payload = document.get('payload', {})
+            if (type(payload) is dict and payload.get('subject') == subject
+                and type(payload.get('observed_at')) is int
+                and started <= payload['observed_at'] <= wall()
+                and wall() - payload['observed_at'] <= 30
+                and type(payload.get('expires')) is int
+                and wall() < payload['expires'] <= payload['observed_at'] + 30):
+                require(clock() < deadline, 'rollout-recovery-witness-delivery-timeout')
+                return
+        except DockerError as error:
+            if error.code != 'production-installation-not-provisioned':
+                raise
+        sleep(min(0.5, max(0, deadline - clock())))
+    require(False, 'rollout-recovery-witness-delivery-timeout')
