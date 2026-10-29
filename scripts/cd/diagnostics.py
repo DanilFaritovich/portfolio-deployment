@@ -2,6 +2,9 @@
 from scripts.docker_adapter import DockerError
 
 PUBLIC_FAILURES = {
+    'cd-kernel-policy-drift': 'live kernel routes, rules or listeners differ from the signed standing policy; an operator must review the host baseline; no execution is authorized',
+    'cd-installed-entry-failed': 'the installed application entry failed before returning a result; inspect through the operator channel; no approval failure is established',
+    'cd-installed-result-invalid': 'the installed application returned an invalid result; inspect through the operator channel; do not replay',
     'production-host-facts-changed-or-expired': 'host facts changed or exceeded the observation window; inspect observer contention before retrying',
     'cd-journal-recovery-required': 'an unfinished journal operation blocks Manager updates; use separately reviewed operator recovery; do not replay bootstrap',
     'cd-journal-history-lost': 'established journal history is missing; preserve state and inspect through the operator channel',

@@ -162,8 +162,14 @@ def handle(installation, request):
 
 
 def main(installation):
-    raw = sys.stdin.buffer.read(131073)
-    request = closed_json(raw, 131072)
-    result = handle(installation, request)
+    from scripts.cd.diagnostics import blocked
+    try:
+        raw = sys.stdin.buffer.read(131073)
+        request = closed_json(raw, 131072)
+        result = handle(installation, request)
+    except Exception as error:
+        # Keep reviewed failure codes inside the canonical protocol before the
+        # frozen entry's legacy fallback can mask them as invalid approvals.
+        result = blocked(error, 'cd-installed-entry-failed')
     print(canonical(result).decode())
     return 0 if result['status'] in ('prepared', 'cache-present', 'no-op', 'succeeded') else 2

@@ -122,6 +122,16 @@ writing journal/LKG or recreating containers. A delayed success transition keeps
 the existing rollback path available until public HTTPS and the separate SSHSIG
 witness pass. The gateway remains unchanged during image-only updates.
 
+The signed `host_contract.kernel_mode` optionally selects `image-only`: this
+removes only equality with the historical whole-host routes/rules/listeners
+snapshot. Omission or `exact` retains that equality; unknown modes fail closed.
+Host/daemon identity, approved HostPolicy, storage roots, Caddy config/runtime/
+evidence and complete approved Docker runtime inventory remain mandatory. The
+shared standing review also applies to separately authorized rollout/update
+recovery without granting those roles to automation. Adoption changes frozen
+Manager files and requires coordinated independent capsule/policy review and
+installation; passing offline tests does not establish live CD acceptance.
+
 Application observers use the read-only `observe-wait` intake to wait for a fresh
 public challenge before verifying the installed Manager/policy. This keeps
 repeated sealed inventory scans out of timed preflight observations. Waiting is
