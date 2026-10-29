@@ -33,6 +33,39 @@ def require(condition, reason):
         raise DockerError(reason)
 
 
+class DockerHealthChanged(DockerError):
+    """A discarded sampling round, never evidence that the target is ready."""
+
+
+def require_stable_inventory(before, after, reason):
+    if before == after:
+        return
+    # Classify only a health-status transition of the same running container.
+    # Every other resource/image/fact must still be exactly equal. The caller
+    # must discard ALL sources and reobserve, rather than accept this round.
+    health_only = (before.complete and after.complete and before.images == after.images
+                   and before.reasons == after.reasons and len(before.resources) == len(after.resources))
+    for first, second in zip(before.resources, after.resources):
+        if first == second:
+            continue
+        a, b = first.facts, second.facts
+        if (first.kind != 'container' or (first.kind, first.identifier, first.name) !=
+                (second.kind, second.identifier, second.name) or
+                any(f['state'].get('Status') != 'running' or
+                    f['state'].get('Health', {}).get('Status') not in ('starting', 'healthy', 'unhealthy')
+                    for f in (a, b))):
+            health_only = False
+            break
+        a['state'].pop('Health')
+        b['state'].pop('Health')
+        if a != b:
+            health_only = False
+            break
+    if health_only:
+        raise DockerHealthChanged('production-docker-health-changed')
+    raise DockerError(reason)
+
+
 class ProductionStateReader:
     """runtime port supplies complete delivery inventory incl. OLD managed specs.
 
@@ -59,6 +92,17 @@ class ProductionStateReader:
         return provider(self, clock=self.clock, max_age=self.max_age)
 
     def __call__(self, *, before_observation=None):
+        try:
+            return self._collect(before_observation=before_observation)
+        except DockerHealthChanged:
+            # One new complete read-only round handles starting -> healthy.
+            # Coordinated host rounds must keep their original barrier/baseline;
+            # never reuse host evidence across a retry or repeat a mutation.
+            if before_observation is not None:
+                raise
+            return self._collect()
+
+    def _collect(self, *, before_observation=None):
         from scripts.production_integration.runtime import validate_proxy
         start, round_id = self.clock(), uuid.uuid4().hex
         identity = self.docker.identity()
@@ -160,7 +204,8 @@ class ProductionStateReader:
                     'production-gateway-observation-mismatch')
         require(not route_by_app, 'production-gateway-universe-incomplete')
         after = discover(self.docker, refs, resolve_image=self.resolve_image)
-        require(before == after and identity == self.docker.identity(), 'production-state-changed-during-observation')
+        require(identity == self.docker.identity(), 'production-state-changed-during-observation')
+        require_stable_inventory(before, after, 'production-state-changed-during-observation')
         evidence = tuple(SourceEvidence(name, round_id, r.captured_at, True, True) for name, r in results.items())
         return CompositeSample(desired, observed, before,
                                (*evidence, SourceEvidence('docker', round_id, self.clock(), True, True)),

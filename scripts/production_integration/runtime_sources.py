@@ -14,7 +14,7 @@ from scripts.docker_discovery import discover, container_runtime, owned_resource
 from scripts.gateway import make_route
 from scripts.planning_inputs import load_observed_state
 from scripts.production_integration.candidate import hashed
-from scripts.production_integration.observations import SourceResult, require
+from scripts.production_integration.observations import SourceResult, require, require_stable_inventory
 from scripts.production_integration.trust import SourceAttestation
 
 
@@ -89,7 +89,8 @@ class RuntimeInventory:
             require(len(matches) == 1, 'production-runtime-historical-contract-unknown-or-ambiguous')
             selected.append(matches[0])
         again = discover(self.engine, refs, resolve_image=self.resolve_image)
-        require(again == observation and identity == self.engine.identity(), 'production-runtime-inventory-changed')
+        require(identity == self.engine.identity(), 'production-runtime-inventory-changed')
+        require_stable_inventory(observation, again, 'production-runtime-inventory-changed')
         return identity, observation, tuple(selected)
 
 
