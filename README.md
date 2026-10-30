@@ -4,8 +4,10 @@
 
 Central Docker/GitOps deployment platform for portfolio applications on one Ubuntu
 VPS. **Production server deployment is complete, including the first ProjectRouter
-rollout (operator confirmation on 2026-10-28).** Manager Production CD is also
-confirmed by a successful GitHub Actions run with an executed deployment step.
+rollout (operator confirmation on 2026-10-28).** Automatic ProjectRouter updates
+are confirmed by successful production CD runs on 2026-10-29 and 2026-10-30.
+Manager CD succeeded earlier; its latest reviewed run on 2026-10-29 failed at
+remote intake. These are separate delivery paths.
 
 [Current status and evidence](docs/production-status.md) records the reviewed
 `main` history, CI/release/CD links and evidence limits. Earlier Stage 01–09/C3/C4
@@ -18,9 +20,10 @@ and [admission policy](policy/admission.yaml). After successful CI for a push to
 `main`, its workflow calls shared production CD at a pinned Manager revision.
 Automatic delivery verifies the immutable digest, signed release claims, standing
 policy, fresh host state, readiness and public HTTPS/content. The Environment may
-require manual approval. The latest visible automatic ProjectRouter CD failed on
-2026-10-25, before later Manager fixes; this review has not established a successful
-post-bootstrap automatic application update. Policy and checks can block delivery.
+require manual approval. [ProjectRouter CD 41065912995](https://github.com/DanilFaritovich/project-router/actions/runs/41065912995)
+completed successfully on 2026-10-30, including the application update execution
+and independent HTTPS witness step. Policy and checks can block future delivery;
+a production rollback drill remains unverified in this review.
 
 Contracts and procedures: [manifest v1](docs/manifest-v1.md),
 [adding an application](docs/application-acceptance.md),
@@ -78,7 +81,7 @@ image rollback, analysis-only crash recovery and composite observation contracts
 Stage 07 supplies test-only probes/readers; post-crash mutation remains unauthorized.
 
 Production execution, live adapters, Caddy and CD are implemented. **Planned:**
-additional update/rollback acceptance and automation beyond the current narrow
+production rollback acceptance and automation beyond the current narrow
 ProjectRouter image-only contract. No zero-downtime claim.
 
 Technologies: Git, Docker Engine/Compose, GHCR, Caddy and a Python CLI using
@@ -121,11 +124,17 @@ scripts/composite_state.py      Full-source observation contract
 scripts/deployment_journal.py   Private versioned SQLite intent/events/LKG
 scripts/deployment_lifecycle.py Readiness, constrained rollback and recovery analysis
 scripts/local_docker_smoke.py   Separate opt-in disposable test lifecycle
+scripts/production/            Read-only host inspection and private reports
+scripts/production_integration/ Authenticated observations, execution and recovery
+scripts/cd/                    Policy-gated Manager and application delivery
+installation/                  Sealed launchers, CD capsule and operator setup
+.github/workflows/             Offline CI, isolated acceptance, release and CD
 registry/applications/         ProjectRouter registered; one manifest per application
 policy/admission.yaml           ProjectRouter eligibility; security review required
 schemas/                       Versioned closed application/admission contracts
 tests/fixtures/                 Synthetic examples and hostile YAML inputs
 requirements-dev.txt           Pinned offline validation tools
+requirements-offline-ci.txt    Additional pinned parallel pytest tooling for CI
 Makefile                       fix / validate / check / plan / gateway-* interface
 ```
 
@@ -134,7 +143,8 @@ server-side state. Synthetic fixtures are not production manifests.
 
 ## Local development and checks
 
-Requirements: Git, GNU Make, Python 3.10+ with `venv` and pip. Docker, VPS access,
+Requirements: Git, GNU Make, Python 3.10+ with `venv` and pip (CI uses Python
+3.12.12). Docker, VPS access,
 domains and production credentials are unnecessary. From the repository root:
 
 ```sh
@@ -216,6 +226,9 @@ Python/tools, pip caching, minimal read permissions, `make check` and
 checks do not run VM/E2E, Docker, publication or deployment;
 release/CD workflows are separate. Configure the required
 **Offline CI / Offline checks** check in GitHub branch rules manually.
+CI installs `requirements-offline-ci.txt` and runs pytest with two workers;
+local setup above uses the sequential suite. Separate integration workflows can
+run disposable Docker acceptance; they are not part of offline `make check`.
 See [Stage 08](docs/stage-08-automation.md) for tool setup and the reviewed manual
 procedure to export/verify successful-session evidence before separately approved
 VM stop/deletion. Stage 08 did not execute this procedure; current VM existence is not asserted here.
@@ -259,7 +272,7 @@ The preliminary [roadmap](docs/roadmap.md) can change after architectural review
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Implemented; real local VM E2E passed, 15/15; historical local acceptance |
 | Stage 08 | GitHub Actions & Automation | Implemented offline; manual VM completion procedure awaiting live review |
-| Stage 09 | Production Integration & Release | Server deployment and first ProjectRouter rollout complete per operator; Manager CD successful; automatic ProjectRouter update and live rollback need separate evidence |
+| Stage 09 | Production Integration & Release | First rollout complete; automatic ProjectRouter updates confirmed through 2026-10-30; latest reviewed Manager CD failed at remote intake; live rollback acceptance pending |
 
 Stage 05 selects Python CLI without changing Stage 02–04 contracts. Stage C2
 registered ProjectRouter with its independently verified digest. Stage 06 owns

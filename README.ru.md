@@ -4,8 +4,10 @@
 
 Централизованная платформа Docker/GitOps-деплоя портфолио-приложений на одном
 Ubuntu VPS. **Production-деплой на сервер завершён, включая первый ProjectRouter
-rollout (подтверждение оператора от 2026-10-28).** Manager Production CD также
-подтверждён успешным GitHub Actions run с выполненным шагом деплоя.
+rollout (подтверждение оператора от 2026-10-28).** Автоматические обновления
+ProjectRouter подтверждены успешными production CD от 2026-10-29 и 2026-10-30.
+Manager CD ранее проходил успешно; последний проверенный запуск от 2026-10-29
+завершился ошибкой на этапе remote intake. Это отдельные пути доставки.
 
 [Текущий статус и evidence](docs/production-status.md) содержат историю `main`,
 ссылки на CI/release/CD и границы подтверждённых результатов. Ранние документы
@@ -18,10 +20,11 @@ ProjectRouter зарегистрирован в [реестре](registry/applic
 push в `main` вызывает общий production CD с закреплённой версией Manager.
 Автоматическое обновление проверяет immutable digest, подписанные release claims,
 standing policy, свежее состояние сервера, readiness и публичный HTTPS/content.
-Environment может требовать ручное approval. Последний видимый автоматический
-ProjectRouter CD завершился ошибкой 2026-10-25, до последующих исправлений Manager;
-успешное автоматическое обновление приложения после первого деплоя ещё не
-подтверждено этой проверкой. Политика и проверки могут блокировать доставку.
+Environment может требовать ручное approval.
+[ProjectRouter CD 41065912995](https://github.com/DanilFaritovich/project-router/actions/runs/41065912995)
+успешно завершился 2026-10-30, включая выполнение обновления приложения и шаг
+с независимой проверкой HTTPS. Политика и проверки могут блокировать дальнейшую
+доставку; production rollback drill этой проверкой пока не подтверждён.
 
 Контракты и процедуры: [manifest v1](docs/manifest-v1.md),
 [добавление приложения](docs/application-acceptance.md),
@@ -79,7 +82,7 @@ stateless image rollback, анализ crash recovery и composite observation c
 Stage 07 добавляет VM-only probes/readers; mutations после crash остаются запрещены.
 
 Production executor, live adapters, Caddy и CD реализованы. **Planned:** дальнейшая
-приёмка update/rollback и расширение автоматизации за пределами текущего узкого
+приёмка production rollback и расширение автоматизации за пределами текущего узкого
 ProjectRouter image-only контракта. Zero-downtime не обещается.
 
 Технологии: Git, Docker Engine/Compose, GHCR, Caddy и Python CLI с PyYAML/jsonschema.
@@ -122,11 +125,17 @@ scripts/composite_state.py      Контракт полных observation source
 scripts/deployment_journal.py   Приватный versioned SQLite intent/events/LKG
 scripts/deployment_lifecycle.py Readiness, ограниченный rollback и recovery analysis
 scripts/local_docker_smoke.py   Отдельный opt-in disposable test lifecycle
+scripts/production/            Read-only диагностика сервера и приватные отчёты
+scripts/production_integration/ Аутентифицированные observations, execution и recovery
+scripts/cd/                    Доставка Manager и приложений с проверкой policy
+installation/                  Sealed launchers, CD capsule и настройка оператором
+.github/workflows/             Offline CI, изолированная приёмка, release и CD
 registry/applications/         ProjectRouter зарегистрирован; один manifest на приложение
 policy/admission.yaml           Допуск ProjectRouter; требуется security review
 schemas/                       Версионированные закрытые схемы
 tests/fixtures/                Синтетические примеры и недопустимый YAML
 requirements-dev.txt           Закреплённые инструменты офлайн-валидации
+requirements-offline-ci.txt    Дополнительные закреплённые инструменты parallel pytest для CI
 Makefile                       Интерфейс fix / validate / check / plan / gateway-*
 ```
 
@@ -135,7 +144,8 @@ state. Синтетические fixtures не являются production-ма
 
 ## Локальная разработка и проверки
 
-Нужны Git, GNU Make, Python 3.10+ с `venv` и pip. Docker, доступ к VPS, домены и
+Нужны Git, GNU Make, Python 3.10+ с `venv` и pip (CI использует Python 3.12.12).
+Docker, доступ к VPS, домены и
 production-учётные данные не нужны. Из корня репозитория:
 
 ```sh
@@ -217,6 +227,10 @@ Python/tools, pip cache, минимальные read permissions, `make check` �
 checks не запускают VM/E2E, Docker, публикацию образов или деплой; release/CD
 workflows выполняются отдельно. Required check
 **Offline CI / Offline checks** нужно вручную включить в branch rules GitHub.
+CI устанавливает `requirements-offline-ci.txt` и запускает pytest в два worker;
+локальная установка выше использует последовательный запуск тестов. Отдельные
+integration workflows могут запускать приёмку в одноразовом Docker-окружении;
+они не входят в offline `make check`.
 См. [Stage 08](docs/stage-08-automation.md): установка инструментов и ручная процедура
 экспорта/проверки evidence успешной сессии перед отдельно подтверждаемыми остановкой
 и удалением VM. Stage 08 не выполнял эту процедуру; текущее наличие VM здесь не утверждается.
@@ -261,7 +275,7 @@ production-операции следуют своей policy.
 | Stage 06 | Readiness, Journal & Recovery | Implemented offline; PR #6 merged; SQLite/LKG and analysis-only recovery |
 | Stage 07 | Local E2E & Integration Testing | Реализован; реальный локальный VM E2E пройден, 15/15; историческая локальная приёмка |
 | Stage 08 | GitHub Actions & Automation | Реализован офлайн; ручная процедура завершения VM ожидает live review |
-| Stage 09 | Production Integration & Release | Серверный деплой и первый ProjectRouter rollout завершены по подтверждению оператора; Manager CD успешен; автоматическое обновление ProjectRouter и live rollback требуют отдельного evidence |
+| Stage 09 | Production Integration & Release | Первый rollout завершён; автоматические обновления ProjectRouter подтверждены по 2026-10-30; последний проверенный Manager CD заблокирован на remote intake; приёмка live rollback ожидается |
 
 Stage 05 выбирает Python CLI без изменений контрактов Stage 02–04. Stage C2
 зарегистрировал ProjectRouter с независимо проверенным digest. Stage 06 отвечает за readiness,
