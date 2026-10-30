@@ -1,11 +1,13 @@
 # Implementation roadmap and historical milestones
 
-Current production milestone (2026-10-28): full server deployment and first
-ProjectRouter rollout are complete per operator. Manager Production CD has a
-successful executed deployment step. See [status, evidence and main history](production-status.md).
-The latest reviewed automatic ProjectRouter CD attempt failed before later
-Manager fixes; later automatic image update and live rollback acceptance need
-separate evidence. Minimal CD is implemented; the earlier digest-update-PR design
+Current production review (2026-10-30): full server deployment and first
+ProjectRouter rollout are complete per operator (2026-10-28). Automatic
+ProjectRouter updates succeeded on 2026-10-29 and 2026-10-30. Manager Production CD
+run 40948774870 attempt 2 succeeded on 2026-10-30 with `no-op`: the requested
+Manager revision was already installed and passed health verification. Its first
+attempt remains a historical failure. See [status, evidence and main history](production-status.md).
+Live rollback acceptance still needs separate evidence. Minimal CD is implemented;
+the earlier digest-update-PR design
 below is historical, not the current trigger contract.
 
 Stages 01–08 retain their original offline/VM acceptance milestones. Stage 07
@@ -38,8 +40,8 @@ acceptance boundary, not a present-day prohibition or current server state.
 | Stage 09.4B.3 — Production Execution & Authorization | Host-local one-shot mechanism, exact candidates, consumed authorization ledger, same engine/lock/lifecycle and installation handoff | Implemented; operator confirms completed installation and first rollout; future operations retain signature/source/state gates |
 | Stage 09.4B.4 — Installation & Production Integration | Exact install bundles, independent manager source review, administrative initial installer, local read sources and separately approved GHCR cache preparation in the existing executor | Implemented; initial installation complete per operator; future administrative operations require separate authority |
 | Stage 09.4B.7 — Trusted Caddy Image Producer | Authenticated locked release/rootfs, PR build, protected-main GHCR publication, signed provenance and separate Caddy verification | Implemented; signed main publication and isolated runtime acceptance established; gateway deployment complete per operator |
-| Stage 09.5 — Update, Rollback & Release Acceptance | Controlled production update/rollback and operational acceptance | Update/rollback mechanisms implemented; Manager CD run successful; additional application update and live rollback acceptance need separate evidence |
-| Stage 09.6 — Automated Continuous Deployment | Protected producer CI calls pinned shared CD under signed policy; Manager main release triggers Manager CD | Implemented; Manager live CD successful; latest reviewed automatic ProjectRouter CD failed, subsequent success evidence pending |
+| Stage 09.5 — Update, Rollback & Release Acceptance | Controlled production update/rollback and operational acceptance | Automatic ProjectRouter updates confirmed through 2026-10-30; live rollback acceptance still needs separate evidence |
+| Stage 09.6 — Automated Continuous Deployment | Protected producer CI calls pinned shared CD under signed policy; Manager main release triggers Manager CD | Implemented; ProjectRouter automatic updates successful; Manager CD attempt 2 successful with verified installed revision/health and no-op on 2026-10-30 |
 
 Stage 02 defines the [v1 application and admission contracts](manifest-v1.md),
 accepts immutable OCI manifest/index digests with explicit `linux/amd64`, and

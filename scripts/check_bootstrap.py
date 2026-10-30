@@ -138,16 +138,16 @@ def check_links(path, content):
 def check_readmes():
     en = (ROOT / "README.md").read_text()
     ru = (ROOT / "README.ru.md").read_text()
-    lock = load_yaml((ROOT / ".codex-standards.lock.yaml").read_text())
     require("(README.ru.md)" in en and "(README.md)" in ru, "missing language links")
-    stages = lambda text: re.findall(r"^\| Stage (\d{2}) \| ([^|]+)\|", text, re.M)
-    require(stages(en) == stages(ru) and len(stages(en)) == 9, "README roadmap mismatch")
     require(len(re.findall(r"^## ", en, re.M)) == len(re.findall(r"^## ", ru, re.M)),
             "README section-count mismatch")
-    # Shared technical facts and setup must remain consistent across translations.
+    # Keep the entry points useful without requiring implementation history or
+    # agent standards to be duplicated from the linked documentation.
     for text in (en, ru):
-        for token in REQUIRED | {lock["source"]["ref"],
-                                 "docker-deployment-platform v1", "Planned"}:
+        for token in {"Python", "Docker Compose", "GHCR", "Caddy", "SQLite", "pytest",
+                      "(ARCHITECTURE.md)", "(docs/production-status.md)",
+                      "(docs/roadmap.md)", "(AGENTS.md)", "(LICENSE)",
+                      "https://danil-miftakhov.dev/"}:
             require(token in text, f"README missing shared fact: {token}")
     blocks = lambda text: re.findall(r"```sh\n(.*?)```", text, re.S)
     require(blocks(en) == blocks(ru) and bool(blocks(en)), "README setup-command mismatch")

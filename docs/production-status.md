@@ -1,31 +1,60 @@
 # Production status and delivery evidence
 
-Status reviewed on **2026-10-28**. The operator confirms that the full server
-deployment, including the first ProjectRouter rollout, has completed. This
+Status reviewed on **2026-10-30** through read-only GitHub Actions metadata and
+selected job logs. The operator confirmed on 2026-10-28 that the full server
+deployment, including the first ProjectRouter rollout, had completed. This
 supersedes earlier preparation-only status in the Stage 01–09/C3/C4 documents.
 Those documents retain historical checks, decisions and installation procedures;
 their original missing prerequisites are not a current host inventory.
+
+Automatic ProjectRouter updates are now confirmed. The latest reviewed run
+41065912995 succeeded on 2026-10-30; its deploy job ran both cache preparation
+and application update execution, followed by successful completion of the step
+that includes the independent HTTPS witness. Manager delivery is separate:
+run 40948774870 attempt 2 succeeded on 2026-10-30. Its executed deploy step returned
+`{"manager_sha": "c4fe9529e258330c71d24207c895457c7fdf3e32", "status": "no-op"}`.
+The requested Manager was already installed and passed health verification;
+this attempt did not exchange the installed tree. Attempt 1's remote intake
+failure on 2026-10-29 is retained below, rather than relabelled as a success.
 
 ## Evidence and its limits
 
 | Evidence | Result | What it establishes |
 | --- | --- | --- |
 | Operator confirmation on 2026-10-28 | Full server deployment completed | Production installation and first ProjectRouter deployment are complete; this documentation task did not repeat SSH or host inspection |
+| [ProjectRouter production CD 41065912995](https://github.com/DanilFaritovich/project-router/actions/runs/41065912995) | Success, 2026-10-30 UTC; deploy job and step executed | Automatic update for source `3561448d8feca199d81b6ab0a7d272c1eff2e06f`; job log records `application-prepare-update`, approval and execution, not only a skipped or no-op job |
+| [ProjectRouter production CD 40961129201](https://github.com/DanilFaritovich/project-router/actions/runs/40961129201) | Success, 2026-10-29 UTC; deploy step executed | A further successful post-bootstrap application CD run for `3edeb64737db26b82b70013d34b99f6da5460611` |
+| [Manager Offline CI 40948258783](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40948258783) | Success, 2026-10-29 UTC | Exact-source checks for current reviewed main `c4fe9529e258330c71d24207c895457c7fdf3e32` |
+| [Manager trusted release 40948258727](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40948258727) | Success, same SHA | Release publication succeeded; this alone does not establish installation |
+| [Manager Production CD 40948774870, attempt 2](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40948774870/attempts/2) | Success, 2026-10-30 UTC; deploy step executed | `no-op` for `c4fe9529e258330c71d24207c895457c7fdf3e32`; installed revision and health verified, no new installation change |
+| [Manager Production CD 40948774870, attempt 1](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40948774870/attempts/1) | Failure, 2026-10-29 UTC; deploy step failed | Historical `cd-remote-intake-blocked`; the later attempt passed, but does not establish which prerequisite changed |
 | [Manager Offline CI 40590290001](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40590290001) | Success, 2026-10-27 UTC | Exact-source checks for `b47e2d684e77022f3b3a58edd906f8c282958d42` |
 | [Manager trusted release 40590289784](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40590289784) | Success, same SHA | Signed Manager release publication |
 | [Manager Production CD 40590650857](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40590650857) | Success; `deploy` job and deployment step ran | Live Manager CD path succeeded; not proof of an application image update |
 | [ProjectRouter CI 40218438797](https://github.com/DanilFaritovich/project-router/actions/runs/40218438797) | Success, 2026-10-25 UTC | Producer CI for `d72f6bbac3d90d246dd5f9751cd2e3a30d871279` |
-| [ProjectRouter production CD 40218789081](https://github.com/DanilFaritovich/project-router/actions/runs/40218789081) | Failure, 2026-10-25 UTC | Latest visible automatic application delivery attempt did not succeed; it predates the later Manager fixes |
+| [ProjectRouter production CD 40218789081](https://github.com/DanilFaritovich/project-router/actions/runs/40218789081) | Failure, 2026-10-25 UTC | Historical failed attempt before later Manager fixes; superseded as current CD status by the successful runs above |
 
-No successful subsequent automatic ProjectRouter image update or production
-rollback drill was established by this review. Successful first deployment does
-not supply that separate evidence. Failed bootstrap attempts remain historical
+No production rollback drill was established by this review. Successful updates
+do not supply that separate evidence or a fresh observation of current host state.
+Failed bootstrap attempts remain historical
 failed attempts even after separately approved recovery; do not relabel them as
 successful Actions runs. Private host receipts, journals, credentials and runtime
 bindings remain outside Git. The registered digest is desired state, not a fresh
 observation of the running container.
 
 ## Main history reviewed
+
+On 2026-10-30 the reviewed remote `main` head was
+[`c4fe9529e258330c71d24207c895457c7fdf3e32`](https://github.com/DanilFaritovich/portfolio-deployment/commit/c4fe9529e258330c71d24207c895457c7fdf3e32)
+(release PR #157), with successful Offline CI and Manager release as listed above.
+Remote `develop` was `72568258b016d2acf4acd00a2552024ddf0e05ab`; comparison showed
+one release merge commit ahead on main and no file differences. Later work since
+the previous review adds signed applied-update verification recovery, bounded
+readiness/health observation, independent HTTPS witness rendezvous and a fix for
+application imports inside the packaged Manager runtime. Implemented recovery
+does not establish a live rollback or recovery drill.
+
+The following records the earlier 2026-10-28 history review for provenance.
 
 The authoritative remote `main` head at review was
 [`b47e2d684e77022f3b3a58edd906f8c282958d42`](https://github.com/DanilFaritovich/portfolio-deployment/commit/b47e2d684e77022f3b3a58edd906f8c282958d42)
@@ -69,8 +98,8 @@ ProjectRouter main push → successful CI and immutable signed release evidence
 the producer's reusable-workflow SHA is a separate pin. Neither automatically
 tracks Manager `main`. Environment approvals, trust/policy mismatch, missing
 evidence or unfinished journal/recovery state can block delivery. The producer
-workflow is configured, but the failed application run above means a successful
-post-bootstrap automatic update still needs its own run evidence.
+workflow has successful post-bootstrap update evidence above; future releases
+still have to pass the same gates.
 
 Manager delivery follows successful protected-main **Manager trusted release**.
 Image-only ProjectRouter updates preserve the gateway; exact no-op checks health
