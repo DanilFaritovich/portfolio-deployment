@@ -58,27 +58,60 @@ Module responsibilities and trust boundaries are in [ARCHITECTURE.md](ARCHITECTU
 
 ## Quick start
 
-Requires Git, GNU Make, Python with `venv` and pip. Docker, server access and
-production credentials are unnecessary for local offline checks.
+This is a command-line deployment tool, with no web interface to open on localhost.
+Start with the offline walkthrough below; it validates the registry and produces
+plans/configuration without Docker or server credentials. Real deployments are
+covered under [Running deployments](#running-deployments).
+
+### 1. Install local tools
+
+Use Python **3.10+** with `venv` and pip, Git and GNU Make. CI uses Python 3.12.12.
+For an Ubuntu 24.04 workstation:
+
+```sh
+sudo apt-get update
+sudo apt-get install --yes git make python3 python3-venv python3-pip
+```
+
+### 2. Clone and prepare the environment
 
 ```sh
 git clone https://github.com/DanilFaritovich/portfolio-deployment.git
 cd portfolio-deployment
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
-make check PYTHON=.venv/bin/python
+make validate PYTHON=.venv/bin/python
 ```
 
-To inspect the registered application's Compose configuration without deploying:
+Run subsequent commands from this repository directory. Virtualenv activation is
+unnecessary: commands explicitly use `.venv/bin/python`. Validation should print
+`OK: registry validated` for the included ProjectRouter manifest. If `venv` or
+`make` is missing, complete step 1 before continuing.
+
+### 3. Generate your first deployment plan
 
 ```sh
-make compose-render PYTHON=.venv/bin/python APPLICATION=project-router GIT_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa COMPOSE_FORMAT=json
+make plan PYTHON=.venv/bin/python OBSERVED=tests/fixtures/observed/noop.json GIT_REVISION="$(git rev-parse HEAD)" PLAN_FORMAT=text
 ```
 
-The SHA above is a synthetic example; replace it with the intended full commit SHA.
-Offline planning also requires an explicit snapshot of observed state.
-See the [planning contract](docs/reconciliation-planning.md) and
-[Compose engine guide](docs/docker-deployment-engine.md).
+The included snapshot represents a synthetic empty environment. Against today's
+registry, the plan reports `changes`, application/component creation and a route
+change, with `executed=false`. Nothing is deployed. For your own analysis, replace
+`OBSERVED` with a validated snapshot in the [planning contract](docs/reconciliation-planning.md)
+format; this example does not discover your computer or production server.
+
+### 4. Inspect the generated Compose configuration
+
+```sh
+make compose-render PYTHON=.venv/bin/python APPLICATION=project-router GIT_REVISION="$(git rev-parse HEAD)" COMPOSE_FORMAT=yaml
+```
+
+The terminal should show a Compose document with a `web` service, its pinned GHCR
+image, security settings and networks. This is a preview, not a standalone
+`docker compose up` setup: the proxy network and runtime prerequisites belong to
+the managed deployment. See the [Compose engine guide](docs/docker-deployment-engine.md).
+Use `make check PYTHON=.venv/bin/python` for the full offline suite; it can take
+several minutes.
 
 ## Quality and testing
 
@@ -115,6 +148,52 @@ remains unverified. Exact run links and evidence limits are in
 Host provisioning belongs to
 [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure).
 Production installation and recovery use separate operator procedures and authority.
+
+## Running deployments
+
+### Disposable local VM
+
+After the local setup above, the guided E2E runner can exercise real deployments
+in disposable Ubuntu VMs. It requires Linux amd64 with KVM, working/authenticated
+Multipass and at least 20 GiB free on the home filesystem. First-run fixture
+preparation can also require GHCR publication access. The target owner defaults
+to the GitHub `origin` owner; set `E2E_FIXTURE_OWNER` to an owner you can publish
+under when preparing your own images.
+
+```sh
+make e2e PYTHON=.venv/bin/python
+```
+
+The runner asks for separate confirmations before creating VMs, preparing images
+and running Docker/Caddy operations. It uses VM Docker, not the host daemon.
+Read the [E2E prerequisites and procedure](docs/local-e2e.md#prerequisites-and-topology)
+before starting; retain the generated receipts and reports.
+
+### Your own VPS
+
+This is currently a deployment platform tailored to the author's infrastructure,
+not a general-purpose installer. A clone and `.env` are insufficient for another
+server: repository/domain identities, trusted workflows and host bindings need
+reviewed adaptation in code and policy.
+
+The setup sequence is:
+
+1. Prepare Ubuntu 24.04 amd64, SSH access, Docker/Compose and DNS through the
+   [server infrastructure project](https://github.com/DanilFaritovich/portfolio-server-infrastructure).
+2. Review your application manifest/admission and source-signature requirements
+   using the [application onboarding guide](docs/application-acceptance.md).
+3. Prepare verified Manager/Caddy artifacts, actual host bindings, operator keys,
+   the signed policy and CD capsule; configure protected GitHub Environments.
+   See [installation](docs/production-installation.md) and the
+   [current CD architecture](ARCHITECTURE.md#minimal-continuous-delivery--production-deployed).
+4. Perform separately authorized installation, gateway bootstrap, image preparation
+   and first rollout through the [bootstrap workflow](.github/workflows/production-bootstrap.yml).
+5. Verify readiness and public HTTPS, then use signed release-driven CD for
+   subsequent updates. See the [delivery flow](docs/production-status.md#what-happens-after-a-projectrouter-update).
+
+Production guides include historical host values and preparation milestones;
+they are reference procedures, not reusable approvals for a new VPS. A portable,
+unattended installation path is not implemented.
 
 ## Limitations
 

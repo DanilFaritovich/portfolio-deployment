@@ -58,27 +58,60 @@ Portfolio Deployment — платформа Данила Мифтахова дл
 
 ## Быстрый старт
 
-Нужны Git, GNU Make, Python с `venv` и pip. Для локальных офлайн-проверок
-Docker, доступ к серверу и production-учётные данные не требуются.
+Это CLI-инструмент развёртывания: у него нет веб-интерфейса на localhost.
+Начните с офлайн-сценария ниже: он проверяет реестр и генерирует план/конфигурацию
+без Docker и доступа к серверу. Реальное развёртывание описано в разделе
+[Запуск развёртываний](#запуск-развёртываний).
+
+### 1. Установите локальные инструменты
+
+Нужны Python **3.10+** с `venv` и pip, Git и GNU Make. CI использует Python 3.12.12.
+Для рабочей машины с Ubuntu 24.04:
+
+```sh
+sudo apt-get update
+sudo apt-get install --yes git make python3 python3-venv python3-pip
+```
+
+### 2. Склонируйте проект и подготовьте окружение
 
 ```sh
 git clone https://github.com/DanilFaritovich/portfolio-deployment.git
 cd portfolio-deployment
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
-make check PYTHON=.venv/bin/python
+make validate PYTHON=.venv/bin/python
 ```
 
-Просмотр Compose-конфигурации зарегистрированного приложения без развёртывания:
+Следующие команды выполняйте из каталога репозитория. Активация virtualenv
+не нужна: команды явно используют `.venv/bin/python`. Валидация должна вывести
+`OK: registry validated` для включённого манифеста ProjectRouter. Если отсутствуют
+`venv` или `make`, сначала выполните шаг 1.
+
+### 3. Получите первый план развёртывания
 
 ```sh
-make compose-render PYTHON=.venv/bin/python APPLICATION=project-router GIT_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa COMPOSE_FORMAT=json
+make plan PYTHON=.venv/bin/python OBSERVED=tests/fixtures/observed/noop.json GIT_REVISION="$(git rev-parse HEAD)" PLAN_FORMAT=text
 ```
 
-SHA выше — синтетический пример; замените его полным SHA нужного коммита.
-Для офлайн-планирования также нужен явный snapshot наблюдаемого состояния.
-Подробности — в [контракте планирования](docs/reconciliation-planning.md) и
-[руководстве по Compose-движку](docs/docker-deployment-engine.md).
+Включённый snapshot описывает синтетическое пустое окружение. Для текущего реестра
+план покажет `changes`, создание приложения/компонента и изменение маршрута,
+с `executed=false`. Ничего не развёртывается. Для собственного анализа замените
+`OBSERVED` валидным snapshot в формате [контракта планирования](docs/reconciliation-planning.md);
+этот пример не обнаруживает состояние вашего компьютера или production-сервера.
+
+### 4. Посмотрите сгенерированную Compose-конфигурацию
+
+```sh
+make compose-render PYTHON=.venv/bin/python APPLICATION=project-router GIT_REVISION="$(git rev-parse HEAD)" COMPOSE_FORMAT=yaml
+```
+
+В терминале появится Compose-документ с сервисом `web`, закреплённым GHCR-образом,
+настройками безопасности и сетями. Это preview, а не самостоятельная конфигурация
+для `docker compose up`: proxy-сеть и runtime-предпосылки создаются управляемым
+развёртыванием. Подробнее — в [руководстве по Compose-движку](docs/docker-deployment-engine.md).
+Полный офлайн-набор проверок запускается командой `make check PYTHON=.venv/bin/python`
+и может занять несколько минут.
 
 ## Качество и тестирование
 
@@ -115,6 +148,53 @@ production-отката пока не подтверждена. Ссылки н�
 Подготовка хоста принадлежит
 [portfolio-server-infrastructure](https://github.com/DanilFaritovich/portfolio-server-infrastructure).
 Production-установка и восстановление требуют отдельных процедур и полномочий оператора.
+
+## Запуск развёртываний
+
+### Одноразовая локальная VM
+
+После локальной установки выше интерактивный E2E-runner позволяет проверить реальные
+развёртывания в одноразовых Ubuntu VM. Нужны Linux amd64 с KVM, работающий и
+аутентифицированный Multipass и минимум 20 GiB свободного места на файловой системе
+домашнего каталога. Первая подготовка fixtures также может потребовать права
+публикации в GHCR. По умолчанию используется владелец GitHub `origin`; при
+подготовке собственных образов задайте в `E2E_FIXTURE_OWNER` владельца, от имени
+которого вы можете публиковать пакеты.
+
+```sh
+make e2e PYTHON=.venv/bin/python
+```
+
+Runner запрашивает отдельные подтверждения перед созданием VM, подготовкой образов
+и операциями Docker/Caddy. Используется Docker внутри VM, а не daemon хоста.
+Перед запуском прочитайте [требования и процедуру E2E](docs/local-e2e.md#prerequisites-and-topology);
+сохраните созданные квитанции и отчёты.
+
+### Собственный VPS
+
+Сейчас платформа адаптирована к инфраструктуре автора и не имеет универсального
+установщика. Для другого сервера недостаточно клонирования и `.env`: идентификаторы
+репозиториев/домена, доверенные workflow и привязки к хосту требуют проверенной
+адаптации кода и политики.
+
+Порядок подготовки:
+
+1. Подготовьте Ubuntu 24.04 amd64, SSH-доступ, Docker/Compose и DNS через
+   [проект серверной инфраструктуры](https://github.com/DanilFaritovich/portfolio-server-infrastructure).
+2. Проверьте манифест/допуск приложения и требования к подписям исходного кода
+   по [руководству подключения приложений](docs/application-acceptance.md).
+3. Подготовьте проверенные артефакты Manager/Caddy, фактические host bindings,
+   ключи оператора, подписанную политику и CD capsule; настройте защищённые GitHub
+   Environments. См. [установку](docs/production-installation.md) и
+   [текущую архитектуру CD](ARCHITECTURE.md#minimal-continuous-delivery--production-deployed).
+4. Выполните отдельно разрешённые установку, bootstrap шлюза, подготовку образа
+   и первый rollout через [bootstrap workflow](.github/workflows/production-bootstrap.yml).
+5. Проверьте готовность и публичный HTTPS, затем используйте CD подписанных релизов
+   для обновлений. См. [схему доставки](docs/production-status.md#what-happens-after-a-projectrouter-update).
+
+Production-руководства включают исторические параметры хоста и этапы подготовки;
+это справочные процедуры, а не готовые разрешения для нового VPS. Переносимая
+установка без участия оператора пока не реализована.
 
 ## Ограничения
 
