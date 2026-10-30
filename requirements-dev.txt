@@ -11,3 +11,6 @@ pluggy==1.7.0
 Pygments==2.21.0
 referencing==0.37.0
 rpds-py==2026.9.1
+# The isolated Manager import test needs this even on Python >= 3.13, where
+# referencing no longer installs it transitively. Match the runtime wheel lock.
+typing-extensions==4.15.0
