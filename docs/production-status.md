@@ -10,10 +10,12 @@ their original missing prerequisites are not a current host inventory.
 Automatic ProjectRouter updates are now confirmed. The latest reviewed run
 41065912995 succeeded on 2026-10-30; its deploy job ran both cache preparation
 and application update execution, followed by successful completion of the step
-that includes the independent HTTPS witness. Manager delivery is separate: its
-latest reviewed run 40948774870 failed at remote intake on 2026-10-29 despite
-successful exact-source Offline CI and release publication. Earlier successful
-Manager CD remains valid historical evidence, not proof of the latest upgrade.
+that includes the independent HTTPS witness. Manager delivery is separate:
+run 40948774870 attempt 2 succeeded on 2026-10-30. Its executed deploy step returned
+`{"manager_sha": "c4fe9529e258330c71d24207c895457c7fdf3e32", "status": "no-op"}`.
+The requested Manager was already installed and passed health verification;
+this attempt did not exchange the installed tree. Attempt 1's remote intake
+failure on 2026-10-29 is retained below, rather than relabelled as a success.
 
 ## Evidence and its limits
 
@@ -24,7 +26,8 @@ Manager CD remains valid historical evidence, not proof of the latest upgrade.
 | [ProjectRouter production CD 40961129201](https://github.com/DanilFaritovich/project-router/actions/runs/40961129201) | Success, 2026-10-29 UTC; deploy step executed | A further successful post-bootstrap application CD run for `3edeb64737db26b82b70013d34b99f6da5460611` |
 | [Manager Offline CI 40948258783](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40948258783) | Success, 2026-10-29 UTC | Exact-source checks for current reviewed main `c4fe9529e258330c71d24207c895457c7fdf3e32` |
 | [Manager trusted release 40948258727](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40948258727) | Success, same SHA | Release publication succeeded; this alone does not establish installation |
-| [Manager Production CD 40948774870](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40948774870) | Failure, 2026-10-29 UTC; deploy step failed | `cd-remote-intake-blocked`; the host intake blocked the request, so latest Manager installation is not established |
+| [Manager Production CD 40948774870, attempt 2](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40948774870/attempts/2) | Success, 2026-10-30 UTC; deploy step executed | `no-op` for `c4fe9529e258330c71d24207c895457c7fdf3e32`; installed revision and health verified, no new installation change |
+| [Manager Production CD 40948774870, attempt 1](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40948774870/attempts/1) | Failure, 2026-10-29 UTC; deploy step failed | Historical `cd-remote-intake-blocked`; the later attempt passed, but does not establish which prerequisite changed |
 | [Manager Offline CI 40590290001](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40590290001) | Success, 2026-10-27 UTC | Exact-source checks for `b47e2d684e77022f3b3a58edd906f8c282958d42` |
 | [Manager trusted release 40590289784](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40590289784) | Success, same SHA | Signed Manager release publication |
 | [Manager Production CD 40590650857](https://github.com/DanilFaritovich/portfolio-deployment/actions/runs/40590650857) | Success; `deploy` job and deployment step ran | Live Manager CD path succeeded; not proof of an application image update |

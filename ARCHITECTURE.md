@@ -6,9 +6,11 @@ As of 2026-10-28, the operator confirms full server deployment and the first
 ProjectRouter rollout. Manager Production CD run 40590650857 independently shows
 a successful executed deployment step. The evidence review on 2026-10-30 confirms
 successful automatic ProjectRouter updates, including run 41065912995 with update
-execution and independent HTTPS witness. The latest reviewed Manager CD run
-40948774870 failed at remote intake on 2026-10-29; its earlier success does not
-establish delivery of the latest Manager release. See
+execution and independent HTTPS witness. Manager CD run 40948774870 attempt 2
+succeeded on 2026-10-30 with `no-op`, confirming that requested revision
+`c4fe9529e258330c71d24207c895457c7fdf3e32` was already installed and passed
+Manager health verification. No tree exchange was needed. Attempt 1's remote
+intake failure remains historical evidence. See
 [production status and main history](docs/production-status.md) for exact SHAs,
 run links and evidence limits. A production rollback drill remains unverified.
 No fresh host inspection was performed for this documentation.

@@ -21,8 +21,10 @@ GHCR to controlled rollouts, health checks, HTTPS routing and recovery.
 - Application manifests in Git with schema validation and a separate admission policy.
 - Offline deployment plans and Compose/Caddy previews before any server changes.
 - Immutable GHCR images verified against signed release and source evidence.
+- Signed Manager installation bundles and a trusted Caddy image publisher.
 - Policy-gated delivery with fresh host observations, scoped approvals and a host lock.
-- Internal readiness checks and independent public HTTPS/content verification.
+- Shared Caddy HTTPS routing, internal readiness checks and independent public
+  HTTPS/content verification for application releases.
 - SQLite deployment journal, last-known-good releases and constrained rollback/recovery.
 
 ## Technology stack
@@ -33,7 +35,7 @@ GHCR to controlled rollouts, health checks, HTTPS routing and recovery.
 | Containers and isolation | Docker Engine, Docker Compose, private networks, named volumes |
 | Routing and TLS | Caddy, generated configuration, private admin socket |
 | State and coordination | SQLite via sqlite3, filesystem receipts, Linux flock |
-| CI and artifacts | GitHub Actions, GHCR, immutable image digests |
+| CI and artifacts | GitHub Actions, workflow artifacts, GHCR, immutable image digests |
 | Release trust and authorization | GitHub OIDC/Sigstore attestations, SSHSIG signatures, signed policies |
 | Testing | pytest, pytest-xdist in CI, isolated Docker acceptance, Multipass VM E2E |
 | Development | Git, GNU Make, Python 3.10+; CI uses Python 3.12.12 |
@@ -41,7 +43,8 @@ GHCR to controlled rollouts, health checks, HTTPS routing and recovery.
 ## Key engineering decisions
 
 - **One engine across environments.** Offline mocks, disposable VMs and production
-  adapters reuse the planner, executor and lifecycle rules.
+  adapters reuse the planner, executor and lifecycle rules. Operations run as
+  one-shot CLI processes.
 - **Evidence before mutation.** Desired state in Git does not prove live state;
   stale observations, ownership conflicts or missing signatures block execution.
 - **Recoverable operations.** Intent is recorded before mutation. Unfinished runs
@@ -73,7 +76,7 @@ make compose-render PYTHON=.venv/bin/python APPLICATION=project-router GIT_REVIS
 ```
 
 The SHA above is a synthetic example; replace it with the intended full commit SHA.
-Planning against a server also requires an explicit observation snapshot.
+Offline planning also requires an explicit snapshot of observed state.
 See the [planning contract](docs/reconciliation-planning.md) and
 [Compose engine guide](docs/docker-deployment-engine.md).
 
@@ -99,11 +102,14 @@ requirements are in the [local E2E guide](docs/local-e2e.md).
 registered application and the portfolio served at the website linked above.
 Successful main-push CI hands its signed immutable release to the shared CD
 workflow. The executor verifies policy, source, host state and readiness before
-accepting the update. Manager releases have a separate delivery path.
+accepting the update. Manager releases have a separate delivery path that verifies
+the installed bundle and health, retaining the previous tree for rollback.
 
-The first rollout is complete; automatic application updates are confirmed through
-2026-10-30. The latest reviewed Manager CD failed at remote intake; production
-rollback acceptance remains unverified. Exact run links and evidence limits are in
+The first rollout is complete; automatic application updates and Manager
+Production CD are confirmed through 2026-10-30. The latest Manager attempt passed
+with `no-op`: the requested version was already installed and passed health
+verification, so no installation change was needed. Production rollback acceptance
+remains unverified. Exact run links and evidence limits are in
 [production status](docs/production-status.md).
 
 Host provisioning belongs to
@@ -114,9 +120,22 @@ Production installation and recovery use separate operator procedures and author
 
 - Designed for one VPS; high availability and zero downtime are not guaranteed.
 - Current automated application delivery supports the narrow ProjectRouter
-  image-only contract; other applications need declarations and admission review.
+  image-only contract; other applications require acceptance, policy review and
+  explicit CD integration.
 - Image rollback cannot reverse database migrations or replace backups.
 - Offline checks do not establish current Docker, DNS, TLS or server health.
+
+## Repository structure
+
+```text
+registry/ + policy/ + schemas/   Application contracts and admission
+scripts/                       Offline planning, Compose, gateway and lifecycle
+scripts/production/            Read-only host diagnostics
+scripts/production_integration/ Authenticated execution and recovery
+scripts/cd/ + installation/    Delivery, sealed runtime and operator setup
+tests/ + scripts/e2e/ + e2e/    Offline tests and disposable integration harnesses
+.github/workflows/             CI, acceptance, signed publication and CD
+```
 
 ## Documentation
 
