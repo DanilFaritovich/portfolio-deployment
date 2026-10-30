@@ -9,6 +9,8 @@ GHCR to controlled rollouts, health checks, HTTPS routing and recovery.
 **[Author's portfolio → danil-miftakhov.dev](https://danil-miftakhov.dev/en/)**
 
 [![CI](https://github.com/DanilFaritovich/portfolio-deployment/actions/workflows/offline.yml/badge.svg?branch=main)](https://github.com/DanilFaritovich/portfolio-deployment/actions/workflows/offline.yml)
+[![Manager CD](https://github.com/DanilFaritovich/portfolio-deployment/actions/workflows/cd-deploy.yml/badge.svg?branch=main)](https://github.com/DanilFaritovich/portfolio-deployment/actions/workflows/cd-deploy.yml)
+[![ProjectRouter CD](https://github.com/DanilFaritovich/project-router/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/DanilFaritovich/project-router/actions/workflows/deploy.yml)
 [![Python](https://img.shields.io/badge/Python-CLI-3776AB?logo=python)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://www.docker.com/)
 [![Caddy](https://img.shields.io/badge/Caddy-HTTPS-1F88C0)](https://caddyserver.com/)
