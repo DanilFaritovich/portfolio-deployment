@@ -28,6 +28,11 @@ def client(tmp_path, monkeypatch):
     (b'Connection timed out','cd-ssh-connection-failed'),
     (b'No route to host','cd-ssh-connection-failed'),
     (b'Could not resolve hostname','cd-ssh-connection-failed'),
+    (b'Timeout, server example.invalid not responding.','cd-ssh-connection-lost'),
+    (b'client_loop: send disconnect: Broken pipe','cd-ssh-connection-lost'),
+    (b'Connection reset by peer','cd-ssh-connection-lost'),
+    (b'Connection closed by 192.0.2.1 port 2222','cd-ssh-connection-lost'),
+    (b'Connection to example.invalid closed by remote host.','cd-ssh-connection-lost'),
     (b'unknown SSH failure','cd-ssh-transport-failed'),
 ])
 def test_ssh_failure_is_classified_without_echoing_stderr(client, monkeypatch, capsys, stderr, reason):
@@ -42,6 +47,36 @@ def test_ssh_failure_is_classified_without_echoing_stderr(client, monkeypatch, c
     output=capsys.readouterr().out
     assert reason in output and 'PRIVATE-SENTINEL' not in output
     assert len(calls)==1
+
+
+def test_real_ssh_config_keeps_silent_rpcs_alive_without_network(client):
+    # -G asks the installed OpenSSH parser for effective settings and exits
+    # without opening a connection or sending a deployment request.
+    result = subprocess.run([*client.options, '-G', client.target],
+        capture_output=True, text=True, timeout=5, check=True)
+    config = dict(line.split(' ', 1) for line in result.stdout.splitlines())
+    assert config['serveraliveinterval'] == '30'
+    assert config['serveralivecountmax'] == '3'
+    assert config['stricthostkeychecking'] == 'true'
+    assert config['identityagent'] == 'none'
+    assert config['connectionattempts'] == '1'
+
+
+@pytest.mark.parametrize('role', ['automation', 'observer'])
+def test_lost_connection_never_replays_or_accepts_success_bytes(client, monkeypatch, capsys, role):
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=255, stdout=b'{"status":"succeeded"}',
+            stderr=b'client_loop: send disconnect: Broken pipe PRIVATE-SENTINEL')
+    monkeypatch.setattr(runner.subprocess, 'run', run)
+    with pytest.raises(DockerError, match='cd-ssh-connection-lost') as caught:
+        client.call({'op': 'witness' if role == 'observer' else 'application'}, role=role)
+    runner.report_failure(caught.value)
+    output = capsys.readouterr().out
+    assert 'may have completed' in output and 'before any retry' in output
+    assert 'PRIVATE-SENTINEL' not in output
+    assert len(calls) == 1
 
 
 @pytest.mark.parametrize('document,returncode,reason', [

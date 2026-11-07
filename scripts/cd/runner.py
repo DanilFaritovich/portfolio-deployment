@@ -39,7 +39,8 @@ DIAGNOSTICS = {
     'cd-ssh-authentication-failed': 'SSH authentication failed; check the restricted account/key installation',
     'cd-ssh-host-key-mismatch': 'SSH host identity was rejected; verify pinned host keys independently',
     'cd-ssh-connection-failed': 'SSH could not reach the configured host',
-    'cd-ssh-transport-failed': 'SSH failed; inspect bounded connection diagnostics through the operator channel',
+    'cd-ssh-connection-lost': 'SSH connection was lost; the remote operation may have completed; inspect host receipts before any retry',
+    'cd-ssh-transport-failed': 'SSH failed; the remote outcome may be unknown; inspect host receipts before any retry',
     'cd-ssh-timeout': 'SSH timed out; remote outcome may be unknown; inspect host receipts before any retry',
     'cd-ssh-result-unavailable': 'SSH returned no bounded result; inspect host receipts before any retry',
     'cd-ssh-result-invalid': 'SSH returned an invalid result; inspect host receipts before any retry',
@@ -85,7 +86,10 @@ class Client:
         require(known.stat().st_size > 0, 'cd-known-host-required')
         self.options = ['ssh', '-F', '/dev/null', '-p', port, '-oBatchMode=yes', '-oIdentitiesOnly=yes', '-oIdentityAgent=none',
             '-oStrictHostKeyChecking=yes', '-oUserKnownHostsFile=' + str(known), '-oClearAllForwardings=yes',
-            '-oRequestTTY=no', '-oPermitLocalCommand=no', '-oProxyCommand=none', '-oConnectTimeout=10']
+            '-oRequestTTY=no', '-oPermitLocalCommand=no', '-oProxyCommand=none', '-oConnectTimeout=10',
+            # Long operations and observe-wait are silent until their response.
+            # Keep encrypted SSH traffic active without replaying any request.
+            '-oServerAliveInterval=30', '-oServerAliveCountMax=3']
 
     def call(self, request, *, role='automation', raw=b'', timeout=1500, stop=None):
         argv = [*self.options, '-i', str(self.keys[role]), self.target, 'portfolio-cd-v1']
@@ -105,6 +109,9 @@ class Client:
                 code = 'cd-ssh-host-key-mismatch'
             elif any(p in stderr for p in (b'Connection refused', b'Connection timed out', b'No route to host', b'Could not resolve hostname')):
                 code = 'cd-ssh-connection-failed'
+            elif any(p in stderr for p in (b'Timeout, server ', b'Broken pipe', b'Connection reset',
+                                          b'Connection closed', b'closed by remote host')):
+                code = 'cd-ssh-connection-lost'
             else:
                 code = 'cd-ssh-transport-failed'
             raise DockerError(code)
